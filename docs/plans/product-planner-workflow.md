@@ -3,18 +3,14 @@ classification: "PLANNED_CHANGE"
 workKind: "FEATURE"
 complexity: "HIGH"
 affectedPaths:
-    - "src/constants.ts"
-    - "src/agent-definitions/"
-    - "src/shared/session/agents.ts"
-    - "src/shared/session/subagent-definitions.ts"
-    - "src/shared/workflow/product-review.ts"
-    - "src/shared/workflow/controller-state.ts"
-    - "src/shared/workflow/plan-lifecycle.ts"
-    - "src/shared/workflow/plan-review-actions.ts"
-    - "src/shared/workflow/sequence-review.ts"
-    - "src/plan-store.ts"
+    - "packages/agents/"
+    - "packages/plans/"
+    - "packages/tools/definitions/"
+    - "src/plan-store/"
+    - "src/tools/registry.ts"
     - "src/tools/plan-written.ts"
     - "src/tools/delegate-agent.ts"
+    - "src/shared/workflow/execution-start.ts"
     - "src/cmd/load-plan/"
     - "src/ui/workspace/react/PlanReviewSurface.tsx"
     - "docs/domain-language.md"
@@ -24,12 +20,12 @@ devServerCommand: "bun run workspace:dev"
 devServerUrl: "http://127.0.0.1:5173/dev/plan-review"
 devServerHmr: true
 parentPlan: "product-planner-sequence"
-order: 2
-dependencies:
-    - "local-prototype-review"
+order: 3
 createdAt: "2026-11-12"
 status: "draft"
 planId: "5e239ac4-9f0f-4e72-8212-65b1abe4e737"
+executionAgent: "engineer"
+collaborationRecommendation: "autonomous"
 ---
 
 # Product Planner and Technical Handoff
@@ -76,17 +72,42 @@ body, not a second editable copy in YAML or the runtime store. Its subsections h
 scenarios, approved visual choices, decisions, and uncertainties. Technical sections can grow outside that section.
 Use a Markdown-aware section extractor so headings in code fences cannot change its boundary.
 
-Add optional document metadata `planningMode: "product"` and use the preceding child's `prototypes` references. The
-marker persists through technical planning; it is not approval. A product draft is marked from its first saved version.
-Core cannot treat a marked document with absent or malformed runtime evidence as an ordinary technical draft.
+**The Plan Store owns product state.** The home Plan Store on `main` already owns Plan identity, revisions, lifecycle
+events, and complex internal records, and exports no arbitrary metadata or controller writer. Product state follows the
+same rule: a versioned **product record** in the Plan's package, changed only by the named commands below. Export its
+types from `packages/plans` and the commands from `src/plan-store/index.ts` (or as `ProjectPlanStore` methods).
 
-Add `productReview` to the controller-owned fields in `WorkflowControllerState`. It contains a versioned phase
-(`product`, `technical`, or `submitted`), immutable acceptance records, and the selected technical Agent when accepted.
-Each acceptance record holds an ID, acceptance time, product revision, the accepted Product Agreement text, and exact
-prototype references. Historical snapshots are evidence, not an editable second definition.
+Follow the owner's choice for prototypes in the preceding child: add the phase, chosen technical Agent, and acceptance
+records as a new accepted `product` metadata key in `plan.wld.json`, using a package format version change. Delivery
+copies and Shared Spaces never carry it; `store.revise` and `store.editBody` cannot change it. If the preceding child's
+format version has not shipped yet, combine both keys in one format change.
 
-A single `src/shared/workflow/product-review.ts` owner computes product identity from the agreement text and ordered
-prototype references, with stable encoding and line-ending normalization. It does not hash unrelated technical prose,
+**What the owner accepted must stay readable after the Plan changes.** Technical planning keeps editing the same Plan,
+and a later product change replaces the Product Agreement text. To compare later work against what was accepted, each
+acceptance points at a frozen copy instead of the live Plan. The Plan Store already makes frozen copies:
+`stagePackageMilestone` writes the Plan's documents and metadata to a history version keyed by Plan ID, and prune
+removes history with the Plan. Acceptance records a new `product_accepted` milestone. Its record in the `product` key
+holds only references:
+
+```text
+acceptance = {
+  acceptanceId, acceptedAt,
+  milestoneVersion,      # frozen Plan copy, including the Product Agreement text
+  productRevision,       # hash of Product Agreement text + prototype review set
+  prototypes: PrototypeRevisionRef[],   # already immutable in the preceding child
+  planningAgent: "planner" | "architect",
+}
+```
+
+No separate snapshot file or folder is added.
+
+The record contains a versioned phase (`product`, `technical`, or `submitted`) and the list of acceptance records
+above. Earlier acceptances stay in the list after a product change. Frozen milestone copies are evidence, not an
+editable second definition. **A Plan is product-origin when its product record exists.** Only Plan prune removes it.
+
+The product identity uses the Product Agreement text plus the Plan's current review set of prototypes (the latest
+non-retired revision of each, from the preceding child's store operations), with stable encoding and line-ending
+normalization. It does not hash unrelated technical prose,
 Plan Status, or timestamps. The selected prototype references cover the whole submitted prototype; changing one requires
 renewed acceptance even if the Plan prose is unchanged. Feasibility evidence used for acceptance is linked to that same
 product revision. It is evidence for the conversation, not an automatic pass/fail gate.
@@ -103,17 +124,17 @@ Normal approval and readiness -> existing execution or decomposition workflow
 
 ### Four authoritative operations, one execution rule
 
-Implement these operations in `product-review.ts`, using canonical Plan location, existing document/controller locks,
-revision comparisons, and document/controller write support. Do not build another transaction framework.
+Implement these as Plan Store commands, using its Project admission, locks, and observed-revision checks. Do not build
+another transaction framework or write Plan storage from workflow code.
 
-- `beginProductDraft`: confirms stable identity and the product marker, creates product-review state, and preserves
+- `beginProductDraft`: creates the Plan through the store if needed, creates the product record, and preserves
   lifecycle `draft`. Repeated registration cannot erase accepted evidence or revert a later phase.
 - `acceptProductRevision`: compares the exact displayed product revision with the saved definition and selected prototype
   references. It records the immutable acceptance and `planningAgent: "planner" | "architect"`, then enters technical
   phase. Both continue and save leave lifecycle `draft`; only continue dispatches a technical planning turn.
 - `submitTechnicalPlan`: requires accepted matching product intent, technical phase, valid technical Plan/Epic structure,
-  and the selected technical planning context. Resolve the caller from the trusted hosted-turn/tool context captured by
-  `createPlanWrittenTool`, not a tool argument, stored destination, or UI Agent label. It records submitted phase before
+  and the selected technical planning context. Resolve the caller from the trusted hosted-turn/tool context that
+  `plan_written` receives through `withPlanSubmission`, not a tool argument, stored destination, or UI Agent label. It records submitted phase before
   ordinary technical review. Opening
   review, changing Agent, or filling in an execution policy is not submission or implementation approval.
 - `reopenProductReview`: uses existing reopen handling, returns to product/draft, and retains earlier acceptances. It
@@ -125,21 +146,22 @@ product review through the owner above. It cannot accept on the user's behalf. A
 input to `plan_written` for accepted Product Drafts. Existing calls for ordinary technical Plans remain unchanged.
 
 The shared eligibility rule is: **a product-origin Plan can enter technical approval, readiness, decomposition, or
-execution only after explicit technical submission with a matching accepted product revision.** Both document marker
-and controller evidence participate in detection: surviving evidence with a removed marker must not unlock execution.
-Normal Plans with neither remain compatible. A new prototype alone does not make an ordinary technical Plan product-origin.
+execution only after explicit technical submission with a matching accepted product revision.** A missing or malformed
+product record on a Plan that had one never means "ordinary draft". Plans without a product record remain compatible.
+A new prototype alone does not make an ordinary technical Plan product-origin.
 
-Check this rule at shared review actions, manual lifecycle transitions, Sequence review/admission, readiness and
-execution preparation, direct executor/start paths, and resume. Callers use one owner for the decision, not copied
-phase comparisons. Product acceptance must never emit an existing execution-approved event. Sequence approval must
+**One owner for the rule:** put the eligibility decision in the `@runwield/plans` lifecycle policy
+(`packages/plans/lifecycle.ts`), which the store's event commands already apply. Then `recordPlanEvent`,
+`applySharedPlanReviewDecision`, `applyPlanReviewForExecution`, `applySequenceReviewDecision`, and
+`reservePlanExecution` all enforce it without copied phase comparisons. Check that manual board transitions, direct
+load/execute, attached execution, and resume reach one of those commands; add the check only where one does not. Product acceptance must never emit an existing execution-approved event. Sequence approval must
 reject an unfinished Product Draft child before approving or preparing any member.
 
-Ordinary document saves preserve omitted product metadata; null/removal cannot silently erase the restriction. Product
-Agreement or prototype changes invalidate eligibility immediately by revision mismatch, even before a planning Agent
-processes them. Route deliberate product revision through product review and preserve the old baseline. Technical-only
-body edits preserve product acceptance while normal whole-Plan technical approval rules still apply. Protect canonical
-writers and review-editor saves, not only toolbar handlers. This is workflow protection, not tamperproof protection from
-a user deleting both raw document and controller evidence outside RunWield.
+`store.revise` and `store.editBody` never touch the product record. Product Agreement or prototype changes invalidate
+eligibility immediately by revision mismatch, even before a planning Agent processes them. Route deliberate product
+revision through product review and preserve the old baseline. Technical-only body edits keep product acceptance while
+normal whole-Plan technical approval rules still apply. This is workflow protection, not tamperproof protection from
+someone editing the home store's files outside RunWield.
 
 ### Product conversation and technical continuation
 
@@ -164,6 +186,10 @@ In the existing review shell, offer **Accept and continue** and **Accept and sav
 This does not reclassify through Router. Show the accepted product revision and technical-planning stage independently
 of Plan Status. Reuse existing review controls and design tokens; do not add a new planning dashboard.
 
+Annotations still queued when the owner accepts follow the existing approval-context rule: they travel to the chosen
+Planner or Architect with their typed prototype context, the same way Plan annotations reach the Engineer today. Comments
+sent during product review go to Product Planner and are not stored.
+
 Persist the chosen destination and route `load-plan`, review reopening, and Session restart from current saved evidence.
 Preserve `planningAgentName`, but do not let an old review reference restore Product Planner after technical handoff.
 Old accept/continue responses cannot overwrite a newer revision or start a second conflicting turn. Cancellation or a
@@ -183,15 +209,16 @@ during implementation and change whatever the Implementation Steps need, includi
 only when discovery changes approved intent — the change reaches another subsystem, public behavior or architecture
 shifts, migration or compatibility risk grows, or the Verification Plan no longer proves the objective.
 
-- `src/constants.ts`, `src/shared/session/agents.ts`, `src/agent-definitions/product-planner.md` — canonical selectable Agent.
-- `src/shared/session/subagent-definitions.ts`, `src/tools/delegate-agent.ts`, role definition and registry tests — bounded
-  feasibility review with an enforced read-only authority ceiling.
-- `src/plan-front-matter.ts`, `src/plan-store.ts`, `src/shared/workflow/controller-state.ts` and controller persistence —
-  typed product marker, inherited references, revision-bound acceptance, and safe writes.
-- New `src/shared/workflow/product-review.ts`, `src/tools/product-plan.ts`, registry and `plan-written.ts` — authoritative
-  product operations, separate review outcomes, and explicit technical submission.
-- `plan-review-actions.ts`, `plan-lifecycle.ts`, `plan-actions.ts`, `sequence-review.ts`, `plan-executor.ts`, execution-start,
-  `src/cmd/load-plan/`, and `src/shared/attached/coordinator.ts` — shared eligibility across supported entry points.
+- `packages/agents/role-ids.ts`, `registry.ts`, `definitions/product-planner.md` — canonical selectable Agent.
+- `packages/agents/isolated.ts` (`DelegatedRoleId`, role table), `definitions/subagent-definitions/roles/`,
+  `src/tools/delegate-agent.ts` — bounded feasibility review with an enforced read-only authority ceiling.
+- `packages/plans/` (record types, package format with the `product` key, `lifecycle.ts` eligibility policy, `store.ts`)
+  and `src/plan-store/` (`packages.ts` metadata and the `product_accepted` milestone, `index.ts` exports, `review.ts`, `sequence-review.ts`, `events.ts`, `workflows.ts`) — the product record, four
+  named commands, and one enforced rule.
+- `packages/tools/definitions/product-plan.ts` and `plan-written.ts`, `src/tools/registry.ts`, `src/tools/plan-written.ts`
+  — separate product review outcomes and explicit technical submission through `withPlanSubmission`.
+- `src/cmd/load-plan/`, `src/shared/workflow/execution-start.ts`, `src/shared/attached/coordinator.ts` — route by product
+  phase and confirm each entry point reaches a guarded store command.
 - Session workflow event/dispatch and saved review-reference modules — continue/save, destination persistence, stale-event handling.
 - `src/ui/review/plan-review.ts`, `PlanReviewSurface.tsx`, review decision API/types — product-specific acceptance and stage display.
 - Ideator, Planner, Architect, Slicer and Engineer guidance as needed, document formats, and handoff prompts — accepted
@@ -199,26 +226,29 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - Core/Workspace PRDs, the root PRD's Plan description, transient proposal, `docs/domain-language.md`, `docs/plan-lifecycle.md`, and
   `docs/adr/003-plan-lifecycle-event-module.md` — requirements, terminology, and ownership agree with delivered behavior.
 
-No Router prompt, routing benchmark retuning, shared-prototype server, or external Plan Store migration is in scope.
+No Router prompt, routing benchmark retuning, shared-prototype server, or hosted Plan Store driver is in scope. The only
+package format change is the new `product` metadata key.
 
 ## Reuse Opportunities
 
-- Canonical Plan IDs, `resolveWorkflowPlanLocation()`, document/controller writes and locks — preserve existing authority.
+- `openProjectPlanStore`, Plan IDs, store locks, observed-revision checks, and lifecycle policy in `@runwield/plans` —
+  preserve existing authority.
 - `planningAgentName`, existing review feedback and Session workflow dispatch — continue the correct conversation.
 - Existing delegated roles and `verification-adversary` authority-ceiling pattern — a distinct feasibility role, not its verdict format.
-- Child 1's `PrototypeRevisionRef` and durable feedback — immutable experience evidence, no second asset store.
+- Child 2's `PrototypeRevisionRef`, typed comment context, and approval-context forwarding — immutable experience
+  evidence, no second asset or comment store.
 - Existing Plan/Epic formats and external-draft compatibility — extend product-origin documents only.
 
 ## Implementation Steps
 
-1. **Product Drafts have an enforced saved contract.** The product draft format includes `planningMode: "product"`,
-   Product Agreement, and optional retained prototype references from first save. `product-review.ts` computes its
-   revision and owns all four operations. Controller records retain exact acceptance snapshots and destination. Canonical
-   save/update/review-edit paths preserve omitted metadata and cannot remove the gate or forge product acceptance.
-   Product edits immediately fail revision matching; technical-only edits do not erase the product baseline.
-2. **Core cannot execute an unfinished Product Draft.** The single eligibility owner is used by shared review, low-level
-   lifecycle transitions, manual board actions, Sequence admission/approval, readiness, direct load/execution/start,
-   attached execution, and resume. Incomplete product children stop Sequence approval before member mutation. Missing or
+1. **Product Drafts have an enforced saved contract.** A Product Draft has a Plan Store product record from its first
+   save and a Product Agreement section. The Plan Store computes its revision from that section plus the current
+   prototype review set and owns all four commands. Each acceptance references a `product_accepted` milestone and the exact prototype revisions, plus the destination.
+   `store.revise`, `store.editBody`, and review-editor saves cannot remove the record or forge acceptance. Product
+   edits immediately fail revision matching; technical-only edits do not erase the product baseline.
+2. **Core cannot execute an unfinished Product Draft.** The eligibility rule lives in `@runwield/plans` lifecycle policy
+   and is enforced by the store's review, event, Sequence, and execution-reservation commands. Manual board actions,
+   direct load/execution/start, attached execution, and resume all reach a guarded command. Incomplete product children stop Sequence approval before member mutation. Missing or
    malformed product evidence blocks advancement. Ordinary technical drafts still support direct approval/execution.
 3. **Product review produces only product outcomes.** `product_plan` opens the existing local review surface with typed
    product outcomes and displayed revision. Both acceptance actions preserve lifecycle `draft` and record the owner's
@@ -235,13 +265,14 @@ No Router prompt, routing benchmark retuning, shared-prototype server, or extern
    conversion preserves `planId`; children retain and resolve the parent acceptance reference and relevant scenarios.
    Technical planning preserves accepted behavior or returns the change to product review. Current saved phase outranks
    stale `planningAgentName`. Replanning retains existing execution work rather than resetting it.
-6. **Behavioral tests distinguish product approval from execution approval.** Real saved Plans/controller records exercise
+6. **Behavioral tests distinguish product approval from execution approval.** Real home-store Plans and product records exercise
    every bypass named in Verification, both acceptance actions, stale review, product-only versus technical-only edits,
    missing fields, and parent-child inheritance. Agent registry and delegation tests establish selection and authority;
    representative conversations establish prompt behavior rather than only asserting keywords exist.
 7. **Product and architectural guidance lands with the workflow.** Update Core's named requirements and scenarios and
    Workspace's browser acceptance flow; keep ordinary technical Plan behavior explicit. Update lifecycle guidance and
-   ADR-003 for the separate product gate, without adding a lifecycle status. Update `docs/domain-language.md` definitions,
+   ADR-003 for the separate product gate, without adding a lifecycle status. Document the product record and commands
+   in `src/plan-store/README.md`. Update `docs/domain-language.md` definitions,
    avoided aliases, and relationships for Product Planner, Product Draft, Product Acceptance, and Feasibility Review;
    reconcile the proposal's terms rather than creating competing aliases. Consolidate delivered lasting requirements
    from `product-planner-prd.md` into their central owners, preserve deferred shared-prototype intent there, update current
@@ -252,18 +283,19 @@ No Router prompt, routing benchmark retuning, shared-prototype server, or extern
 ## Approval Confirmation
 
 No Work Records are proposed for supersession. The owner confirmed separate revision-bound product approval and both
-acceptance actions. The Product Agreement section, permanent document marker, controller field names, and parent-reference
-shape are reviewable implementation assumptions. They preserve those decisions without adding a Plan Status.
+acceptance actions. The owner directed integration with the home Plan Store now on `main`. The Product Agreement section,
+`product` metadata entry shape, milestone name, and parent-reference shape are reviewable implementation assumptions. They preserve those decisions without adding a Plan Status.
 
 ## Verification Plan
 
 Use the Bun version in the checkout’s root `.bun-version` and run `bun run install:locked` before checks. All RunWield tests use its isolated runner.
 
-- Add `src/shared/workflow/product-review.test.ts` and `src/tools/product-plan.test.ts`; run
-  `bun scripts/run-tests.ts src/shared/workflow/product-review.test.ts src/tools/product-plan.test.ts src/plan-store.test.ts`.
-  Use real Plan files and controller records, not a fake product-state owner. Accept revision A, append technical sections,
+- Add `src/plan-store/product-review.test.ts` (owner test), public-command cases beside `src/plan-store/operations.test.ts`,
+  and `src/tools/product-plan.test.ts`; run
+  `bun scripts/run-tests.ts src/plan-store/product-review.test.ts src/plan-store/operations.test.ts src/tools/product-plan.test.ts`
+  and `bun run plan-store:check`. Use a real Project identity and home store, not a fake product-state owner. Accept revision A, append technical sections,
   and verify A remains approved. Change only the prototype reference or Product Agreement and verify execution is blocked
-  while A's original text/references remain inspectable. Include omission/null/removal attempts, code-fence headings,
+  while A's original text/references remain inspectable. Include `revise`/`editBody` attempts to drop the record, code-fence headings,
   stale tabs, and restart. A boolean or a whole-Plan hash cannot pass these tests.
 - Add a parameterized integration suite `src/shared/workflow/product-execution-guards.integration.test.ts`; run
   `bun scripts/run-tests.ts src/shared/workflow/product-execution-guards.integration.test.ts src/cmd/load-plan/index.integration.test.ts`.
@@ -302,12 +334,14 @@ Use the Bun version in the checkout’s root `.bun-version` and run `bun run ins
 
 - **Semantic contradiction outside Product Agreement:** hashes cannot detect that technical prose quietly changes the
   experience. Planner/Architect and AI review must compare the plan and implementation to the retained agreement.
-- **Existing external Markdown Plans:** no product marker or controller evidence means existing adoption and review
-  behavior. A missing technical Agent or corrupt marked state never means execution permission.
+- **Existing and imported Plans:** no product record means existing adoption and review behavior. A missing technical
+  Agent or a corrupt product record never means execution permission.
+- **Remote sessions:** under `wld remote`, product commands go through the managed owner transport like other named
+  store commands; do not add a direct file path for them.
 - **After acceptance:** product questions can reopen review without losing earlier approval evidence. Unchanged technical
   detail does not require a second product interview; changed accepted intent does.
 - **Local-only evidence:** prototype references may fail on another machine. This accepted limitation stays in internal
-  PRDs/Plans. No uploads, export, UI warnings, or centralized-store prerequisite are added.
+  PRDs/Plans. No uploads, export, or UI warnings are added; a hosted Plan Store driver is later work.
 - **Dispatch interruption:** durable accepted intent survives; reuse existing workflow resume behavior. Acceptance is not
   reverted merely because a turn did not start, and failure is not reported as execution completion.
 - **Already running work:** retain execution ownership and worktree contents. A product edit is not permission to reset

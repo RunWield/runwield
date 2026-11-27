@@ -265,9 +265,9 @@ a Session, handing work to another Agent, or using a registered planning/executi
 Disposal of prototype code means no production-quality or reuse promise, not deletion after product acceptance.
 
 **Requirement: Keep prototype files out of repository commits.** Retain the files locally for this MVP rather than
-commit them beside the Plan. A copied or cloned Plan can have unusable prototype references on another machine. The
-owner accepts this known problem and intends to address it through the separate centralized Plan Store work, which is
-in progress. This delivery does not wait for that work or add prototype export, synchronization, or migration machinery.
+commit them beside the Plan. Prototypes live with the Plan in the local home Plan Store, which another machine does not
+have, so their references can be unusable there. The owner accepts this known problem until a hosted Plan Store serves
+the same Plans. This delivery does not add prototype export, synchronization, or migration machinery.
 
 **Requirement: Document the limitation internally, not in the UI.** Keep the portability limitation in this PRD and the
 implementation Plans. Do not add missing-capability notices, missing-prototype warnings, or portability banners to the
@@ -366,7 +366,7 @@ prototype review is future work.
 ## Risks and Mitigations
 
 - **Known MVP problem — cross-machine prototype references:** local files do not accompany a cloned or copied Plan.
-  The owner accepts broken references on another machine until centralized Plan Store work resolves portability.
+  The owner accepts broken references on another machine until a hosted Plan Store resolves portability.
   Preserve same-machine review and retention; record the limitation internally without adding UI messaging.
 - **Polished fiction:** A convincing prototype hides unsupported promises. Use independent feasibility evidence and make
   simulation and unresolved constraints visible.
