@@ -5,7 +5,8 @@ import { equal, ok, rejects } from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, writeFile, stat, symlink, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { getHomeDir, getRunWieldRuntimeDir } from "../../constants.ts";
+import { getHomeDir } from "../../constants.ts";
+import { getRunWieldRuntimeDir } from "@runwield/project-runtime/legacy-paths";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { defineCommittedGitFixture } from "../git-test-fixture.ts";
 import { stageManagedPersonalRuntime, retireManagedPersonalRuntime } from "../project-runtime-managed.ts";
@@ -178,7 +179,7 @@ test("managed adoption activates the original registered controller and refuses 
             const { withRetainedPlanFixture } = await import("../testing/retained-plan-fixture.ts");
             const { createTestWorktreeAttempt } = await import("../worktree-test-helpers.ts");
             const { seedPlanController, planFixtureControllerPath } = await import("../testing/plan-state-fixture.ts");
-            const { resolveProjectRuntimeLayout } = await import("../project-runtime-layout.ts");
+            const { resolveProjectRuntimeLayout } = await import("@runwield/project-runtime/layout");
             const { readRetainedManagedExecution } = await import("../../plan-store/index.ts");
             await rm(join(f.runtime, "controller"), { recursive: true });
             await rm(join(f.runtime, "collaboration-secrets.json"));

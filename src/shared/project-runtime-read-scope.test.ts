@@ -17,18 +17,18 @@ import {
 } from "node:assert/strict";
 import { assertEquals, assertRejects } from "../testing/assertions.ts";
 import { join } from "node:path";
-import { getRunWieldRuntimeDir } from "../constants.ts";
+import { getRunWieldRuntimeDir } from "@runwield/project-runtime/legacy-paths";
 import { listPlans, loadPlan } from "./testing/plan-query-fixture.ts";
 
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 import { defineCommittedGitFixture, git } from "./git-test-fixture.ts";
+import { enterProjectRuntime } from "./project-runtime-layout.ts";
 import {
-    enterProjectRuntime,
     checkedProjectRuntimeLayout,
     inspectProjectRuntimeReadAccess,
     ProjectRuntimeEntryRefusedError,
     withProjectRuntimeReadScope,
-} from "./project-runtime-layout.ts";
+} from "@runwield/project-runtime/layout";
 
 import { listEntries } from "./worktree-registry.ts";
 

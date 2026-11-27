@@ -2,14 +2,22 @@ import type { PublicationAttempt } from "@runwield/workflow/publication";
 import type { CreateProjectWorkRecord, ManualQaSection, ProjectWorkRecord } from "@runwield/plans/store";
 import { captureManagedCheckoutBinding } from "@runwield/plans/project-store-binding";
 import { workRecords } from "@runwield/plans/work-records";
-import { projects, type ProjectId, type ProjectStoreIdentity } from "@runwield/projects";
+import { enter } from "@runwield/project-runtime";
+import { invalidateProjectRuntimeReadScope } from "@runwield/project-runtime/layout";
+import {
+    projects,
+    ProjectIdentityEntryRequired,
+    type ProjectId,
+    type ProjectIdentity,
+    type ProjectStoreIdentity,
+} from "@runwield/projects";
 import { openNativeFileLock } from "../shared/native-file-lock.ts";
 /** Connection selection and durable requests stay inside the public Plan owner. */
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { join, relative, isAbsolute } from "node:path";
 import { personalGlobalRoot } from "../shared/remote/personal-resources.ts";
-import { readFile, rename } from "node:fs/promises";
+import { readFile, rename, stat } from "node:fs/promises";
 import { ProjectStoreClient, ProjectStorePreconditionError } from "../shared/remote/project-store-client.ts";
 import {
     validateProjectStoreBinding,
@@ -68,9 +76,22 @@ export function managedPlanStoreActive(): boolean {
 export function currentManagedPlanSelection(): ManagedPlanSelection | undefined {
     return selections.getStore();
 }
-function client(cwd: string, admit: true): Promise<ProjectStoreClient>;
-function client(cwd: string, admit?: false): Promise<ProjectStoreClient | undefined>;
-async function client(cwd: string, admit = false): Promise<ProjectStoreClient | undefined> {
+interface ManagedClientAccess {
+    owner: ProjectStoreClient;
+    checkout: ProjectIdentity;
+}
+
+function matchesManagedOwner(checkout: ProjectIdentity, binding: ProjectStoreBinding): boolean {
+    return (
+        checkout.projectId === binding.projectId &&
+        checkout.repositoryId === binding.repositoryId &&
+        operationHash(checkout.personalOwner.identity) === binding.ownerId
+    );
+}
+
+function clientAccess(cwd: string, admit: true): Promise<ManagedClientAccess>;
+function clientAccess(cwd: string, admit: boolean): Promise<ManagedClientAccess | undefined>;
+async function clientAccess(cwd: string, admit: boolean): Promise<ManagedClientAccess | undefined> {
     const selected = projectConnections.getStore() ?? active;
     if (!selected || selected !== active || selected.closed) throw new Error("Managed Plan owner is unavailable.");
     if (!selected.client || (admit && !selected.admitted)) {
@@ -89,14 +110,42 @@ async function client(cwd: string, admit = false): Promise<ProjectStoreClient | 
         if (admit) selected.admitted = true;
     }
     const inspection = projects.checkout.inspect(cwd);
-    if (
-        inspection.kind !== "existing" ||
-        inspection.identity.projectId !== selected.client.binding.projectId ||
-        inspection.identity.repositoryId !== selected.client.binding.repositoryId ||
-        operationHash(inspection.identity.personalOwner.identity) !== selected.client.binding.ownerId
-    )
+    if (inspection.kind !== "existing" || !matchesManagedOwner(inspection.identity, selected.client.binding))
         throw new Error("Managed Plan request belongs to another execution repository.");
-    return selected.client;
+    return { owner: selected.client, checkout: inspection.identity };
+}
+
+function client(cwd: string, admit: true): Promise<ProjectStoreClient>;
+function client(cwd: string, admit?: false): Promise<ProjectStoreClient | undefined>;
+async function client(cwd: string, admit = false): Promise<ProjectStoreClient | undefined> {
+    return (await clientAccess(cwd, admit))?.owner;
+}
+
+/** The server admits the launch target. The local journal may use another checkout of that repository. */
+async function managedOperationDirectory(cwd: string, { owner, checkout }: ManagedClientAccess): Promise<string> {
+    invalidateProjectRuntimeReadScope();
+    try {
+        const info = await stat(cwd).catch((error) => {
+            if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
+            throw error;
+        });
+        if (!info?.isDirectory()) throw new Error("Project root must be an existing directory");
+        projects.launch.verifyAccountHome(checkout);
+        const admission = await projects.checkout.admit(cwd);
+        if (admission.kind !== "existing") throw new ProjectIdentityEntryRequired(admission);
+        const current = admission.identity;
+        if (
+            !matchesManagedOwner(current, owner.binding) ||
+            current.checkoutId !== checkout.checkoutId ||
+            current.checkoutRoot !== checkout.checkoutRoot ||
+            current.personalOwner.kind !== checkout.personalOwner.kind ||
+            current.executionAccountHome !== checkout.executionAccountHome
+        )
+            throw new Error("Managed Plan request belongs to another execution repository.");
+        return join((await enter(current)).selected.transitionJournalsDir, "managed-operations");
+    } finally {
+        invalidateProjectRuntimeReadScope();
+    }
 }
 
 /** The trusted launcher admits its configured execution repository on the first deliberate write. */
@@ -245,7 +294,8 @@ async function executeManagedMutation<Result>(
     readResult: (result: ProjectStoreReply["result"]) => Result,
     artifactRevisionSource: EpicArtifactRevisionSource = "explicit",
 ): Promise<Result> {
-    const owner = await client(cwd, true);
+    const access = await clientAccess(cwd, true);
+    const { owner } = access;
     if (!("operationId" in command)) throw new Error("Managed mutation requires an operation identity.");
     validateProjectStoreRequest({ binding: owner.binding, command });
     const { operationId: _operationId, ...intent } = command;
@@ -276,7 +326,7 @@ async function executeManagedMutation<Result>(
         return intent;
     })();
     const key = operationDigest(JSON.stringify({ binding: owner.binding, command: stableIntent }));
-    const directory = join((await enterProjectRuntime(cwd)).selected.transitionJournalsDir, "managed-operations");
+    const directory = await managedOperationDirectory(cwd, access);
     const path = join(directory, `managed-operation-${key}.json`);
     ensurePrivateDir(directory);
     const lock = openNativeFileLock(`${path}.lock`);
@@ -1343,9 +1393,10 @@ async function acknowledgeCollaboration(
     intent: import("./collaboration/operations.ts").CollaborationIntent,
     operationId: string,
 ): Promise<void> {
-    const owner = await client(cwd, true);
+    const access = await clientAccess(cwd, true);
+    const { owner } = access;
     const key = operationDigest(JSON.stringify({ binding: owner.binding, command: { kind: "collaboration", intent } }));
-    const directory = join((await enterProjectRuntime(cwd)).selected.transitionJournalsDir, "managed-operations");
+    const directory = await managedOperationDirectory(cwd, access);
     const path = join(directory, `managed-operation-${key}.json`);
     const lock = openNativeFileLock(`${path}.lock`);
     try {
@@ -1569,11 +1620,12 @@ export async function importManagedPlans(cwd: string, selection: string) {
         await (await client(cwd, true)).execute({ kind: "read-import-result", operationId: completed.operationId })
     ).result;
     if (!("importResult" in result)) throw new Error("Managed import result is unavailable.");
-    const owner = await client(cwd, true);
+    const access = await clientAccess(cwd, true);
+    const { owner } = access;
     const key = operationDigest(
         JSON.stringify({ binding: owner.binding, command: { kind: "import-plans", selection } }),
     );
-    const directory = join((await enterProjectRuntime(cwd)).selected.transitionJournalsDir, "managed-operations");
+    const directory = await managedOperationDirectory(cwd, access);
     const path = join(directory, `managed-operation-${key}.json`);
     const lock = openNativeFileLock(`${path}.lock`);
     await lock.lock(true);

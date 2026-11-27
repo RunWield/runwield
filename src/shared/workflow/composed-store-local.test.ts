@@ -3,7 +3,8 @@ import { deepEqual, equal, ok, rejects } from "node:assert/strict";
 import { mkdir, readFile, writeFile, lstat, rm, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
-import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
+import { enterProjectRuntime } from "../project-runtime-layout.ts";
+import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import { importPlans, savePlanProse, withLocalPlanWorkflow } from "../../plan-store/index.ts";
 import { listPlans, loadPlan } from "../testing/plan-query-fixture.ts";
 import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";
@@ -17,7 +18,7 @@ import {
 import { executionInput, completionInput } from "../attached/execution-test-fixture.ts";
 import { ensureReviewHosted, stopHostedAttachedReviews } from "../attached/review-host.ts";
 import { NO_OPEN_BROWSER_PORT } from "../browser-port.ts";
-import { getRunWieldRuntimeDir } from "../../constants.ts";
+import { getRunWieldRuntimeDir } from "@runwield/project-runtime/legacy-paths";
 
 const repository = defineCommittedGitFixture({ "README.md": "Composed migration\n" });
 

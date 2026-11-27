@@ -18,7 +18,7 @@ import {
 import { realpath as fsRealpath } from "node:fs/promises";
 import { isAbsolute, relative, join, dirname } from "node:path";
 import { loadTargetPlan } from "../shared/workflow/planning-worktree.ts";
-import { inspectProjectRuntimeReadAccess, ProjectRuntimeEntryRefusedError } from "../shared/project-runtime-layout.ts";
+import { inspectProjectRuntimeReadAccess, ProjectRuntimeEntryRefusedError } from "@runwield/project-runtime/layout";
 import { assertControllerDocumentAvailable, listControllerDocumentWorktrees } from "./controllers.ts";
 interface PlanResourceReference {
     path: string;

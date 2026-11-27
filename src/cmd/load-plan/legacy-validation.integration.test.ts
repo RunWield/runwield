@@ -18,7 +18,7 @@ import { getHomeDir } from "../../constants.ts";
 import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { createGitPort } from "../../shared/git-port.ts";
-import { resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout.ts";
+import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import { HostedSession } from "@runwield/session-runtime/host";
 import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { findById } from "../../shared/worktree-registry.ts";

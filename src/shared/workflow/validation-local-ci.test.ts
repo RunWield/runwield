@@ -19,7 +19,7 @@ import { HostedSession } from "@runwield/session-runtime/host";
 import { getExactProjectCustomSetting, setCustomSetting, setExactProjectCustomSetting } from "../settings.ts";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { runLocalCI } from "./validation-local-ci.ts";
-import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
+import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import { createSessionRuntimeEvent } from "@runwield/session-runtime/events";
 
 const IS_WINDOWS = process.platform === "win32";

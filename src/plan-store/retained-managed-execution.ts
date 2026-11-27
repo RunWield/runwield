@@ -1,3 +1,4 @@
+import type { WorktreeRegistryEntry } from "@runwield/project-runtime/registry-inspection";
 /** Retained execution ownership is separate from canonical Plan catalog membership. */
 import { projects, type HomeProjectOwner } from "@runwield/projects";
 import { join, dirname } from "node:path";
@@ -6,10 +7,9 @@ import type { ManagedRuntimeTransfer } from "../shared/project-runtime-managed.t
 import { assertManagedRuntimePath } from "../shared/project-runtime-managed.ts";
 import { operationHash } from "./operation-receipts.ts";
 import type { ControllerRecord } from "./controllers.ts";
-import type { WorktreeRegistryEntry } from "../shared/worktree-registry.ts";
 import { ensurePrivateDir, writeJsonAtomically, writeTextAtomically } from "../shared/private-json-file.ts";
 import { assertPublicationAttempt, type PublicationAttempt } from "@runwield/workflow/publication";
-import { recoverLegacyPlanControllers } from "./runtime-recovery.ts";
+import { recoverLegacyPlanControllers } from "@runwield/project-runtime/controller-recovery";
 
 export interface RetainedManagedExecution {
     projectId: string;

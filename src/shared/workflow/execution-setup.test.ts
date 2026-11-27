@@ -12,7 +12,7 @@ import { loadPlan } from "../testing/plan-query-fixture.ts";
 import { listEntries } from "../worktree-registry.ts";
 import { removeWorktreeGitArtifacts } from "../worktree.ts";
 import { createExecutionStartPorts, startActiveExecutionWorkflow } from "./execution-start.ts";
-import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
+import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import { buildEffectProver } from "./transition-recovery.ts";
 import { prepareExecutionSetup, readExecutionSetup } from "./execution-setup.ts";
 

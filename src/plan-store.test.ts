@@ -20,7 +20,7 @@ import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "./testing/assertions.ts";
 import { dirname, join } from "node:path";
-import { getRunWieldRuntimeDir, PROJECT_INTERNAL_RUNTIME_DIR_NAME } from "./constants.ts";
+import { getRunWieldRuntimeDir, PROJECT_INTERNAL_RUNTIME_DIR_NAME } from "@runwield/project-runtime/legacy-paths";
 import { getWorktreeRegistryPath } from "./shared/worktree-registry.ts";
 import { readControllerRecord } from "./plan-store/controllers.ts";
 import { type PlanFrontMatter } from "@runwield/plans";

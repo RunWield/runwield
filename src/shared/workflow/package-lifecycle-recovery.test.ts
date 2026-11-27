@@ -1,7 +1,7 @@
 import { seedPlanState, seedPlanController, inspectPlanFixtureController } from "../testing/plan-state-fixture.ts";
 
 import { listFixturePlanHistory, readFixtureMilestone, loadPlan } from "../testing/plan-query-fixture.ts";
-import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
+import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import { planPackageJournalDirectory } from "../../plan-store/packages.ts";
 import { importPlanPackages } from "../../plan-store/packages.ts";
 import { addEntry } from "../worktree-registry.ts";

@@ -1,4 +1,4 @@
-import type { WorktreeRegistryEntry } from "../../src/shared/worktree-registry.ts";
+import type { WorktreeRegistryEntry } from "@runwield/project-runtime/registry-inspection";
 import type { PublicationAttempt } from "./publication-attempt.ts";
 
 /** Current execution and publication facts for one Plan in a Project. */

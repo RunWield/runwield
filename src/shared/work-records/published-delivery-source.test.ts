@@ -14,7 +14,8 @@ import {
 } from "../workflow/delivery-evidence.ts";
 import { recordPlanHumanReview } from "../../plan-store/index.ts";
 
-import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
+import { enterProjectRuntime } from "../project-runtime-layout.ts";
+import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import { buildDeliveryReport } from "../workflow/delivery-report.ts";
 
 const parent =

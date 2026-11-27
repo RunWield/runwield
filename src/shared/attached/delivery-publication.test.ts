@@ -10,7 +10,7 @@ import { loadPlan } from "../testing/plan-query-fixture.ts";
 import { type CliRun, DENO_CONFIG_PATH, EVIDENCE, readRecordBytes, spawnAttachedCli } from "./attached-test-fixture.ts";
 import { captureForegroundProcess } from "@runwield/resources/process";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
-import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
+import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import { findById } from "../worktree-registry.ts";
 import { loadAttachedWorkflowRecord, locateAttachedWorkflows } from "./record-store.ts";
 import process from "node:process";

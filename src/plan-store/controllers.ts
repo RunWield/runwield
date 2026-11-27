@@ -1,3 +1,7 @@
+import {
+    inspectWorktreeRegistryAtPath,
+    type WorktreeRegistryEntry,
+} from "@runwield/project-runtime/registry-inspection";
 import { projects, type ProjectStoreIdentity as ProjectIdentity } from "@runwield/projects";
 import {
     managedPersonalStoreActive,
@@ -33,18 +37,14 @@ import {
 /** File-backed controller state shared by all worktrees of one project. */
 import { dirname, join, resolve } from "node:path";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { enterProjectRuntime } from "../shared/project-runtime-layout.ts";
 import {
-    enterProjectRuntime,
     checkedProjectRuntimeLayout,
     invalidateProjectRuntimeReadScope,
     resolveProjectRuntimeLayout,
     withProjectRuntimeReadScope,
-} from "../shared/project-runtime-layout.ts";
-import {
-    inspectWorktreeRegistry,
-    inspectWorktreeRegistryAtPath,
-    type WorktreeRegistryEntry,
-} from "../shared/worktree-registry.ts";
+} from "@runwield/project-runtime/layout";
+import { inspectWorktreeRegistry } from "../shared/worktree-registry.ts";
 import { captureForegroundProcess } from "@runwield/resources/process";
 import { parsePlanFrontMatter } from "@runwield/plans/format";
 import { isPublicationCleanupPending } from "@runwield/workflow/publication";

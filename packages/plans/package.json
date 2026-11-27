@@ -22,6 +22,8 @@
     },
     "dependencies": {
         "@runwield/parsing": "workspace:*",
+        "@runwield/plan-storage-format": "workspace:*",
+        "@runwield/project-runtime": "workspace:*",
         "@runwield/projects": "workspace:*",
         "@runwield/resources": "workspace:*",
         "@runwield/tools": "workspace:*"

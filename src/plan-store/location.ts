@@ -16,7 +16,7 @@ import { canonicalizeStoredPlanName, isCompletedPlanStatus, isSequencePlan } fro
 import { loadPlan } from "./queries.ts";
 import { findActiveByPlanName, listEntries } from "../shared/worktree-registry.ts";
 import { isGitRepository } from "../shared/git.ts";
-import { inspectProjectRuntimeReadAccess, withProjectRuntimeReadScope } from "../shared/project-runtime-layout.ts";
+import { inspectProjectRuntimeReadAccess, withProjectRuntimeReadScope } from "@runwield/project-runtime/layout";
 import {
     assertControllerDocumentAvailable,
     inspectControllerDocumentWorktrees,

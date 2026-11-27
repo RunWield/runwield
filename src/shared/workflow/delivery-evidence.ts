@@ -3,7 +3,8 @@ import { mkdir as fsMkdir, readFile as fsReadFile, writeFile as fsWriteFile } fr
 /** Local immutable check receipts. Reporting failures never change delivery authority. */
 import type { PublicationAttempt } from "@runwield/workflow/publication";
 import { join, relative } from "node:path";
-import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
+import { enterProjectRuntime } from "../project-runtime-layout.ts";
+import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import type { DeliveryReportArtifact } from "./delivery-report.ts";
 
 export type DeliveryEvidenceKind = "ci" | "ai" | "ai-skip" | "human" | "ci-repair" | "ai-repair" | "human-revision";

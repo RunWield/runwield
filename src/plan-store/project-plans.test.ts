@@ -1,3 +1,6 @@
+import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
+import { lstat, unlink } from "node:fs/promises";
+import { join } from "node:path";
 import {
     openPlanStoreForCheckout,
     planDocumentsForCheckout,
@@ -22,7 +25,11 @@ test("a project-bound store preserves Plan identity and guards each write across
         const open = () => openProjectPlanStore(fixture.identity.projectId, { admitted: fixture.identity });
         const first = open();
         const second = open();
+        const { layoutMarkerPath } = resolveProjectRuntimeLayout(fixture.root).primary;
+        equal((await first.list()).resources.length, 0);
+        await rejects(lstat(layoutMarkerPath), { code: "ENOENT" });
         const created = await first.create({ planName: "proposal", contextMarkdown: "# Draft\n" });
+        equal((await lstat(layoutMarkerPath)).isFile(), true);
         const id = created.planId;
         equal(created.attrs.status, "draft");
         equal((await planDocumentsForCheckout(fixture.root).load("proposal"))?.attrs.planId, id);
@@ -72,6 +79,26 @@ test("a project-bound store preserves Plan identity and guards each write across
         equal((await open().read(id)).revision, restored.revision);
     } finally {
         await Promise.all([fixture.cleanup(), other.cleanup()]);
+    }
+});
+
+test("a checkout-bound Plan store repairs missing registration only on authoring", async () => {
+    const fixture = await packageFixture();
+    try {
+        const { executionAccountHome, projectId } = fixture.identity;
+        const registration = join(executionAccountHome, ".wld", "projects", projectId, "project.wld.json");
+        await unlink(registration);
+
+        const store = openPlanStoreForCheckout(fixture.root)!;
+        equal(store.projectId, projectId);
+        equal((await store.list()).resources.length, 0);
+        await rejects(lstat(registration), { code: "ENOENT" });
+
+        const created = await store.create({ planName: "proposal", contextMarkdown: "# Draft\n" });
+        equal((await lstat(registration)).isFile(), true);
+        equal((await store.read(created.planId)).body, "# Draft\n");
+    } finally {
+        await fixture.cleanup();
     }
 });
 

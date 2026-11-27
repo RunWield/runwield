@@ -17,6 +17,7 @@
         "@runwield/parsing": "workspace:*",
         "@runwield/pi-ai": "workspace:*",
         "@runwield/plans": "workspace:*",
+        "@runwield/project-runtime": "workspace:*",
         "@runwield/projects": "workspace:*",
         "@runwield/resources": "workspace:*",
         "@runwield/workflow": "workspace:*"

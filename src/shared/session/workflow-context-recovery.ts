@@ -22,7 +22,7 @@ export async function reconcileRemoteWorkflow(
     if (!context?.planId || !context.validationProgress || context.validationProgress.outcome === "verified")
         return await reconcileLegacyCompletion(cwd, context);
     if (!["running", "paused"].includes(context.validationProgress.outcome)) return context;
-    const { withProjectRuntimeReadScope } = await import("../project-runtime-layout.ts");
+    const { withProjectRuntimeReadScope } = await import("@runwield/project-runtime/layout");
     return await withProjectRuntimeReadScope(async () => {
         const { healSettledTransitionRecords } = await import("../workflow/transition-recovery.ts");
         const { listEntries } = await import("../worktree-registry.ts");

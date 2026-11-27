@@ -278,8 +278,6 @@ export {
     type PlanningMergeDocuments,
 } from "./planning-merge.ts";
 
-export { recoverLegacyPlanControllers } from "./runtime-recovery.ts";
-
 export { renamePlan } from "./names.ts";
 
 export { PlanAccessMismatchError } from "./access.ts";

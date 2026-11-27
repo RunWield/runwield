@@ -8,7 +8,7 @@ import {
     publicationCopiesForCheckout,
 } from "../../plan-store/index.ts";
 import { preparePlanWorkflow } from "../../plan-store/index.ts";
-import { ProjectRuntimeReadPendingError } from "../project-runtime-layout.ts";
+import { ProjectRuntimeReadPendingError } from "@runwield/project-runtime/layout";
 import { stat as fsStat } from "node:fs/promises";
 import { completeInPlaceWorkRecord } from "../work-records/in-place-completion.ts";
 import { ValidationHostRejected, ValidationHostWait } from "@runwield/workflow/host-contract";
@@ -50,7 +50,7 @@ import { workflowEpicArtifacts } from "../../plan-store/index.ts";
 import { checkpointExecutionWorktree, resolveTargetBranchName } from "../worktree.ts";
 import { publishExecutionWorktreeIsolated } from "../isolated-publication.ts";
 import { findById as findWorktreeRegistryEntryById } from "../worktree-registry.ts";
-import { ensureRunWieldOwnedGitignoreBlock } from "../runwield-owned-paths.ts";
+import { ensureRunWieldOwnedGitignoreBlock } from "@runwield/project-runtime/owned-paths";
 import { stageValidationPassedInExecutionWorktree } from "../../plan-store/index.ts";
 import { shouldContinueParentEpicAfterValidation } from "./validation-scope.ts";
 import type {

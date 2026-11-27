@@ -14,9 +14,10 @@ import process from "node:process";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import { PROJECT_SECRET_STORE_RELATIVE_PATH } from "../../constants.ts";
+import { PROJECT_SECRET_STORE_RELATIVE_PATH } from "@runwield/project-runtime/legacy-paths";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
-import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
+import { enterProjectRuntime } from "../project-runtime-layout.ts";
+import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import type { LocalSecretRecord } from "./protocol.ts";
 import {

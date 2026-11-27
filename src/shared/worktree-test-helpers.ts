@@ -1,8 +1,8 @@
+import type { WorktreeRegistryEntry } from "@runwield/project-runtime/registry-inspection";
 import { captureForegroundProcess } from "@runwield/resources/process";
 import { writeFile as fsWriteFile } from "node:fs/promises";
 import { createWorktreeGitArtifacts, settleWorktreeAttempt } from "./worktree.ts";
 import { defineGitFixture } from "./git-test-fixture.ts";
-import type { WorktreeRegistryEntry } from "./worktree-registry.ts";
 import type { PlanEventDetails } from "@runwield/plans/lifecycle";
 
 export interface TestWorktreeAttemptOptions {

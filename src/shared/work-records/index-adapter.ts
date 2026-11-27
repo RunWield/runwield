@@ -9,7 +9,7 @@ import { captureForegroundProcess } from "@runwield/resources/process";
  * Derived Mnemoteca index for canonical Work Records.
  */
 
-import { checkedProjectRuntimeLayout } from "../project-runtime-layout.ts";
+import { checkedProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import { remoteProjectOwner } from "../remote/personal-resources.ts";
 import { basename, dirname } from "node:path";
 import type { WorkRecordMnemotecaPort } from "./mnemoteca-port.ts";

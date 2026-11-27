@@ -9,7 +9,7 @@
 
 import { createHash } from "node:crypto";
 import { isPlannedChangeClassification } from "@runwield/plans/format";
-import { isRunWieldOwnedRuntimePath } from "../runwield-owned-paths.ts";
+import { isRunWieldOwnedRuntimePath } from "@runwield/project-runtime/owned-paths";
 import type { TriageMeta } from "@runwield/workflow/state";
 
 /**

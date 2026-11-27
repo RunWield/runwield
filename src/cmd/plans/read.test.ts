@@ -6,7 +6,7 @@ import { archivePlan } from "../../plan-store/index.ts";
 import { loadArchivedPlan } from "../../shared/testing/plan-query-fixture.ts";
 
 import { runPlansReadCommand } from "./read.ts";
-import { getRunWieldRuntimeDir } from "../../constants.ts";
+import { getRunWieldRuntimeDir } from "@runwield/project-runtime/legacy-paths";
 import { type PlanCommandFixture, withPlanCommandFixture } from "./plans-command-test-fixture.ts";
 
 interface ReadSurfaceResult {

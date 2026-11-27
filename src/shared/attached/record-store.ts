@@ -10,7 +10,8 @@ import {
     stat as fsStat,
 } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
-import { getHomeDir, RUNWIELD_DIR_NAME } from "../../constants.ts";
+import { getHomeDir } from "../../constants.ts";
+import { RUNWIELD_DIR_NAME } from "@runwield/project-runtime/legacy-paths";
 import {
     readLockFileSnapshot,
     removeLockFileIfSnapshotMatches,

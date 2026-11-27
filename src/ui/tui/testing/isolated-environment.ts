@@ -23,7 +23,7 @@ import {
     assertWorkflowBinaryCallsSupported,
     writeWorkflowBinaryFixtures,
 } from "../../../testing/workflow-binary-fixtures.ts";
-import { RUNWIELD_GITIGNORE_BLOCK } from "../../../shared/runwield-owned-paths.ts";
+import { RUNWIELD_GITIGNORE_BLOCK } from "@runwield/project-runtime/owned-paths";
 
 export const GOLDEN_FAUX_PROVIDER = "golden";
 export const GOLDEN_FAUX_MODEL = "faux";

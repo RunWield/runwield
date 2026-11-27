@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { test } from "node:test";
 import { mkdir, mkdtemp, readFile, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { prepareProjectCheckout, resolveProjectRoot } from "./project-checkout.ts";
+import { prepareProjectCheckout, resolveProjectRoot } from "@runwield/project-runtime/checkout";
 import { defineGitFixture, git } from "./git-test-fixture.ts";
 
 const repo = defineGitFixture(async (repoPath) => {
@@ -43,7 +43,8 @@ test("Epic child recovery repairs moved submodule links and preserves unfinished
         const moduleGitDir = await realpath(oldModuleGitDir);
         const config = join(moduleGitDir, "config");
         const before = await readFile(config, "utf8");
-        const { inspectProjectRuntimeReadAccess, enterProjectRuntime } = await import("./project-runtime-layout.ts");
+        const { inspectProjectRuntimeReadAccess } = await import("@runwield/project-runtime/layout");
+        const { enterProjectRuntime } = await import("./project-runtime-layout.ts");
         await inspectProjectRuntimeReadAccess(child);
         assertEquals(await readFile(config, "utf8"), before);
         await git(movedRoot, ["config", "--local", "runwield.projectId", "invalid"]);

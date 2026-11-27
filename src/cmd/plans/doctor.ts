@@ -1,8 +1,7 @@
+import { inspectWorktreeRegistryAtPath } from "@runwield/project-runtime/registry-inspection";
 import { runPlansDoctor, type DoctorIssue } from "../../plan-store/index.ts";
 export { runPlansDoctor } from "../../plan-store/index.ts";
-
 import { admitProjectWithIdentityChoice } from "../../ui/tui/project-identity-entry.ts";
-
 import { confirmMissingManagedProjectDirectory, confirmProjectDirectory } from "../../ui/tui/directory-warning.ts";
 /**
  * @module cmd/plans/doctor
@@ -10,13 +9,10 @@ import { confirmMissingManagedProjectDirectory, confirmProjectDirectory } from "
  */
 
 import { parseArgs } from "../../shared/cli-args.ts";
-
 import { CLI_BIN, getCwd } from "../../constants.ts";
-
-import { inspectProjectRuntimeLayout, resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout.ts";
-
+import { inspectProjectRuntimeLayout, resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import { doctorCheckMessage, doctorCleanMessage, doctorNeedsHelpMessage } from "./doctor-messages.ts";
-import { inspectWorktreeRegistryAtPath } from "../../shared/worktree-registry.ts";
+
 
 interface IssueGuidance {
     category: string;

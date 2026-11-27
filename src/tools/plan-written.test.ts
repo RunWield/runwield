@@ -25,12 +25,13 @@ import { join } from "node:path";
 import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";
 import { loadPlan } from "../shared/testing/plan-query-fixture.ts";
 
-import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../shared/project-runtime-layout.ts";
+import { enterProjectRuntime } from "../shared/project-runtime-layout.ts";
+import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import { defineCommittedGitFixture, git } from "../shared/git-test-fixture.ts";
 import { makeManagedSessionFixture } from "../testing/managed-session-fixture.ts";
 import { inspectWorktreeRegistry } from "../shared/worktree-registry.ts";
 import { existsSync } from "node:fs";
-import { WORKTREE_REGISTRY_FILE } from "../constants.ts";
+import { WORKTREE_REGISTRY_FILE } from "@runwield/project-runtime/legacy-paths";
 
 const LINKED_REVIEW_GIT = defineCommittedGitFixture();
 

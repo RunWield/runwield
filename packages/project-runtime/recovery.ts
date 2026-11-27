@@ -1,7 +1,7 @@
 import fsPromises, { readdir as fsReaddir, readFile as fsReadFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { info, syncDirectory, writeAtomic, preserve, equalBytes } from "@runwield/resources/runtime-recovery-files";
-import { inspectWorktreeRegistryAtPath, type WorktreeRegistryEntry } from "./worktree-registry.ts";
+import { inspectWorktreeRegistryAtPath, type WorktreeRegistryEntry } from "./registry-inspection.ts";
 export interface RuntimeRecoveryPaths {
     source: string;
     destination: string;

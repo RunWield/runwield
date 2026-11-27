@@ -1287,7 +1287,7 @@ test(
         const f = await packageFixture();
         try {
             const fs = await import("node:fs/promises");
-            const { checkedProjectRuntimeLayout } = await import("../shared/project-runtime-layout.ts");
+            const { checkedProjectRuntimeLayout } = await import("@runwield/project-runtime/layout");
             const { withWorkRecordOwner } = await import("../shared/work-records/owner.ts");
             const { restoreWorkRecordDocument } = await import("../shared/work-records/store.ts");
             const { retainWorkRecordLocation } = await import("../shared/work-records/import.ts");

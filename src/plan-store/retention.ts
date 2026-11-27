@@ -7,7 +7,7 @@ import { pruneWorkRecordIndex } from "../shared/work-records/index-adapter.ts";
 import { pruneEffect } from "./prune-effects.ts";
 import { createHash } from "node:crypto";
 import { lstat } from "node:fs/promises";
-import { checkedProjectRuntimeLayout } from "../shared/project-runtime-layout.ts";
+import { checkedProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import { assertManagedRuntimePath } from "../shared/project-runtime-managed.ts";
 import { ensurePrivateDir } from "../shared/private-json-file.ts";
 import { openNativeFileLock } from "../shared/native-file-lock.ts";

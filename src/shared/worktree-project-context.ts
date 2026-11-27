@@ -1,4 +1,5 @@
 import { projects } from "@runwield/projects";
+import type { WorktreeProjectContext } from "@runwield/project-runtime/registry-inspection";
 import { mkdtemp, rename } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { captureForegroundProcess } from "@runwield/resources/process";
@@ -11,22 +12,12 @@ import {
 } from "node:fs/promises";
 import { parse as parseJsonc } from "@runwield/parsing/jsonc";
 import { basename, dirname, join } from "node:path";
-import { enterProjectRuntime, resolveProjectRuntimeLayout } from "./project-runtime-layout.ts";
-import { ensureRunWieldOwnedGitignoreBlock, RUNWIELD_GITIGNORE_BLOCK } from "./runwield-owned-paths.ts";
+import { enterProjectRuntime } from "./project-runtime-layout.ts";
+import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
+import { ensureRunWieldOwnedGitignoreBlock, RUNWIELD_GITIGNORE_BLOCK } from "@runwield/project-runtime/owned-paths";
 
 /** Versionable setup artifacts; these are not disposable .wld/internal runtime state. */
 export const PROJECT_CONTEXT_PATHS = [".wld/settings.json", "docs/domain-language.md"] as const;
-
-interface ContextFile {
-    path: string;
-    content: string;
-    sourceDigest?: string;
-}
-
-export interface WorktreeProjectContext {
-    files: ContextFile[];
-    ownedGitignore: boolean;
-}
 
 async function git(cwd: string, args: string[]) {
     const result = await captureForegroundProcess("git", { cwd, args });
@@ -92,7 +83,7 @@ async function mergeContext(root: string, path: string, base: string, source: st
  * Resolve conflicts before creating a worktree, without modifying the source index.
  */
 export async function captureWorktreeProjectContext(root: string, targetRef: string): Promise<WorktreeProjectContext> {
-    const files: ContextFile[] = [];
+    const files: WorktreeProjectContext["files"] = [];
     for (const path of PROJECT_CONTEXT_PATHS) {
         const source = await readProjectContextFile(root, path);
         if (source === null) continue;

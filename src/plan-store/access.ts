@@ -105,6 +105,7 @@ import {
     resolvePlanPackageReference,
     type PackageDefinition,
 } from "./packages.ts";
+import { enter } from "@runwield/project-runtime";
 import { enterProjectRuntime } from "../shared/project-runtime-layout.ts";
 import { packageWorkflowRevision, packageController } from "./workflows.ts";
 import { assertSharedPlanWriteAllowed } from "../shared/collaboration/lock.ts";
@@ -169,7 +170,18 @@ export async function saveLocalHomePlan(
     options: LocalPlanWriteOptions,
 ): Promise<string | null> {
     if (remoteProjectOwner()?.kind === "managed-remote" || hasRetainedCheckoutSource(cwd)) return null;
-    if (!projects.home.current()) await enterProjectRuntime(cwd);
+    if (!projects.home.current()) {
+        const bound = currentPackageProject();
+        // Checkout evidence can outlive its home registration. Explicit authoring can restore that binding.
+        if (
+            bound &&
+            !projects.home.isOwner(bound) &&
+            bound.checkoutRoot === cwd &&
+            projects.checkout.historicalRoots(bound)[0] === cwd
+        )
+            await enter(bound);
+        else await enterProjectRuntime(cwd);
+    }
     const store = inspectLocalHomeStore(cwd);
     if (store.kind !== "local") throw new Error("Local Plan authoring requires an admitted Project.");
     return await withPackageProject(cwd, store.identity, () =>

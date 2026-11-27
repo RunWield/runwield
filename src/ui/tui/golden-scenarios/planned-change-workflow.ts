@@ -1,3 +1,4 @@
+import type { WorktreeRegistryEntry } from "@runwield/project-runtime/registry-inspection";
 import process from "node:process";
 /**
  * @module ui/tui/golden-scenarios/planned-change-workflow
@@ -8,11 +9,9 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../../testing/assertions.ts";
 import { assertEventIncludes, assertScreenIncludes } from "../testing/scenario-runner.ts";
 import { assertRuntimeEvent, assertsGoldenCoverage } from "../testing/portfolio-assertions.ts";
-
 import { type PlanFrontMatter } from "@runwield/plans/format";
 import type { TutorialContext } from "../../../shared/session/tutorial-context-session.ts";
 import type { WorkflowControllerState } from "@runwield/plans/controller-state";
-import type { WorktreeRegistryEntry } from "../../../shared/worktree-registry.ts";
 import type {
     ConsumedScriptedInteraction,
     GoldenScenario,

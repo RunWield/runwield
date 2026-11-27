@@ -23,7 +23,7 @@ import { runPlansShareCommand } from "./share.ts";
 import { runPlansUiCommand } from "./ui.ts";
 import { runPlansUnshareCommand } from "./unshare.ts";
 import { SYSTEM_BROWSER_PORT } from "../../shared/browser-port.ts";
-import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
+import { enter } from "@runwield/project-runtime";
 
 function isHelp(argv: string[]): boolean {
     return argv.includes("--help") || argv.includes("-h");
@@ -31,9 +31,9 @@ function isHelp(argv: string[]): boolean {
 
 async function enterUnlessHelp(argv: string[]): Promise<void> {
     if (!isHelp(argv)) {
-        if (!(await admitProjectWithIdentityChoice(getCwd())))
-            throw new DirectoryStartupCanceled("Project startup canceled");
-        await enterProjectRuntime(getCwd());
+        const checkout = await admitProjectWithIdentityChoice(getCwd());
+        if (!checkout) throw new DirectoryStartupCanceled("Project startup canceled");
+        await enter(checkout);
     }
 }
 

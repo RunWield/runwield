@@ -37,7 +37,7 @@ import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwie
 import { recordTutorialContext } from "../session/tutorial-context-session.ts";
 import { createInitialTutorialContext } from "../../ui/tui/onboarding-content.ts";
 import { publishExecutionWorktreeIsolated } from "../isolated-publication.ts";
-import { RUNWIELD_GITIGNORE_BLOCK } from "../runwield-owned-paths.ts";
+import { RUNWIELD_GITIGNORE_BLOCK } from "@runwield/project-runtime/owned-paths";
 import { type PlanFrontMatter, parsePlanFrontMatter } from "@runwield/plans/format";
 import { seedPlan as savePlan } from "../testing/plan-state-fixture.ts";
 

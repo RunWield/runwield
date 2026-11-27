@@ -3,7 +3,7 @@ import { executionWorktreePathExists } from "./execution-worktree-rescue.ts";
 import { preparePlanController } from "../../plan-store/index.ts";
 import { resolve } from "node:path";
 import { captureForegroundProcess } from "@runwield/resources/process";
-import { findExistingProjectPath } from "../project-checkout.ts";
+import { findExistingProjectPath } from "@runwield/project-runtime/checkout";
 import { effectiveDeliveryBranch } from "@runwield/workflow/publication";
 /**
  * Fail-closed resolver for Workflow Validation execution context.
@@ -22,7 +22,8 @@ import {
     updateEntry as updateWorktreeRegistryEntry,
 } from "../worktree-registry.ts";
 import { prepareExecutionPlanFile } from "../../plan-store/index.ts";
-import { enterProjectRuntime, withProjectRuntimeReadScope } from "../project-runtime-layout.ts";
+import { enterProjectRuntime } from "../project-runtime-layout.ts";
+import { withProjectRuntimeReadScope } from "@runwield/project-runtime/layout";
 import { resolveTargetBranchName } from "../worktree.ts";
 import { getWorkflowDiff } from "./git-snapshot.ts";
 import { recordWorkflowOutcome } from "./outcome-observations.ts";

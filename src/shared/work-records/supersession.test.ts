@@ -29,11 +29,12 @@ import {
     restoreWorkRecordDocument,
 } from "./index.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { getRunWieldRuntimeDir } from "../../constants.ts";
+import { getRunWieldRuntimeDir } from "@runwield/project-runtime/legacy-paths";
 
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { createWorkRecordMnemotecaFixture } from "./test-fixtures/mnemoteca-port.ts";
-import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
+import { enterProjectRuntime } from "../project-runtime-layout.ts";
+import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 
 const linkedCheckoutFixture = defineCommittedGitFixture({ ".gitignore": ".wld/\n", "README.md": "# Fixture\n" });
 

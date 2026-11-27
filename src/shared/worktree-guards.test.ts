@@ -1,3 +1,4 @@
+import type { WorktreeRegistryEntry } from "@runwield/project-runtime/registry-inspection";
 import { seedPlan } from "./testing/plan-state-fixture.ts";
 import { withRetainedPlanFixture } from "./testing/retained-plan-fixture.ts";
 import {
@@ -12,18 +13,15 @@ import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { assertEquals, assertRejects, assertStringIncludes } from "../testing/assertions.ts";
-
 import { loadPlan } from "./testing/plan-query-fixture.ts";
-
 import type { PlanFrontMatterInput } from "@runwield/plans/format";
-import type { WorktreeRegistryEntry } from "./worktree-registry.ts";
+
 
 async function savePlanForTest(cwd: string, planName: string, content: string, attrs: PlanFrontMatterInput) {
     const existing = await loadPlan(cwd, planName).catch(() => null);
     return await seedPlan(cwd, planName, content, attrs, existing ? { expectedRevision: existing.revision } : {});
 }
 import { GitRepositoryRequiredError } from "./git.ts";
-
 import {
     checkpointExecutionPreparation,
     checkpointExecutionWorktree,
@@ -37,7 +35,6 @@ import {
     removeWorktreeGitArtifacts,
     validateWorktreeDiscard,
 } from "./worktree.ts";
-
 import { createTestWorktreeAttempt, git, makeRepo } from "./worktree-test-helpers.ts";
 
 test("worktree helpers report Git requirement outside Git", async () => {
@@ -435,7 +432,7 @@ test("preparation never adopts staged, unstaged, or committed user ignore rules"
                 planName: "Ignore ownership",
                 worktreeRoot,
             });
-            const { ensureRunWieldOwnedGitignoreBlock } = await import("./runwield-owned-paths.ts");
+            const { ensureRunWieldOwnedGitignoreBlock } = await import("@runwield/project-runtime/owned-paths");
             await ensureRunWieldOwnedGitignoreBlock(worktree.path);
             await savePlanForTest(worktree.path, "ignore-ownership", "# Ignore ownership", {
                 status: "ready_for_work",

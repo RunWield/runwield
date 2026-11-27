@@ -33,8 +33,9 @@ import {
 } from "../../src/shared/work-records/mnemoteca-port.ts";
 import { indexPublishedWorkRecords } from "../../src/shared/publication-lifecycle.ts";
 import { isTerminalWorkRecordParent } from "../../src/shared/work-records/auto-generation.ts";
-import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../../src/shared/project-runtime-layout.ts";
-import { resolveProjectRoot } from "../../src/shared/project-checkout.ts";
+import { enterProjectRuntime } from "../../src/shared/project-runtime-layout.ts";
+import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
+import { resolveProjectRoot } from "@runwield/project-runtime/checkout";
 import { findById, pruneEntry, updatePublication } from "../../src/shared/worktree-registry.ts";
 import { existingPublicationSavedFiles, preserveUnregisteredPublicationFiles } from "./publication-leftover-files.ts";
 import {

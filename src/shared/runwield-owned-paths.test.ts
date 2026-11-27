@@ -15,7 +15,7 @@ import {
     isLegacyProjectRuntimeHazardPath,
     isRunWieldOwnedRuntimePath,
     RUNWIELD_GITIGNORE_BLOCK,
-} from "./runwield-owned-paths.ts";
+} from "@runwield/project-runtime/owned-paths";
 
 test("Gitignore retains legacy publication protection only while the directory exists", async () => {
     const root = await fsMkdtemp(join(tmpdir(), "runwield-staging-ignore-"));

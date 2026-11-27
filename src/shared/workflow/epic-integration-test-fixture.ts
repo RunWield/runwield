@@ -1,4 +1,4 @@
-import { ensureRunWieldOwnedGitignoreBlock } from "../runwield-owned-paths.ts";
+import { ensureRunWieldOwnedGitignoreBlock } from "@runwield/project-runtime/owned-paths";
 import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 import { mkdir as fsMkdir, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
 import { ok as assert } from "node:assert/strict";

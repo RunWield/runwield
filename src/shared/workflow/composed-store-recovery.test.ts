@@ -6,8 +6,8 @@ import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { captureForegroundProcess } from "@runwield/resources/process";
-import { getRunWieldRuntimeDir } from "../../constants.ts";
-import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
+import { getRunWieldRuntimeDir } from "@runwield/project-runtime/legacy-paths";
+import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import { importPlans } from "../../plan-store/index.ts";
 import { loadPlan, listPlans } from "../testing/plan-query-fixture.ts";
 

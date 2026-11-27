@@ -20,9 +20,10 @@ import {
 } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
-import { getRunWieldRuntimeDir } from "../../constants.ts";
+import { getRunWieldRuntimeDir } from "@runwield/project-runtime/legacy-paths";
 import { defineGitFixture, git } from "../../shared/git-test-fixture.ts";
-import { enterProjectRuntime, WORKFLOW_DETAILS_PENDING } from "../../shared/project-runtime-layout.ts";
+import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
+import { WORKFLOW_DETAILS_PENDING } from "@runwield/project-runtime/layout";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { addEntry } from "../../shared/worktree-registry.ts";
 import { loadOwnerSidebar } from "./server/owner-dashboard.ts";

@@ -6,7 +6,8 @@ import { join, sep } from "node:path";
 import { chdir, cwd, env, execPath } from "node:process";
 import { test } from "node:test";
 
-import { getCwd, getHomeDir, getRunWieldRuntimeDir } from "./constants.ts";
+import { getCwd, getHomeDir } from "./constants.ts";
+import { getRunWieldRuntimeDir } from "@runwield/project-runtime/legacy-paths";
 import { withProcessGlobalTestLock } from "./testing/process-global-lock.ts";
 
 test("portable HOME and cwd accessors observe changes after import", async () => {

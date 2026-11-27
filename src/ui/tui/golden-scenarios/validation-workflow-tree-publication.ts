@@ -1,7 +1,7 @@
 import { assertEquals } from "../../../testing/assertions.ts";
 import { ok as assert } from "node:assert/strict";
 import { PLAN_RUNTIME_FIELDS } from "@runwield/plans/controller-state";
-import { RUNWIELD_GITIGNORE_BLOCK } from "../../../shared/runwield-owned-paths.ts";
+import { RUNWIELD_GITIGNORE_BLOCK } from "@runwield/project-runtime/owned-paths";
 import { withValidationBranches } from "./validation-workflow-tree-shared.ts";
 
 type PublicationState = {

@@ -3,8 +3,8 @@ import {
     PROJECT_INTERNAL_RUNTIME_DIR_NAME,
     PROJECT_SECRET_STORE_RELATIVE_PATH,
     RUNWIELD_DIR_NAME,
-} from "../constants.ts";
-import { isRunWieldOwnedRuntimePath } from "./runwield-owned-paths.ts";
+} from "@runwield/project-runtime/legacy-paths";
+import { isRunWieldOwnedRuntimePath } from "@runwield/project-runtime/owned-paths";
 import { recordedProjectContextPaths } from "./worktree-project-context.ts";
 
 interface CommandResult {

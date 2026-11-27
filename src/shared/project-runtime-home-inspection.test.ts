@@ -4,10 +4,11 @@ import { chmod, lstat, mkdir, readFile, realpath, rm, symlink, writeFile } from 
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { getRunWieldRuntimeDir } from "../constants.ts";
+import { getRunWieldRuntimeDir } from "@runwield/project-runtime/legacy-paths";
 import { runtimeSourceArgs } from "../testing/runtime-source-args.ts";
 import { defineCommittedGitFixture } from "./git-test-fixture.ts";
-import { enterProjectRuntime, inspectProjectRuntimeReadAccess } from "./project-runtime-layout.ts";
+import { enterProjectRuntime } from "./project-runtime-layout.ts";
+import { inspectProjectRuntimeReadAccess } from "@runwield/project-runtime/layout";
 
 const fixture = defineCommittedGitFixture();
 const driver = fileURLToPath(new URL("./testing/project-runtime-home-process-driver.ts", import.meta.url));

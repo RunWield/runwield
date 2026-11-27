@@ -11,8 +11,8 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { loadPlan } from "../testing/plan-query-fixture.ts";
 
-import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
-import { RUNWIELD_GITIGNORE_BLOCK } from "../runwield-owned-paths.ts";
+import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
+import { RUNWIELD_GITIGNORE_BLOCK } from "@runwield/project-runtime/owned-paths";
 import { loadAttachedWorkflowRecord, locateAttachedWorkflows } from "./record-store.ts";
 import {
     activateInput,

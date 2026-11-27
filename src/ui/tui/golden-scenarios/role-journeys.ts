@@ -1,3 +1,4 @@
+import type { WorktreeRegistryEntry } from "@runwield/project-runtime/registry-inspection";
 /**
  * @module ui/tui/golden-scenarios/role-journeys
  * Composed Golden role journey scenarios.
@@ -5,7 +6,7 @@
 
 import type { GoldenScenario } from "../testing/scenario-runner.ts";
 import type { RuntimeInteractionRequest } from "@runwield/session-runtime/interactions";
-import type { WorktreeRegistryEntry } from "../../../shared/worktree-registry.ts";
+
 
 import { ok as assert } from "node:assert/strict";
 import { assertEventIncludes, assertScreenIncludes } from "../testing/scenario-runner.ts";

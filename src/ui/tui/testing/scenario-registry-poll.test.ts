@@ -4,7 +4,8 @@ import { rm, writeFile } from "node:fs/promises";
 import fs from "node:fs/promises";
 import { join } from "node:path";
 import { defineCommittedGitFixture, git } from "../../../shared/git-test-fixture.ts";
-import { enterProjectRuntime, ProjectRuntimeEntryRefusedError } from "../../../shared/project-runtime-layout.ts";
+import { enterProjectRuntime } from "../../../shared/project-runtime-layout.ts";
+import { ProjectRuntimeEntryRefusedError } from "@runwield/project-runtime/layout";
 import { readScenarioRegistryForPoll } from "./scenario-registry-poll.ts";
 
 const fixture = defineCommittedGitFixture({ "README.md": "# Registry polling\n" });

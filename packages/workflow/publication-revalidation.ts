@@ -22,7 +22,7 @@ import { checkpointExecutionWorktree } from "../../src/shared/worktree.ts";
 import { captureForegroundProcess } from "@runwield/resources/process";
 import { resolveTargetedWorkRecordSource } from "../../src/shared/work-records/auto-generation.ts";
 import { gitStatusPaths } from "../../src/shared/git-runtime-safety.ts";
-import { isRunWieldOwnedRuntimePath } from "../../src/shared/runwield-owned-paths.ts";
+import { isRunWieldOwnedRuntimePath } from "@runwield/project-runtime/owned-paths";
 import { retirePublicationForRevalidation, updatePublication } from "../../src/shared/worktree-registry.ts";
 import { candidateIdentity } from "../../src/shared/workflow/validation-scope.ts";
 import { getWorktreeReviewDiff } from "../../src/shared/workflow/git-snapshot.ts";

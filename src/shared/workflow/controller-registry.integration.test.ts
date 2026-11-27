@@ -1,5 +1,5 @@
 import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
-import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
+import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { captureForegroundProcess } from "@runwield/resources/process";
 import { getCwd } from "../../constants.ts";

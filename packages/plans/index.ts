@@ -1,5 +1,5 @@
+import { isPlanId, normalizePlanId } from "@runwield/plan-storage-format";
 import { getPlanRevisionForText, injectFrontMatter, parsePlanFrontMatter } from "./format.ts";
-import { isPlanId, normalizePlanId } from "./identity.ts";
 import { buildPlanEventUpdates, getPlanLifecycleActionMetadata } from "./lifecycle.ts";
 
 /** Work with a Plan document and its lifecycle rules without opening project storage. */
@@ -17,7 +17,7 @@ export const plans = {
 } as const;
 
 export type Plans = typeof plans;
-export type { PlanId } from "./identity.ts";
+export type { PlanId } from "@runwield/plan-storage-format";
 export type { PlanEvent, PlanEventDetails, PlanLifecycleActionMetadata, PlanStatus } from "./lifecycle.ts";
 export type {
     DeliveryEvidence,

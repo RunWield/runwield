@@ -1,4 +1,4 @@
-import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
+import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import { assertEquals } from "../../testing/assertions.ts";
 import { captureForegroundProcess } from "@runwield/resources/process";
 import { makeTempFile } from "../../testing/temp-file.ts";

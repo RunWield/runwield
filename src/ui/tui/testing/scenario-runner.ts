@@ -1,33 +1,22 @@
+import type { WorktreeRegistryEntry } from "@runwield/project-runtime/registry-inspection";
 import { projects } from "@runwield/projects";
-import type { WorktreeRegistryEntry } from "../../../shared/worktree-registry.ts";
 import type { PlanFrontMatter } from "@runwield/plans";
 import type { ValidationPhaseName } from "../../../shared/workflow/validation-ports.ts";
-
 import type { PlanApprovalAction } from "../../../shared/workflow/plan-approval.ts";
-
 import type { JsonRecord } from "@runwield/parsing/jsonc";
-
 import type { SessionRuntimeEvent } from "@runwield/session-runtime/events";
-
 import type { RuntimeInteractionRequest } from "@runwield/session-runtime/interactions";
-
 import type { GoldenScriptTurn } from "./scenario-actor.ts";
-
 import type {
     ScriptedReviewDecision,
     ScriptedHumanReviewDecision,
     ScriptedRuntimeInteraction,
     ScriptedSurfaceRequest,
 } from "./scripted-review-surface.ts";
-
 import type { VirtualTerminalOptions } from "./virtual-terminal.ts";
-
 import type { GoldenModelDefinition } from "./isolated-environment.ts";
-
 import type { TranscriptContext, AssistantMessage } from "@earendil-works/pi-ai";
-
 import type { UiAPI } from "../api.ts";
-
 import type { createInteractiveTuiComposition } from "../interactive-tui-composition.ts";
 
 export interface GoldenScenarioState {
@@ -534,17 +523,11 @@ export interface GoldenProviderOptions {
     tokensPerSecond?: number;
 }
 import { inspectPlanFixtureController, seedPlan } from "../../../shared/testing/plan-state-fixture.ts";
-
 import { inspectLocalHomeStore } from "../../../plan-store/access.ts";
-
 import { readGoldenPublishedPlan } from "./published-plan-fixture.ts";
-
 import { withRetainedPlanFixture } from "../../../shared/testing/retained-plan-fixture.ts";
-
 import { captureForegroundProcess } from "@runwield/resources/process";
-
 import { tmpdir } from "node:os";
-
 import {
     chmod as fsChmod,
     mkdir as fsMkdir,
@@ -555,9 +538,7 @@ import {
     stat as fsStat,
     writeFile as fsWriteFile,
 } from "node:fs/promises";
-
 import { readdirSync as fsReaddirSync, readFileSync as fsReadFileSync, realpathSync as fsRealpathSync } from "node:fs";
-
 import process from "node:process";
 
 /**
@@ -566,35 +547,20 @@ import process from "node:process";
  */
 
 import { dirname, join, relative } from "node:path";
-
 import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
-
 import { RuntimeEventTypes } from "@runwield/session-runtime/events";
-
 import { openFileSessionStore } from "../../../shared/session/file-session-store.ts";
-
 import { ok as assert } from "node:assert/strict";
-
 import { extractYaml } from "../../../shared/front-matter.ts";
-
 import { PLAN_RUNTIME_FIELDS, pickControllerState } from "@runwield/plans/controller-state";
-
 import { getCurrentSystemPrompt, getCurrentTools } from "@earendil-works/pi-ai";
-
 import { registerFauxProvider } from "@earendil-works/pi-ai/compat";
-
 import { parsePlanFrontMatter } from "@runwield/plans/format";
-
 import { findPlansByParent, listPlans, loadPlan } from "../../../shared/testing/plan-query-fixture.ts";
-
 import { withProcessGlobalTestLock } from "../../../testing/process-global-lock.ts";
-
 import { submitPlanForReview } from "../../review/plan-review.ts";
-
 import { createScriptedReviewBrowser } from "../../review/review-test-fixture.ts";
-
 import { createFauxMessageForTurn, GoldenPlanIdentity, GoldenScenarioActor } from "./scenario-actor.ts";
-
 import {
     createGoldenIsolatedEnvironment,
     GOLDEN_FAUX_API,
@@ -602,33 +568,24 @@ import {
     GOLDEN_FAUX_PROVIDER,
     writeGoldenModelConfig,
 } from "./isolated-environment.ts";
-
 import {
     ScriptedHumanReviewSurface,
     ScriptedInteractionSurface,
     ScriptedReviewSurface,
 } from "./scripted-review-surface.ts";
-
 import { normalizeScreenText, VirtualTerminal } from "./virtual-terminal.ts";
-
 import { NO_OPEN_BROWSER_PORT } from "../../../shared/browser-port.ts";
-
+import { getCwd, getHomeDir } from "../../../constants.ts";
 import {
-    getCwd,
-    getHomeDir,
     getRunWieldRuntimeDir,
     PROJECT_INTERNAL_RUNTIME_DIR_NAME,
     WORKTREE_REGISTRY_FILE,
-} from "../../../constants.ts";
-
+} from "@runwield/project-runtime/legacy-paths";
 import { getWorktreeRegistryPath } from "../../../shared/worktree-registry.ts";
-
-import { enterProjectRuntime, withProjectRuntimeReadScope } from "../../../shared/project-runtime-layout.ts";
-
-import { isCurrentProjectRuntimePath } from "../../../shared/runwield-owned-paths.ts";
-
+import { enterProjectRuntime } from "../../../shared/project-runtime-layout.ts";
+import { withProjectRuntimeReadScope } from "@runwield/project-runtime/layout";
+import { isCurrentProjectRuntimePath } from "@runwield/project-runtime/owned-paths";
 import { PLAN_STATUSES, type PlanStatus } from "@runwield/plans/lifecycle";
-
 import { readScenarioRegistryForPoll } from "./scenario-registry-poll.ts";
 
 /**
@@ -2479,7 +2436,6 @@ async function runComposedTuiScenarioInScope(
                     };
                     const registryPath = getWorktreeRegistryPath(getCwd());
                     const registryText = await fsReadFile(registryPath, "utf8").catch(() => "");
-                    /** @type {import('../../../shared/worktree-registry.ts').WorktreeRegistryEntry[]} */
                     const registryEntries: WorktreeRegistryEntry[] = registryText
                         ? JSON.parse(registryText).entries || []
                         : [];

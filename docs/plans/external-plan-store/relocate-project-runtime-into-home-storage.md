@@ -5,9 +5,9 @@ workKind: "REFACTOR"
 complexity: "HIGH"
 affectedPaths:
     - "src/shared/project-runtime-layout.ts"
-    - "src/shared/project-runtime-recovery.ts"
+    - "packages/project-runtime/recovery.ts"
     - "src/shared/project-identity.ts"
-    - "src/shared/runwield-owned-paths.ts"
+    - "packages/project-runtime/owned-paths.ts"
     - "src/shared/worktree-registry.js"
     - "src/shared/worktree.js"
     - "src/shared/workflow/publication-machine.ts"
@@ -107,9 +107,9 @@ only when discovery changes approved intent — the change reaches another subsy
 shifts, migration or compatibility risk grows, or the Verification Plan no longer proves the objective.
 
 - `src/shared/project-runtime-layout.ts` — complete owner-aware layout and recoverable adoption
-- `src/shared/project-runtime-recovery.ts` — recover interrupted old and new layout operations
+- `packages/project-runtime/recovery.ts` — recover interrupted old and new layout operations
 - `src/shared/project-identity.ts` — consume stable Project, repository, checkout, and launch-owner evidence
-- `src/shared/runwield-owned-paths.ts` — retire checkout runtime writers without exempting .wld wholesale
+- `packages/project-runtime/owned-paths.ts` — retire checkout runtime writers without exempting .wld wholesale
 - `src/shared/worktree-registry.js` — home registry and repository-scoped locks
 - `src/shared/worktree.js` — retire no-home fallback creation and preserve Git worktree bindings during relocation
 - `src/shared/workflow/publication-machine.ts` — relocated staging and repair paths

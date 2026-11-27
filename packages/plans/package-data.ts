@@ -1,5 +1,9 @@
+import { PlanPackageError } from "@runwield/plan-storage-format";
 import { ContainedPathError } from "@runwield/resources/fs";
 import { decodePackageMarkdown } from "./format/implementation.ts";
+
+export { PlanPackageError };
+export type { PackageIssueKind } from "@runwield/plan-storage-format";
 
 export type PackageResource = "context.md" | "validation.md" | "manual-qa.md" | "integration-report.md";
 export type PackageResourceRole = "context" | "validation" | "manual-qa" | "integration-report";
@@ -37,24 +41,6 @@ export const packageResourceRoles: Readonly<Record<PackageResource, PackageResou
     "integration-report.md": "integration-report",
 };
 
-export type PackageIssueKind =
-    | "missing"
-    | "malformed_metadata"
-    | "unsupported_metadata"
-    | "missing_document"
-    | "unsafe_path"
-    | "pending_recovery"
-    | "unavailable";
-
-export class PlanPackageError extends Error {
-    constructor(
-        public kind: PackageIssueKind | "collision" | "changed_input",
-        message: string,
-    ) {
-        super(message);
-        this.name = "PlanPackageError";
-    }
-}
 export function rethrowPackagePathError<T>(error: T): never {
     if (error instanceof ContainedPathError) {
         throw new PlanPackageError(

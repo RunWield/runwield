@@ -2,7 +2,7 @@ import { loadPlan, updatePlanFrontMatter, withPlanLock } from "../plan-store.ts"
 import { findActiveByPlanName } from "../shared/worktree-registry.ts";
 import { buildPlanEventUpdates } from "@runwield/plans/lifecycle";
 import { makeValidationCheckpoint } from "../shared/workflow/validation-checkpoint.ts";
-import { ProjectRuntimeReadPendingError } from "../shared/project-runtime-layout.ts";
+import { ProjectRuntimeReadPendingError } from "@runwield/project-runtime/layout";
 import { hasRetainedCheckoutSource } from "@runwield/plans/retained-checkout";
 import { withOrderedTransitionResources, type TransitionResource } from "./transitions.ts";
 import { currentPackageSelection, recoverGeneratedManualQaArtifact, packageWorkflowLocks } from "./workflows.ts";

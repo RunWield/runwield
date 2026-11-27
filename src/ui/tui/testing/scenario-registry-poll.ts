@@ -1,4 +1,4 @@
-import { ProjectRuntimeReadPendingError } from "../../../shared/project-runtime-layout.ts";
+import { ProjectRuntimeReadPendingError } from "@runwield/project-runtime/layout";
 import { inspectWorktreeRegistry } from "../../../shared/worktree-registry.ts";
 
 /** Pending authority is not an empty registry and cannot satisfy a status wait. */

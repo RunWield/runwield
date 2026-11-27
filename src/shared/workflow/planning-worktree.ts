@@ -1,3 +1,4 @@
+import type { WorktreeRegistryEntry } from "@runwield/project-runtime/registry-inspection";
 import { projects } from "@runwield/projects";
 import {
     PlanningPlanAttributes,
@@ -15,7 +16,6 @@ import {
     bindPlanningDocument,
     installPlanningDocument,
 } from "../../plan-store/index.ts";
-
 import { hasCanonicalPlanAccess, planDocumentsForCheckout } from "../../plan-store/index.ts";
 import {
     addEntry as addWorktreeRegistryEntry,
@@ -23,7 +23,6 @@ import {
     removeEntry as removeWorktreeRegistryEntry,
     renamePlanningWorktreePlan,
     updateEntry as updateWorktreeRegistryEntry,
-    type WorktreeRegistryEntry,
 } from "../worktree-registry.ts";
 import {
     checkpointExecutionPreparation,
@@ -32,8 +31,8 @@ import {
     removeWorktreeGitArtifacts,
 } from "../worktree.ts";
 import { runExecutionPreparationTransition } from "../../plan-store/index.ts";
-
-import { enterProjectRuntime, ProjectRuntimeReadPendingError } from "../project-runtime-layout.ts";
+import { enterProjectRuntime } from "../project-runtime-layout.ts";
+import { ProjectRuntimeReadPendingError } from "@runwield/project-runtime/layout";
 import { refreshPlanningWorktree } from "./planning-worktree-refresh.ts";
 
 export interface PlanningWorktreeResult {

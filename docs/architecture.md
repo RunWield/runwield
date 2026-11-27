@@ -91,7 +91,7 @@ flowchart TB
 ```
 
 The session runtime is the application boundary for interactive conversations. Plan persistence and lifecycle form a
-second core boundary used by Session workflows and Workspace. Workflow binds a Plan attempt, accepts structured reports, and uses recorded evidence to decide the next action. [Workflow interface](../packages/workflow/index.ts)
+second core boundary used by Session workflows and Workspace. Workflow binds a Plan attempt, accepts structured reports, and uses recorded evidence to decide the next action. Project Runtime prepares checkout storage and uses Workflow's saved publication format during inspection and migration. [Workflow interface](../packages/workflow/index.ts) · [Publication ownership](adr/015-proof-bearing-publication-state-machine.md)
 
 ## Core boundary
 
