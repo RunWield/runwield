@@ -5,7 +5,7 @@ import { projects } from "@runwield/projects";
 import { plans } from "@runwield/plans";
 import { stdinStream } from "../../testing/stdin-stream.ts";
 import { processLines } from "./remote-runtime-lines.ts";
-import { activateRemoteProjectOwner } from "./entry.ts";
+import { activateRemoteProjectOwner } from "./managed-project-owner.ts";
 import type { RemoteInteractiveConfig } from "./entry.ts";
 async function executeManagedFixture() {
     const lines = processLines(stdinStream());

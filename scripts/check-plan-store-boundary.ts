@@ -22,9 +22,25 @@ const privateMembers = new Set([
     "packages/plans/operation-receipts.ts",
     "packages/plans/project-store-binding.ts",
     "packages/plans/managed-project-binding.ts",
+    "packages/plans/managed-project-connection.ts",
+    "packages/plans/managed-project-connection-state.ts",
+    "packages/plans/managed-operation.ts",
+    "packages/plans/managed-store-host.ts",
     "packages/plans/retained-checkout.ts",
     // Existing retained-copy implementation. Its operations are public only through the owner interface.
     "src/shared/workflow/execution-plan-file.ts",
+]);
+const managedConnectionDriver = "packages/plans/managed-project-connection.ts";
+const managedConnectionState = "packages/plans/managed-project-connection-state.ts";
+const managedStoreHost = "packages/plans/managed-store-host.ts";
+const remoteBootstrap = "src/shared/remote/managed-project-owner.ts";
+const remoteBootstrapCallers = new Set([
+    "src/shared/remote/entry.ts",
+    "src/shared/remote/composed-store-process.ts",
+    "src/shared/remote/managed-store-client.ts",
+    "src/shared/remote/managed-store-non-git-client.ts",
+    "src/shared/remote/managed-store-reconnect-client.ts",
+    "src/shared/remote/remote-runtime-test-client.ts",
 ]);
 const plansSurface = "packages/plans/index.ts";
 const pureSurface = "packages/plans/format.ts";
@@ -40,6 +56,15 @@ function ownerMember(path: string): boolean {
 }
 function relativeName(path: string): string {
     return relative(root, path).replaceAll("\\", "/");
+}
+
+function isManagedStateFacadeExport(file: string, specifier: ts.Node): boolean {
+    const statement = specifier.parent;
+    if (!ts.isExportDeclaration(statement) || !statement.exportClause || !ts.isNamedExports(statement.exportClause))
+        return false;
+    const names = statement.exportClause.elements.map((entry) => (entry.propertyName ?? entry.name).text);
+    if (file === managedConnectionDriver) return !names.includes("configureManagedPlanStore");
+    return file === managedStoreHost && names.length === 1 && names[0] === "configureManagedPlanStore";
 }
 
 function isAllowedStoreExport(statement: ts.Statement): boolean {
@@ -137,6 +162,20 @@ export function inspectPlanStoreImports(file: string, source: string): PlanStore
                 line: parsed.getLineAndCharacterOfPosition(node.getStart(parsed)).line + 1,
                 message: `The Plans package cannot depend on an application module (${specifier}).`,
             });
+        if (
+            ((target === managedConnectionState ||
+                /^@runwield\/plans\/managed-project-connection-state(?:\.[tj]s)?$/.test(specifier)) &&
+                !isManagedStateFacadeExport(file, node)) ||
+            (target === managedStoreHost && file !== remoteBootstrap) ||
+            (target === remoteBootstrap && !remoteBootstrapCallers.has(file))
+        ) {
+            violations.push({
+                file,
+                line: parsed.getLineAndCharacterOfPosition(node.getStart(parsed)).line + 1,
+                message: "Only the managed SSH bootstrap configures the Plan store connection.",
+            });
+            return;
+        }
         if (isTestCaller(target) && !isTestCaller(file))
             violations.push({
                 file,
@@ -148,6 +187,7 @@ export function inspectPlanStoreImports(file: string, source: string): PlanStore
             target !== publicSurface &&
             target !== projectStoreSurface &&
             target !== pureSurface &&
+            !(target === managedStoreHost && file === remoteBootstrap) &&
             ownerMember(target) &&
             !PLAN_STORE_QUALIFICATIONS[file]?.modules.includes(target)
         )

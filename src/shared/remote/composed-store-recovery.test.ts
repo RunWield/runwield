@@ -1,5 +1,7 @@
+import { authenticatedProjectStoreRequest } from "./project-store-request.ts";
 import { test } from "node:test";
-import type { ProjectStoreBinding, ProjectStoreReply } from "../../plan-store/index.ts";
+import type { ProjectStoreBinding } from "@runwield/plans/project-store-wire";
+import type { ProjectStoreReply } from "../../plan-store/index.ts";
 import type { PlanHistory } from "@runwield/plans/history";
 import { deepEqual, equal, ok, rejects } from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -47,8 +49,7 @@ test("fresh managed process replays a lost settlement acknowledgement after real
             ok(lost?.command.kind === "settle-publication", new TextDecoder().decode(interrupted.stderr));
             ok(recording?.command.kind === "prepare-record");
             const client = new ProjectStoreClient(
-                fixture.endpoint,
-                fixture.input.connection.credential,
+                authenticatedProjectStoreRequest(fixture.endpoint, fixture.input.connection.credential),
                 recording.binding,
             );
             for (const change of [
@@ -143,7 +144,10 @@ test("retrying the restore CLI after a lost reply preserves an intervening edit"
                 new TextDecoder().decode(interrupted.stderr),
             );
             const firstRevision = receipt.result.revision;
-            const client = new ProjectStoreClient(fixture.endpoint, fixture.input.connection.credential, lost.binding);
+            const client = new ProjectStoreClient(
+                authenticatedProjectStoreRequest(fixture.endpoint, fixture.input.connection.credential),
+                lost.binding,
+            );
             const later = (
                 await client.execute({
                     kind: "save-prose",
@@ -180,7 +184,10 @@ test("managed history CLI reads large catalogs and multi-document milestones acr
             const binding: ProjectStoreBinding = await (
                 await fetch(`${fixture.endpoint}/project-store/admit`, { method: "POST", headers: fixture.headers })
             ).json();
-            const client = new ProjectStoreClient(fixture.endpoint, fixture.input.connection.credential, binding);
+            const client = new ProjectStoreClient(
+                authenticatedProjectStoreRequest(fixture.endpoint, fixture.input.connection.credential),
+                binding,
+            );
             const { planId } = history;
             let revision = history.revision;
             const context = "📚".repeat(155000) + "\n";
@@ -253,8 +260,7 @@ test("a restore rejected before commit can retry against a fresh revision", () =
             const input: ProjectStoreRequest | undefined = path === "/project-store" ? JSON.parse(body) : undefined;
             if (!edited && input?.command.kind === "restore-history") {
                 const owner = new ProjectStoreClient(
-                    fixture.endpoint,
-                    fixture.input.connection.credential,
+                    authenticatedProjectStoreRequest(fixture.endpoint, fixture.input.connection.credential),
                     input.binding,
                 );
                 await owner.execute({

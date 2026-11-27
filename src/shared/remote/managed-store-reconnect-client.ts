@@ -4,7 +4,8 @@ import { plans } from "@runwield/plans";
 import { projects } from "@runwield/projects";
 import { stdinStream } from "../../testing/stdin-stream.ts";
 import { processLines } from "./remote-runtime-lines.ts";
-import { activateRemoteProjectOwner, type RemoteInteractiveConfig } from "./entry.ts";
+import { activateRemoteProjectOwner } from "./managed-project-owner.ts";
+import type { RemoteInteractiveConfig } from "./entry.ts";
 const lines = processLines(stdinStream());
 const input: Pick<RemoteInteractiveConfig, "cwd" | "resources" | "connection"> & {
     planId: string;

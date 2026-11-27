@@ -1,3 +1,4 @@
+import { authenticatedProjectStoreRequest } from "../shared/remote/project-store-request.ts";
 import { workRecords } from "@runwield/plans/work-records";
 import { workRecordFiles } from "@runwield/plans/work-record-files";
 import { parseProjectId, projects, type HomeProjectOwner } from "@runwield/projects";
@@ -554,7 +555,7 @@ async function connectOwner(owner: HomeProjectOwner) {
             .catch(() => {});
     }, 1000);
     return {
-        client: new ProjectStoreClient(endpoint, control.credential, binding),
+        client: new ProjectStoreClient(authenticatedProjectStoreRequest(endpoint, control.credential), binding),
         async close() {
             clearInterval(health);
             await control.close();
@@ -928,7 +929,10 @@ test("managed artifact retries replay unresolved receipts and fresh calls receiv
             );
             const admission = await fetch(f.endpoint + "/project-store/admit", { method: "POST", headers: f.headers });
             equal(admission.status, 200);
-            const client = new ProjectStoreClient(f.endpoint, f.input.connection.credential, await admission.json());
+            const client = new ProjectStoreClient(
+                authenticatedProjectStoreRequest(f.endpoint, f.input.connection.credential),
+                await admission.json(),
+            );
             let currentRevision = seeded.revision;
             for (const revisionSource of ["explicit", "observed"]) {
                 requests.length = 0;
@@ -1022,6 +1026,7 @@ test("managed Work Record creation recovers a lost reply with the owner's exact 
     const { composedRemoteFixture } = await import("../shared/remote/composed-store-fixture.ts");
     await withProcessGlobalTestLock(async () => {
         const f = await composedRemoteFixture();
+        let writeRequests = 0;
         let lost: import("../shared/remote/project-store-protocol.ts").ProjectStoreRequest | undefined;
         const proxy = Bun.serve({
             port: 0,
@@ -1029,10 +1034,11 @@ test("managed Work Record creation recovers a lost reply with the owner's exact 
             async fetch(request) {
                 const path = new URL(request.url).pathname;
                 const forward = () => fetch(new Request(new URL(path, f.endpoint), request));
-                if (path === "/project-store" && !lost) {
+                if (path === "/project-store") {
                     const payload: import("../shared/remote/project-store-protocol.ts").ProjectStoreRequest =
                         await request.clone().json();
-                    if (payload.command.kind === "create-project-work-record") {
+                    if (payload.command.kind === "create-project-work-record") writeRequests++;
+                    if (!lost && payload.command.kind === "create-project-work-record") {
                         const reply = await forward();
                         if (reply.status === 200) {
                             lost = payload;
@@ -1069,6 +1075,40 @@ test("managed Work Record creation recovers a lost reply with the owner's exact 
             };
             const beforeRetry = await read();
             equal(beforeRetry.length, 1);
+            const journals = new Bun.Glob("**/managed-operations/managed-operation-*.json");
+            let journalPath: string | undefined;
+            let journal: string | undefined;
+            for await (const path of journals.scan({ cwd: f.remoteHome, absolute: true, dot: true })) {
+                const text = await readFile(path, "utf8");
+                if (text.includes(command.operationId)) {
+                    journalPath = path;
+                    journal = text;
+                    break;
+                }
+            }
+            ok(journalPath && journal);
+            const beforeRejectedRetries = writeRequests;
+            for (const [retained, message] of [
+                [{ binding: { ...binding, ownerId: "0".repeat(64) }, command }, /operation owner changed/],
+                [
+                    { binding, command: { ...command, input: { ...command.input, body: "Other work" } } },
+                    /operation intent changed/,
+                ],
+                [{ binding, command: { ...command, operationId: "bad" } }, /Invalid operation identity/],
+                [
+                    { binding, command: { ...command, operationId: "bad" }, acknowledged: true },
+                    /Invalid operation identity/,
+                ],
+                [{ binding, command, acknowledged: "false" }, /Invalid managed operation journal/],
+            ] as const) {
+                await writeFile(journalPath, JSON.stringify(retained));
+                const rejected = await f.runRaw("managed-create-project-record", proxy.port);
+                equal(rejected.code, 1);
+                ok(message.test(new TextDecoder().decode(rejected.stderr)));
+                equal(await readFile(journalPath, "utf8"), JSON.stringify(retained));
+            }
+            equal(writeRequests, beforeRejectedRetries);
+            await writeFile(journalPath, journal);
             const createdId = await f.run("managed-create-project-record", proxy.port);
             equal(createdId, beforeRetry[0]);
             deepEqual(await read(), beforeRetry);
@@ -1155,7 +1195,7 @@ test("managed pruning changes laptop records and bound execution copies while ma
             await f.run("manual-prune-seed");
             const admission = await fetch(f.endpoint + "/project-store/admit", { method: "POST", headers: f.headers });
             equal(admission.status, 200);
-            const binding: import("./index.ts").ProjectStoreBinding = await admission.json();
+            const binding: import("@runwield/plans/project-store-wire").ProjectStoreBinding = await admission.json();
             const owner = projects.home.inspect(binding.projectId, binding.repositoryId);
             const cwd = projects.home.storeLocation(owner);
             const { readLocalHomeStore } = await import("./index.ts");

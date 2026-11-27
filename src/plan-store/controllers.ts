@@ -3,8 +3,8 @@ import {
     type WorktreeRegistryEntry,
 } from "@runwield/project-runtime/registry-inspection";
 import { projects, type ProjectStoreIdentity as ProjectIdentity } from "@runwield/projects";
+import { managedPersonalStoreActive } from "@runwield/plans/managed-project-connection";
 import {
-    managedPersonalStoreActive,
     currentManagedRetainedExecution,
     readManagedRetainedExecution,
     writeManagedRetainedController,

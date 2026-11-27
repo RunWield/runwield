@@ -2,6 +2,7 @@ import type { PackagePublicationManifest } from "@runwield/plans/store";
 import { decodePackageMarkdown } from "@runwield/plans/format";
 import { projects } from "@runwield/projects";
 import { createHash } from "node:crypto";
+import { managedExecutionRoot } from "@runwield/plans/managed-project-connection";
 import {
     managedPlanStoreActive,
     readManagedPublication,
@@ -12,7 +13,6 @@ import {
     settleManagedInPlace,
     loadManagedWorkflowPlan,
     readManagedExecution,
-    managedExecutionRoot,
 } from "./managed.ts";
 import type { WorkRecordMnemotecaPort } from "../shared/work-records/mnemoteca-port.ts";
 import { getDeliveryCopyPolicy, shouldAutoGenerateWorkRecordsOnPlanCompletion } from "../shared/settings.ts";

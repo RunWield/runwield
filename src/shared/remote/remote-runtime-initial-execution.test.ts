@@ -1,3 +1,4 @@
+import { authenticatedProjectStoreRequest } from "./project-store-request.ts";
 import { test } from "node:test";
 import { ok as assert, rejects } from "node:assert/strict";
 import { readFile, rename, stat } from "node:fs/promises";
@@ -22,7 +23,7 @@ import {
 } from "./remote-runtime-workflows-fixture.ts";
 import { ProjectStoreClient } from "./project-store-client.ts";
 import type { ReviewPayload } from "../../ui/workspace/routes/api/review-handlers.ts";
-import type { ProjectStoreBinding } from "../../plan-store/index.ts";
+import type { ProjectStoreBinding } from "@runwield/plans/project-store-wire";
 
 for (const planSource of ["managed-owner", "retained-checkout"] as const) {
     for (const agentName of ["planner", "router"]) {
@@ -78,7 +79,7 @@ async function assertCanonicalExecution(f: RuntimeFixture, completed: RuntimeCli
     assertEquals(response.status, 200);
     const binding: ProjectStoreBinding = await response.json();
     assert(binding?.projectId, "Planning must admit a canonical Project owner");
-    const owner = new ProjectStoreClient(endpoint, f.connection.credential, binding);
+    const owner = new ProjectStoreClient(authenticatedProjectStoreRequest(endpoint, f.connection.credential), binding);
     const resolved = (await owner.execute({ kind: "resolve-plan", reference: "remote-delivery" })).result;
     assert("plan" in resolved && resolved.plan?.attrs.planId);
     const plan = resolved.plan;

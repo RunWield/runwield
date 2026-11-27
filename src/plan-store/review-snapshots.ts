@@ -1,9 +1,9 @@
 import { StalePlanWriteError } from "@runwield/plans/store";
+import { managedExecutionRoot } from "@runwield/plans/managed-project-connection";
 import {
     managedPlanStoreActive,
     captureManagedReview,
     currentManagedPlanSelection,
-    managedExecutionRoot,
     readManagedPlan,
 } from "./managed.ts";
 /** Coherent review documents and retained inputs; surfaces never assemble package snapshots. */

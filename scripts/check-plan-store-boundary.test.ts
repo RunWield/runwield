@@ -100,6 +100,46 @@ test("only the Plan store can bind a Project's Plan owner", () => {
     equal(inspectPlanStoreImports("src/tools/example.ts", rawManagedBinding).length, 1);
 });
 
+test("only the managed SSH bootstrap can configure the Plan store connection", () => {
+    const paths = [
+        'await import("@runwield/plans/managed-store-host");',
+        'export * from "../../packages/plans/managed-store-host.ts";',
+        'import("@runwield/plans/managed-project-connection");',
+        'import("@runwield/plans/managed-operation");',
+        'import("../shared/remote/managed-project-owner.ts");',
+    ];
+    for (const source of paths) {
+        equal(inspectPlanStoreImports("src/tools/example.ts", source).length, 1, source);
+        equal(inspectPlanStoreImports("src/cmd/example.ts", source).length, 1, source);
+    }
+    equal(inspectPlanStoreImports("src/shared/remote/managed-project-owner.ts", paths[0]).length, 0);
+    equal(inspectPlanStoreImports("src/plan-store/managed.ts", paths[0]).length, 1);
+    equal(inspectPlanStoreImports("src/plan-store/managed.ts", paths[2]).length, 0);
+});
+
+test("the managed Plan driver cannot access connection configuration", async () => {
+    const driver = await import("@runwield/plans/managed-project-connection");
+    equal("configureManagedPlanStore" in driver, false);
+    const privateState = 'import * as connection from "../../packages/plans/managed-project-connection-state.ts";';
+    for (const source of [
+        privateState,
+        'import { configureManagedPlanStore } from "../../packages/plans/managed-project-connection-state.ts";',
+        'await import("@runwield/plans/managed-project-connection-state");',
+        'import * as host from "@runwield/plans/managed-store-host";',
+    ]) {
+        equal(inspectPlanStoreImports("src/plan-store/managed.ts", source).length, 1, source);
+    }
+    const state = 'export { configureManagedPlanStore } from "./managed-project-connection-state.ts";';
+    equal(inspectPlanStoreImports("packages/plans/managed-store-host.ts", state).length, 0);
+    equal(inspectPlanStoreImports("packages/plans/managed-operation.ts", state).length, 1);
+    equal(inspectPlanStoreImports("packages/plans/managed-project-connection.ts", state).length, 1);
+    const stateNamespace = 'export * from "./managed-project-connection-state.ts";';
+    equal(inspectPlanStoreImports("packages/plans/managed-project-connection.ts", stateNamespace).length, 1);
+    equal(inspectPlanStoreImports("packages/plans/managed-store-host.ts", stateNamespace).length, 1);
+    const driverReads = 'export { managedExecutionRoot } from "./managed-project-connection-state.ts";';
+    equal(inspectPlanStoreImports("packages/plans/managed-project-connection.ts", driverReads).length, 0);
+});
+
 test("only Plan owners and exact qualifications can select the retained checkout", () => {
     const entry = "@runwield/plans/retained-checkout";
     for (const source of [

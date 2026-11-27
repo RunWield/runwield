@@ -1,13 +1,345 @@
 import { openWorkflow } from "@runwield/workflow";
 import { deepEqual, equal, ok, rejects } from "node:assert/strict";
-import { mkdir, writeFile, readFile } from "node:fs/promises";
+import { mkdir, stat, writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { activateRemoteProjectOwner, type RemoteInteractiveConfig } from "./entry.ts";
+import { activateRemoteProjectOwner, connectRemotePlanOwner } from "./managed-project-owner.ts";
+import type { RemoteInteractiveConfig } from "./entry.ts";
+import type { ProjectStoreRequest } from "./project-store-protocol.ts";
 
 const [command, json] = process.argv.slice(2);
 type ComposedRemoteInput = Pick<RemoteInteractiveConfig, "cwd" | "resources" | "connection"> & { attemptId?: string };
 const input: ComposedRemoteInput = JSON.parse(json);
 const managed = command.startsWith("managed");
+async function waitForHeldRequestRejection(rejection: Promise<void>): Promise<void> {
+    const deadline = Promise.withResolvers<never>();
+    const timeout = setTimeout(() => {
+        deadline.reject(new Error("The managed request did not reject while its HTTP reply was held."));
+    }, 5_000);
+    try {
+        await Promise.race([rejection, deadline.promise]);
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
+async function qualifyManagedReconnect(): Promise<void> {
+    const { projects } = await import("@runwield/projects");
+    const { openProjectPlanStore } = await import("../../plan-store/index.ts");
+    const entered = Promise.withResolvers<void>();
+    const finish = Promise.withResolvers<void>();
+    const oldRoutes: string[] = [];
+    const proxy = Bun.serve({
+        hostname: "127.0.0.1",
+        port: 0,
+        async fetch(request) {
+            const route = new URL(request.url).pathname;
+            oldRoutes.push(route);
+            const forwarded = new Request(`http://127.0.0.1:${input.connection.port}${route}`, request);
+            const response = await fetch(forwarded);
+            if (route === "/project-store") {
+                const body = await response.text();
+                entered.resolve();
+                await finish.promise;
+                return new Response(body, { status: response.status });
+            }
+            return response;
+        },
+    });
+    const close = await activateRemoteProjectOwner({
+        ...input,
+        connection: { ...input.connection, port: proxy.port! },
+    });
+    try {
+        const checkout = projects.checkout.inspect(input.cwd);
+        ok(checkout.kind === "existing");
+        const old = openProjectPlanStore(checkout.identity.projectId);
+        const inFlight = rejects(() => old.list(), /unavailable|abort/i);
+        await Promise.race([entered.promise, inFlight]);
+        ok(oldRoutes.includes("/project-store"));
+        equal(oldRoutes.join(","), "/project-store/inspect,/project-store");
+        close();
+        const closeNew = await connectRemotePlanOwner(input);
+        try {
+            await waitForHeldRequestRejection(inFlight);
+            const current = openProjectPlanStore(checkout.identity.projectId);
+            ok((await current.list()).resources.some((plan) => plan.name === "repeatable"));
+            await rejects(() => old.list(), /Managed Plan owner is unavailable/);
+            equal(oldRoutes.join(","), "/project-store/inspect,/project-store");
+        } finally {
+            closeNew();
+        }
+    } finally {
+        finish.resolve();
+        close();
+        proxy.stop(true);
+    }
+}
+
+async function qualifyManagedImportReconnect(disconnectAt: "commit" | "result" | "journal-lock"): Promise<void> {
+    const heldReply = disconnectAt === "commit" ? "import-plans" : "read-import-result";
+    const lockWaiting = Promise.withResolvers<void>();
+    const resourceFs = { ...(await import("@runwield/resources/fs")) };
+    let journalLockPath: string | undefined;
+    let heldJournalLock: ReturnType<typeof resourceFs.openNativeFileLock> | undefined;
+    if (disconnectAt === "journal-lock") {
+        const { mock } = await import("bun:test");
+        mock.module("@runwield/resources/fs", () => ({
+            ...resourceFs,
+            openNativeFileLock(path: string, create?: boolean | "exclusive") {
+                const lock = resourceFs.openNativeFileLock(path, create);
+                if (path !== journalLockPath) return lock;
+                return {
+                    ...lock,
+                    async lock(exclusive = false) {
+                        if (lock.tryLockSync(exclusive)) return;
+                        lockWaiting.resolve();
+                        await lock.lock(exclusive);
+                    },
+                };
+            },
+        }));
+    }
+    const { getHomeDir } = await import("../../constants.ts");
+    const { importPlans } = await import("../../plan-store/index.ts");
+    const source = join(input.cwd, "reconnect-import.md");
+    await writeFile(source, "---\nplanId: reconnect-import\nstatus: draft\n---\n# Import once\n");
+    const replyReady = Promise.withResolvers<void>();
+    const releaseReply = Promise.withResolvers<void>();
+    const oldCommands: ProjectStoreRequest["command"][] = [];
+    const newCommands: ProjectStoreRequest["command"][] = [];
+    let newRequests = 0;
+
+    function proxy(current: boolean) {
+        return Bun.serve({
+            hostname: "127.0.0.1",
+            port: 0,
+            async fetch(request) {
+                if (current) newRequests++;
+                const route = new URL(request.url).pathname;
+                const operation: ProjectStoreRequest | undefined =
+                    route === "/project-store" ? await request.clone().json() : undefined;
+                if (operation) (current ? newCommands : oldCommands).push(operation.command);
+                const forwarded = new Request(`http://127.0.0.1:${input.connection.port}${route}`, request);
+                const response = await fetch(forwarded);
+                if (!current && operation?.command.kind === heldReply) {
+                    equal(response.status, 200);
+                    const body = await response.text();
+                    replyReady.resolve();
+                    await releaseReply.promise;
+                    return new Response(body, { status: response.status });
+                }
+                return response;
+            },
+        });
+    }
+    const oldProxy = proxy(false);
+    const newProxy = proxy(true);
+    const close = await activateRemoteProjectOwner({
+        ...input,
+        connection: { ...input.connection, port: oldProxy.port! },
+    });
+    try {
+        const failed = rejects(() => importPlans(input.cwd, source), /unavailable|abort/i);
+        await Promise.race([replyReady.promise, failed]);
+        const [mutation] = oldCommands;
+        ok(mutation?.kind === "import-plans");
+        const resultRequest = { kind: "read-import-result", operationId: mutation.operationId };
+        const expectedCommands = [mutation, resultRequest];
+        deepEqual(oldCommands, heldReply === "import-plans" ? [mutation] : expectedCommands);
+        const journals = new Bun.Glob("**/managed-operations/managed-operation-*.json");
+        let pending: string | undefined;
+        for await (const path of journals.scan({ cwd: getHomeDir(), absolute: true, dot: true })) {
+            if ((await readFile(path, "utf8")).includes(mutation.operationId)) pending = path;
+        }
+        ok(pending);
+        const originalJournal = await readFile(pending, "utf8");
+        if (disconnectAt === "journal-lock") {
+            journalLockPath = `${pending}.lock`;
+            heldJournalLock = resourceFs.openNativeFileLock(journalLockPath, false);
+            ok(heldJournalLock.tryLockSync(true));
+            releaseReply.resolve();
+            await Promise.race([lockWaiting.promise, failed]);
+        }
+        close();
+        const closeNew = await connectRemotePlanOwner({
+            ...input,
+            connection: { ...input.connection, port: newProxy.port! },
+        });
+        try {
+            if (disconnectAt === "journal-lock") {
+                heldJournalLock?.close();
+                heldJournalLock = undefined;
+                await failed;
+            } else {
+                await waitForHeldRequestRejection(failed);
+            }
+            equal(newRequests, 0);
+            equal(await readFile(pending, "utf8"), originalJournal);
+
+            const replay = await importPlans(input.cwd, source);
+            equal(replay.kind, "committed");
+            deepEqual(replay.planIds, ["reconnect-import"]);
+            deepEqual(newCommands, expectedCommands);
+            await rejects(stat(pending), { code: "ENOENT" });
+        } finally {
+            closeNew();
+        }
+    } finally {
+        releaseReply.resolve();
+        heldJournalLock?.close();
+        close();
+        oldProxy.stop(true);
+        newProxy.stop(true);
+    }
+}
+
+async function qualifyManagedPruneReconnect(): Promise<void> {
+    const { createHash } = await import("node:crypto");
+    const { mock } = await import("bun:test");
+    const { checkedProjectRuntimeLayout } = await import("@runwield/project-runtime/layout");
+    const { openNativeFileLock } = await import("../native-file-lock.ts");
+    const { runPlansCommand } = await import("../../cmd/plans/index.ts");
+    const { authorLocalPlan } = await import("../../plan-store/index.ts");
+    const lockWaiting = Promise.withResolvers<void>();
+    let cleanupLock: string | undefined;
+    mock.module("../native-file-lock.ts", () => ({
+        openNativeFileLock(path: string, create?: boolean | "exclusive") {
+            const lock = openNativeFileLock(path, create);
+            if (path !== cleanupLock) return lock;
+            return {
+                ...lock,
+                async lock(exclusive = false) {
+                    if (lock.tryLockSync(exclusive)) return;
+                    lockWaiting.resolve();
+                    await lock.lock(exclusive);
+                },
+            };
+        },
+    }));
+    const copyName = "prune-owner-switch-copy.md";
+    const copy = join(input.cwd, copyName);
+    const original = "# Confirmed historical copy\n";
+    const digest = createHash("sha256").update(original).digest("hex");
+    await writeFile(copy, original);
+    const tokens = ["a".repeat(64), "b".repeat(64)];
+    const due = tokens.map((token, index) => ({ token, name: `unit-${index + 1}`, paths: [copyName] }));
+    const oldCommands: string[] = [];
+    const newCommands: string[] = [];
+    let newRequests = 0;
+
+    function proxy(current: boolean) {
+        return Bun.serve({
+            hostname: "127.0.0.1",
+            port: 0,
+            async fetch(request) {
+                if (current) newRequests++;
+                const route = new URL(request.url).pathname;
+                if (route === "/project-store") {
+                    const { binding, command: operation }: ProjectStoreRequest = await request.clone().json();
+                    const commands = current ? newCommands : oldCommands;
+                    if (operation.kind === "preview-retention") {
+                        commands.push(operation.kind);
+                        const text = JSON.stringify({
+                            plans: {
+                                policy: { retentionDays: 0, keepLast: 0 },
+                                due,
+                                sparedByKeepLast: [],
+                                withinRetention: [],
+                                ineligible: [],
+                            },
+                            records: { due: [] },
+                        });
+                        const snapshot = createHash("sha256").update(text).digest("hex");
+                        return Response.json({
+                            binding,
+                            result: { retentionPage: { text, snapshot, complete: true } },
+                        });
+                    }
+                    if (operation.kind === "confirm-retention" || operation.kind === "settle-prune-copies") {
+                        const first = operation.token === tokens[0];
+                        commands.push(`${operation.kind}:${first ? "first" : "second"}`);
+                        const copies =
+                            operation.kind === "confirm-retention" && first
+                                ? [{ path: copyName, repositoryId: binding.repositoryId, digest }]
+                                : [];
+                        return Response.json({ binding, result: { pruneResult: { deleted: first, copies } } });
+                    }
+                }
+                return await fetch(new Request(`http://127.0.0.1:${input.connection.port}${route}`, request));
+            },
+        });
+    }
+    const oldProxy = proxy(false);
+    const newProxy = proxy(true);
+    const close = await activateRemoteProjectOwner({
+        ...input,
+        connection: { ...input.connection, port: oldProxy.port! },
+    });
+    let held: ReturnType<typeof openNativeFileLock> | undefined;
+    try {
+        await authorLocalPlan(input.cwd, { planName: "prune-admission", contextMarkdown: "# Admitted\n" });
+        const runtime = await checkedProjectRuntimeLayout(input.cwd);
+        const cleanupDirectory = join(runtime.selected.internalRoot, "prune-copies");
+        await mkdir(cleanupDirectory, { recursive: true });
+        cleanupLock = join(cleanupDirectory, "cleanup.lock");
+        held = openNativeFileLock(cleanupLock);
+        ok(held.tryLockSync(true));
+        const pending = join(runtime.selected.transitionJournalsDir, "prune-plans.json");
+        const rejected = rejects(() => runPlansCommand(["prune", "--yes"]), /unavailable|abort/i);
+        await Promise.race([lockWaiting.promise, rejected]);
+        const originalRequest = await readFile(pending, "utf8");
+        close();
+        const closeNew = await connectRemotePlanOwner({
+            ...input,
+            connection: { ...input.connection, port: newProxy.port! },
+        });
+        try {
+            held.close();
+            held = undefined;
+            await rejected;
+            equal(newRequests, 0);
+            equal(await readFile(copy, "utf8"), original);
+            equal(await readFile(pending, "utf8"), originalRequest);
+            deepEqual(oldCommands, ["preview-retention", "confirm-retention:first"]);
+
+            await runPlansCommand(["prune", "--yes"]);
+            await rejects(stat(copy), { code: "ENOENT" });
+            await rejects(stat(pending), { code: "ENOENT" });
+            deepEqual(newCommands, [
+                "confirm-retention:first",
+                "settle-prune-copies:first",
+                "confirm-retention:second",
+            ]);
+        } finally {
+            closeNew();
+        }
+    } finally {
+        held?.close();
+        close();
+        oldProxy.stop(true);
+        newProxy.stop(true);
+    }
+}
+
+if (command === "managed-prune-reconnect") {
+    await qualifyManagedPruneReconnect();
+    process.exit(0);
+}
+
+if (command === "managed-connection-reopen") {
+    await qualifyManagedReconnect();
+    process.exit(0);
+}
+const importDisconnectPoint = {
+    "managed-import-reconnect": "result",
+    "managed-import-reconnect-after-commit": "commit",
+    "managed-import-reconnect-with-held-lock": "journal-lock",
+} as const;
+if (Object.hasOwn(importDisconnectPoint, command)) {
+    await qualifyManagedImportReconnect(importDisconnectPoint[command as keyof typeof importDisconnectPoint]);
+    process.exit(0);
+}
+
 const clear = managed ? await activateRemoteProjectOwner(input) : () => {};
 try {
     const { openPublication } = await import("@runwield/workflow/publication-runtime");

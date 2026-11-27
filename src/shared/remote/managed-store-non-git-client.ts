@@ -1,3 +1,5 @@
+import type { ProjectStoreBinding } from "@runwield/plans/project-store-wire";
+import { authenticatedProjectStoreRequest } from "./project-store-request.ts";
 import { openWorkflow } from "@runwield/workflow";
 import { HostedSession } from "@runwield/session-runtime/host";
 import { createPlanWrittenTool } from "../../tools/plan-written.ts";
@@ -8,7 +10,8 @@ import { remoteBackgroundTaskLogDirectory } from "./background-task-logs.ts";
 import { join } from "node:path";
 import { stdinStream } from "../../testing/stdin-stream.ts";
 import { processLines } from "./remote-runtime-lines.ts";
-import { activateRemoteProjectOwner, type RemoteInteractiveConfig } from "./entry.ts";
+import { activateRemoteProjectOwner } from "./managed-project-owner.ts";
+import type { RemoteInteractiveConfig } from "./entry.ts";
 import {
     recordPlanEvent,
     withLocalPlanWorkflow,
@@ -16,7 +19,6 @@ import {
     openPlanStoreForCheckout,
     readPlanRecordingContext,
     readRecordingPublication,
-    type ProjectStoreBinding,
     planDocumentsForCheckout,
 } from "../../plan-store/index.ts";
 import { ProjectStoreClient } from "./project-store-client.ts";
@@ -126,7 +128,10 @@ try {
         });
         equal(admission.status, 200);
         const binding: ProjectStoreBinding = await admission.json();
-        const owner = new ProjectStoreClient(endpoint, input.connection.credential, binding);
+        const owner = new ProjectStoreClient(
+            authenticatedProjectStoreRequest(endpoint, input.connection.credential),
+            binding,
+        );
         await rejects(
             owner.execute({
                 kind: "settle-in-place",

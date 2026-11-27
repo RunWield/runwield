@@ -1,6 +1,7 @@
+import type { ProjectStoreBinding } from "@runwield/plans/project-store-wire";
 import { StalePlanWriteError } from "@runwield/plans/store";
 import type { ExecutionPublicationPolicy, PackagePublicationReference } from "@runwield/plans/publication-copies";
-import { projects, type HomeProjectOwner, type ProjectId } from "@runwield/projects";
+import { projects, type HomeProjectOwner } from "@runwield/projects";
 import { plans } from "@runwield/plans";
 import { isEpicArtifactName } from "@runwield/plans/format";
 import { openPlanStoreForCheckout } from "./project-plans.ts";
@@ -84,11 +85,6 @@ import {
     type OperationOutcome,
 } from "@runwield/plans/operation-receipts";
 
-export interface ProjectStoreBinding {
-    projectId: ProjectId;
-    repositoryId: string;
-    ownerId: string;
-}
 export interface ProjectStorePublicationSettlement extends PlanMutation {
     kind: "settle-publication";
     reference: PackagePublicationReference;

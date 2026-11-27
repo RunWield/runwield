@@ -1,7 +1,11 @@
 import { projects, type ProjectId } from "@runwield/projects";
 import { projectPlanStoreBinding } from "@runwield/plans/project-store-binding";
 import type { ProjectPlanStoreOptions } from "@runwield/plans/store";
-import { captureManagedProjectPlanAccess, managedPersonalStoreActive } from "./managed.ts";
+import {
+    captureManagedProjectPlanAccess,
+    managedPersonalStoreActive,
+} from "@runwield/plans/managed-project-connection";
+import { currentManagedRetainedExecution } from "./managed.ts";
 import { hasRetainedCheckoutSource } from "@runwield/plans/retained-checkout";
 import { currentPackageProject, currentPackageSelection, withPackageProject } from "./workflows.ts";
 
@@ -18,7 +22,9 @@ export function bindProjectPlanStore(projectId: ProjectId, options: ProjectPlanS
     ): Promise<Result> => {
         if (managed) {
             binding.verifyManagedRegistration();
-            return await managed(operation, mode === "retained");
+            if (mode !== "retained" && currentManagedRetainedExecution())
+                throw new Error("Managed Plan owner is unavailable.");
+            return await managed(operation);
         }
         if (!local || managedPersonalStoreActive()) throw new Error("The Project's Plan owner changed after opening.");
         const identity = local();

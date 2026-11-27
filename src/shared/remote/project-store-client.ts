@@ -1,27 +1,24 @@
-import type { ProjectStoreBinding, ProjectStoreCommand, ProjectStoreReply } from "../../plan-store/index.ts";
 import {
+    ProjectStorePreconditionError,
     readProjectStoreBody,
-    validateProjectStoreRequest,
-    validateProjectStoreReply,
-} from "./project-store-protocol.ts";
-export class ProjectStorePreconditionError extends Error {}
+    type ProjectStoreBinding,
+    type RequestManagedPlanStore,
+} from "@runwield/plans/project-store-wire";
+import type { ProjectStoreCommand, ProjectStoreReply } from "../../plan-store/index.ts";
+import { validateProjectStoreRequest, validateProjectStoreReply } from "./project-store-protocol.ts";
 
-/** Caller retains operation IDs across timeouts/reconnects. No retry or fallback owner is inferred. */
+/** Validate and execute one legacy command against a bound Plan store. */
 export class ProjectStoreClient {
+    /** Bind the authenticated request to the supplied Plan store owner. */
     constructor(
-        private readonly endpoint: string,
-        private readonly credential: string,
+        private readonly request: RequestManagedPlanStore,
         readonly binding: ProjectStoreBinding,
     ) {}
+    /** Send a command and validate that its reply matches the request and owner. */
     async execute(command: ProjectStoreCommand, signal?: AbortSignal): Promise<ProjectStoreReply> {
         const request = { binding: this.binding, command };
         validateProjectStoreRequest(request);
-        const response = await fetch(new URL("/project-store", this.endpoint), {
-            method: "POST",
-            headers: { Authorization: `Bearer ${this.credential}`, "Content-Type": "application/json" },
-            body: JSON.stringify(request),
-            signal,
-        });
+        const response = await this.request({ route: "/project-store", body: JSON.stringify(request) }, signal);
         if (response.status === 412)
             throw new ProjectStorePreconditionError(
                 command.kind === "author-plan"

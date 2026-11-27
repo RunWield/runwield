@@ -1,4 +1,5 @@
 import { projects } from "@runwield/projects";
+import { withManagedProjectConnection } from "@runwield/plans/managed-project-connection";
 import { managedPlanStoreActive, importManagedPlans } from "./managed.ts";
 import { readFile, realpath, stat } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -11,8 +12,12 @@ import { getExactProjectCustomSetting, setExactProjectCustomSetting } from "../s
 
 /** Explicit admission and source-preserving import are one store operation. */
 export async function importPlans(cwd: string, selection: string) {
+    if (managedPlanStoreActive())
+        return await withManagedProjectConnection(async () => {
+            await enterProjectRuntime(cwd);
+            return await importManagedPlans(cwd, resolve(cwd, selection));
+        });
     await enterProjectRuntime(cwd);
-    if (managedPlanStoreActive()) return await importManagedPlans(cwd, resolve(cwd, selection));
     const store = inspectLocalHomeStore(cwd);
     if (store.kind !== "local") throw new Error("Plan import requires the local execution-account store.");
     const result = await importPlanPackages(store.identity, resolve(cwd, selection));

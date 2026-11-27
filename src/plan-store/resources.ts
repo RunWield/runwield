@@ -1,9 +1,9 @@
 import { projects } from "@runwield/projects";
+import { managedExecutionRoot } from "@runwield/plans/managed-project-connection";
 import {
     managedPlanStoreActive,
     currentManagedPlanSelection,
     readManagedPlan,
-    managedExecutionRoot,
     readManagedReviewPresentation,
     readManagedDocument,
 } from "./managed.ts";

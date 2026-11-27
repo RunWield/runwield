@@ -1,12 +1,8 @@
+import { PROJECT_STORE_MAX_BYTES, readProjectStoreBody } from "@runwield/plans/project-store-wire";
 import { parseProjectId } from "@runwield/projects";
 import { test } from "node:test";
 import { equal, throws, rejects } from "node:assert/strict";
-import {
-    validateProjectStoreRequest,
-    parseHistoryList,
-    readProjectStoreBody,
-    PROJECT_STORE_MAX_BYTES,
-} from "./project-store-protocol.ts";
+import { validateProjectStoreRequest, parseHistoryList } from "./project-store-protocol.ts";
 const binding = {
     projectId: parseProjectId(crypto.randomUUID())!,
     repositoryId: "repository-one",

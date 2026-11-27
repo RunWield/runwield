@@ -1,3 +1,4 @@
+import { withManagedProjectConnection } from "@runwield/plans/managed-project-connection";
 import { samePackagePublicationReference } from "@runwield/plans/publication-copies";
 import { projects } from "@runwield/projects";
 import {
@@ -343,100 +344,102 @@ export async function recordPlanEvent({
     packageSelection,
 }: RecordPlanEventRequest): Promise<PlanFrontMatter> {
     if (managedPlanStoreActive()) {
-        const readBefore = () =>
-            expectedPlanId ? readManagedActivePlanById(cwd, expectedPlanId) : readManagedPlan(cwd, planName);
-        if (
-            [
-                "execution_started",
-                "execution_failed",
-                "implementation_finished",
-                "mechanical_validation_failed",
-                "mechanical_validation_passed",
-                "semantic_review_feedback",
-                "semantic_review_passed",
-                "validation_passed",
-                "validation_failed",
-            ].includes(event)
-        ) {
+        return await withManagedProjectConnection(async () => {
+            const readBefore = () =>
+                expectedPlanId ? readManagedActivePlanById(cwd, expectedPlanId) : readManagedPlan(cwd, planName);
+            if (
+                [
+                    "execution_started",
+                    "execution_failed",
+                    "implementation_finished",
+                    "mechanical_validation_failed",
+                    "mechanical_validation_passed",
+                    "semantic_review_feedback",
+                    "semantic_review_passed",
+                    "validation_passed",
+                    "validation_failed",
+                ].includes(event)
+            ) {
+                const before = await readBefore();
+                if (!before?.attrs.planId) throw new Error("Managed Plan is unavailable.");
+                const execution = await readManagedExecution(cwd, before.attrs.planId);
+                if (!execution || (details.worktreeId && details.worktreeId !== execution.attemptId))
+                    throw new Error("Execution checkpoint belongs to another attempt.");
+                const {
+                    failureReason,
+                    executionReport,
+                    executionBaselineTree,
+                    validationCiAttempts,
+                    validationSemanticRounds,
+                    mechanicalFailureKind,
+                    validationCheckpoint,
+                    humanReviewMode,
+                    humanReviewDecision,
+                    humanReviewedAt,
+                } = details;
+                await mutateManagedPlan(cwd, {
+                    kind: "execution-checkpoint",
+                    operationId: crypto.randomUUID(),
+                    planId: before.attrs.planId,
+                    expectedRevision: expectedRevision || before.revision,
+                    attemptId: execution.attemptId,
+                    checkpoint: {
+                        event: event as ManagedExecutionCheckpoint["event"],
+                        details: {
+                            failureReason,
+                            executionReport,
+                            executionBaselineTree,
+                            validationCiAttempts,
+                            validationSemanticRounds,
+                            mechanicalFailureKind,
+                            validationCheckpoint,
+                            humanReviewMode,
+                            humanReviewDecision,
+                            humanReviewedAt,
+                        },
+                    },
+                });
+                const after = await readManagedActivePlanById(cwd, before.attrs.planId);
+                if (!after) throw new Error("Managed Plan is unavailable after its checkpoint.");
+                return after.attrs;
+            }
+            if (isManagedLifecycleDecision(event)) {
+                const before = await readBefore();
+                if (!before?.attrs.planId || (currentStatus && currentStatus !== before.attrs.status))
+                    throw new Error("Plan status changed.");
+                await mutateManagedPlan(cwd, {
+                    kind: "lifecycle-decision",
+                    operationId: crypto.randomUUID(),
+                    planId: before.attrs.planId,
+                    expectedRevision: expectedRevision || before.revision,
+                    decision: { event, details: managedLifecycleDetails(details) },
+                });
+                const after = await readManagedActivePlanById(cwd, before.attrs.planId);
+                if (!after) throw new Error("Lifecycle decision Plan is unavailable.");
+                return after.attrs;
+            }
+            if (
+                event !== "review_approved" &&
+                event !== "review_feedback" &&
+                event !== "hold_reset_to_draft" &&
+                event !== "readiness_passed" &&
+                event !== "epic_readiness_passed"
+            )
+                throw new Error("Managed lifecycle transition requires matched execution evidence.");
             const before = await readBefore();
             if (!before?.attrs.planId) throw new Error("Managed Plan is unavailable.");
-            const execution = await readManagedExecution(cwd, before.attrs.planId);
-            if (!execution || (details.worktreeId && details.worktreeId !== execution.attemptId))
-                throw new Error("Execution checkpoint belongs to another attempt.");
-            const {
-                failureReason,
-                executionReport,
-                executionBaselineTree,
-                validationCiAttempts,
-                validationSemanticRounds,
-                mechanicalFailureKind,
-                validationCheckpoint,
-                humanReviewMode,
-                humanReviewDecision,
-                humanReviewedAt,
-            } = details;
+            if (currentStatus && currentStatus !== before.attrs.status) throw new Error("Plan status changed.");
             await mutateManagedPlan(cwd, {
-                kind: "execution-checkpoint",
+                kind: "record-event",
+                event,
                 operationId: crypto.randomUUID(),
                 planId: before.attrs.planId,
                 expectedRevision: expectedRevision || before.revision,
-                attemptId: execution.attemptId,
-                checkpoint: {
-                    event: event as ManagedExecutionCheckpoint["event"],
-                    details: {
-                        failureReason,
-                        executionReport,
-                        executionBaselineTree,
-                        validationCiAttempts,
-                        validationSemanticRounds,
-                        mechanicalFailureKind,
-                        validationCheckpoint,
-                        humanReviewMode,
-                        humanReviewDecision,
-                        humanReviewedAt,
-                    },
-                },
             });
             const after = await readManagedActivePlanById(cwd, before.attrs.planId);
-            if (!after) throw new Error("Managed Plan is unavailable after its checkpoint.");
+            if (!after) throw new Error("Managed Plan is unavailable after its event.");
             return after.attrs;
-        }
-        if (isManagedLifecycleDecision(event)) {
-            const before = await readBefore();
-            if (!before?.attrs.planId || (currentStatus && currentStatus !== before.attrs.status))
-                throw new Error("Plan status changed.");
-            await mutateManagedPlan(cwd, {
-                kind: "lifecycle-decision",
-                operationId: crypto.randomUUID(),
-                planId: before.attrs.planId,
-                expectedRevision: expectedRevision || before.revision,
-                decision: { event, details: managedLifecycleDetails(details) },
-            });
-            const after = await readManagedActivePlanById(cwd, before.attrs.planId);
-            if (!after) throw new Error("Lifecycle decision Plan is unavailable.");
-            return after.attrs;
-        }
-        if (
-            event !== "review_approved" &&
-            event !== "review_feedback" &&
-            event !== "hold_reset_to_draft" &&
-            event !== "readiness_passed" &&
-            event !== "epic_readiness_passed"
-        )
-            throw new Error("Managed lifecycle transition requires matched execution evidence.");
-        const before = await readBefore();
-        if (!before?.attrs.planId) throw new Error("Managed Plan is unavailable.");
-        if (currentStatus && currentStatus !== before.attrs.status) throw new Error("Plan status changed.");
-        await mutateManagedPlan(cwd, {
-            kind: "record-event",
-            event,
-            operationId: crypto.randomUUID(),
-            planId: before.attrs.planId,
-            expectedRevision: expectedRevision || before.revision,
         });
-        const after = await readManagedActivePlanById(cwd, before.attrs.planId);
-        if (!after) throw new Error("Managed Plan is unavailable after its event.");
-        return after.attrs;
     }
     const retained = hasRetainedCheckoutSource(cwd);
     if (expectedPlanId && !retained && !packageSelection && !currentPackageSelection())

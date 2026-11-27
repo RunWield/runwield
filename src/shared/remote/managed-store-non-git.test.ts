@@ -7,7 +7,7 @@ import { getHomeDir } from "../../constants.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { captureForegroundProcess } from "@runwield/resources/process";
 import { startRemoteControlService } from "./control.ts";
-import type { ProjectStoreBinding } from "../../plan-store/index.ts";
+import type { ProjectStoreBinding } from "@runwield/plans/project-store-wire";
 
 for (const homeEntry of [false, true]) {
     test(`managed non-Git validation completes through its laptop owner (remote home ${homeEntry})`, async () => {

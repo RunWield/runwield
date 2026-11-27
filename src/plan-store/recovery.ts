@@ -1,3 +1,4 @@
+import { withManagedProjectConnection } from "@runwield/plans/managed-project-connection";
 import { projects } from "@runwield/projects";
 import {
     managedPlanStoreActive,
@@ -184,23 +185,26 @@ export async function retainUserVerifiedPlan(
     expectedRevision: string,
     attemptId?: string,
 ): Promise<void> {
+    if (managedPlanStoreActive()) {
+        return await withManagedProjectConnection(async () => {
+            const { updateEntry } = await import("../shared/worktree-registry.ts");
+            const accepted = await (await import("./queries.ts")).loadPlan(cwd, name);
+            if (!accepted || accepted.attrs.status !== "user_verified" || accepted.revision !== expectedRevision)
+                throw new Error("The accepted Plan changed. Reload it.");
+            if (attemptId) {
+                const attempt = await readRecoveryExecution(cwd, attemptId);
+                if (!attempt || attempt.planName !== name || attempt.planId !== accepted.attrs.planId)
+                    throw new Error("Accepted Plan execution identity changed.");
+                await updateEntry(cwd, attemptId, { status: "abandoned" });
+            }
+            await recoverManagedExecution(cwd, name, "user-verified", expectedRevision, attemptId);
+            return;
+        });
+    }
     const { resolveWorkflowPlanLocation } = await import("./location.ts");
     const { runRecoveryTransition } = await import("./transitions.ts");
     const { updateEntry } = await import("../shared/worktree-registry.ts");
     const root = projects.checkout.primaryRoot(cwd);
-    if (managedPlanStoreActive()) {
-        const accepted = await (await import("./queries.ts")).loadPlan(cwd, name);
-        if (!accepted || accepted.attrs.status !== "user_verified" || accepted.revision !== expectedRevision)
-            throw new Error("The accepted Plan changed. Reload it.");
-        if (attemptId) {
-            const attempt = await readRecoveryExecution(cwd, attemptId);
-            if (!attempt || attempt.planName !== name || attempt.planId !== accepted.attrs.planId)
-                throw new Error("Accepted Plan execution identity changed.");
-            await updateEntry(cwd, attemptId, { status: "abandoned" });
-        }
-        await recoverManagedExecution(cwd, name, "user-verified", expectedRevision, attemptId);
-        return;
-    }
     const location = projects.home.current()
         ? { documentRoot: cwd, plan: await loadPlan(cwd, name) }
         : await resolveWorkflowPlanLocation(cwd, name);
