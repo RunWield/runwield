@@ -10,7 +10,7 @@ import {
 import { type PlanFrontMatter } from "@runwield/plans";
 import { updatePlanFrontMatter } from "../plan-store.ts";
 import { updatePackageWorkflowMetadata } from "./workflows.ts";
-import { hasRetainedCheckoutSource } from "./retained-source.ts";
+import { hasRetainedCheckoutSource } from "@runwield/plans/retained-checkout";
 
 const definitionFields = [
     "classification",

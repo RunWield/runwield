@@ -1,6 +1,6 @@
 import { projects } from "@runwield/projects";
 import { enterProjectRuntime } from "../project-runtime-layout.ts";
-import { withRetainedCheckoutSource } from "../../plan-store/retained-source.ts";
+import { withRetainedCheckoutSource, withoutRetainedCheckoutSource } from "@runwield/plans/retained-checkout";
 import { mkdir, realpath, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { git } from "../git-test-fixture.ts";
@@ -22,7 +22,6 @@ export async function withRetainedPlanReadFixture<T>(root: string, run: () => Pr
     return await withRetainedCheckoutSource(admitted.identity, run);
 }
 
-import { withoutRetainedCheckoutSource } from "../../plan-store/retained-source.ts";
 import { importPlans } from "../../plan-store/index.ts";
 /** Arrange a cutover while preserving the test’s retained execution context. */
 export async function importCanonicalPlanFixture(root: string, source: string) {

@@ -65,6 +65,29 @@ test("only the Plan store can bind a Project's Plan owner", () => {
     equal(inspectPlanStoreImports("src/tools/example.ts", rawManagedBinding).length, 1);
 });
 
+test("only Plan owners and exact qualifications can select the retained checkout", () => {
+    const entry = "@runwield/plans/retained-checkout";
+    for (const source of [
+        `import { withRetainedCheckoutSource } from "${entry}";`,
+        `const retained = await import("${entry}");`,
+        `const retainedUrl = import.meta.resolve("${entry}");`,
+        'export * from "../../packages/plans/retained-checkout.ts";',
+    ]) {
+        equal(inspectPlanStoreImports("src/tools/example.ts", source).length, 1, source);
+        equal(inspectPlanStoreImports("src/tools/example.test.ts", source).length, 1, source);
+    }
+    const specifier = `import.meta.resolve("${entry}");`;
+    equal(inspectPlanStoreImports("src/plan-store/managed.ts", specifier).length, 0);
+    equal(inspectPlanStoreImports("src/shared/project-runtime-read-denial.test.ts", specifier).length, 0);
+    equal(
+        inspectPlanStoreImports(
+            "src/shared/testing/retained-plan-fixture.ts",
+            'import { projectPlanStoreBinding } from "@runwield/plans/project-store-binding";',
+        ).length,
+        1,
+    );
+});
+
 test("the Plans package cannot import application code, including type-only imports", () => {
     const file = "packages/plans/lifecycle.ts";
     const source = 'import type { Project } from "../../src/shared/project-runtime-layout.ts";';

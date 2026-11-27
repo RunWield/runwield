@@ -4,7 +4,7 @@ import { PlanNotFoundError, StalePlanBodyError, StalePlanWriteError } from "../p
 import { currentManagedRetainedExecution } from "./managed.ts";
 import { openPlanStoreForCheckout, planDocumentsForCheckout, readProjectPlanDisplayCatalog } from "./project-plans.ts";
 import { savePlanBodyById } from "./queries.ts";
-import { hasRetainedCheckoutSource } from "./retained-source.ts";
+import { hasRetainedCheckoutSource } from "@runwield/plans/retained-checkout";
 
 interface CheckoutPlanBodyEdit {
     body: string;

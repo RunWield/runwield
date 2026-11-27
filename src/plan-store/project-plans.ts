@@ -1,7 +1,7 @@
 import { projectPlanDocuments } from "./checkout-documents.ts";
 import { projectPlanArtifacts } from "./artifacts.ts";
 
-import { currentRetainedCheckoutSource, hasRetainedCheckoutSource } from "./retained-source.ts";
+import { currentRetainedCheckoutSource, hasRetainedCheckoutSource } from "@runwield/plans/retained-checkout";
 import { plans, type PlanEventDetails, type PlanId } from "@runwield/plans";
 import type {
     ProjectPlanCatalogEntry,

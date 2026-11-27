@@ -38,7 +38,7 @@ import {
 import { SHARED_PLAN_LOCK_REPAIR, SharedPlanLockError } from "../shared/collaboration/lock.ts";
 import { runPlanLifecycleEventTransition, type TransitionResource, type TransitionResult } from "./transitions.ts";
 import { resolveWorkflowPlanLocation } from "./location.ts";
-import { hasRetainedCheckoutSource } from "./retained-source.ts";
+import { hasRetainedCheckoutSource } from "@runwield/plans/retained-checkout";
 import { findCompletionSiblings, prepareCompletionSiblings } from "./index.ts";
 
 export interface RecordPlanEventRequest {

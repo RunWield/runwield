@@ -1,6 +1,6 @@
 import { planFixtureControllerPath } from "./shared/testing/plan-state-fixture.ts";
 import { seedPlanController } from "./shared/testing/plan-state-fixture.ts";
-import { withRetainedCheckoutSource } from "./plan-store/retained-source.ts";
+import { withRetainedCheckoutSource } from "@runwield/plans/retained-checkout";
 import { test } from "node:test";
 import { deepEqual, equal, ok } from "node:assert/strict";
 import fs from "node:fs/promises";

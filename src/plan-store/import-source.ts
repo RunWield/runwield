@@ -1,6 +1,6 @@
 import type { PackageDocuments } from "@runwield/plans/history";
 import { projects, type ProjectIdentity } from "@runwield/projects";
-import { hasRetainedCheckoutSource, withRetainedCheckoutSource } from "./retained-source.ts";
+import { hasRetainedCheckoutSource, withRetainedCheckoutSource } from "@runwield/plans/retained-checkout";
 /** Legacy document inventory and evidence capture. Persistence belongs to plan-package-store. */
 import fs from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";

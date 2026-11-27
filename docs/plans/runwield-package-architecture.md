@@ -226,7 +226,7 @@ The managed runtime uses its configured owner connection. The store checks the b
 | `applyEvent` | Plan ID, named lifecycle event, observed revision, and any required event evidence | The persisted lifecycle result. |
 | `archive`, `restore` | Plan ID and observed revision | An archived or restored Plan with its original ID. |
 
-Plans owns the opener options and the authority checks that validate the Project and personal owner at opening and on subsequent requests. The runtime still opens the configured local or managed store and coordinates retained execution scope, locking, conflict checks, recovery, and writes.
+Plans owns the opener options, the authority checks for the Project and personal owner, and the retained checkout scope for explicit import and original execution. The runtime still opens the configured local or managed store and coordinates locking, conflict checks, recovery, and writes.
 The filesystem driver in Plans captures and verifies the immutable input documents used by workflow attempts.
 The host coordinates milestone capture with the lifecycle event that makes the version visible.
 PostgreSQL remains a future driver. [Store operations](../../src/plan-store/index.ts)

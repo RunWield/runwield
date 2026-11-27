@@ -6,7 +6,7 @@ import { savePlanDefinition, type PlanDefinitionChanges } from "./definition.ts"
 import { recordPlanEvent, type RecordPlanEventRequest } from "./events.ts";
 import { resolveWorkflowPlanLocation } from "./location.ts";
 import { admitPlanStoreForCheckout, openPlanStoreForCheckout, planDocumentsForCheckout } from "./project-plans.ts";
-import { validatedRetainedCheckoutSource } from "./retained-source.ts";
+import { validatedRetainedCheckoutSource } from "@runwield/plans/retained-checkout";
 
 type SubmissionPlan = NonNullable<Awaited<ReturnType<typeof resolveWorkflowPlanLocation>>["plan"]>;
 type DefinitionSnapshot = Pick<SubmissionPlan, "attrs" | "revision">;

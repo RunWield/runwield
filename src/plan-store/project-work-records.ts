@@ -4,7 +4,7 @@ import { requireOwnedWorkRecordFiles } from "../shared/work-records/owner.ts";
 import type { CreateProjectWorkRecord, ProjectWorkRecord } from "@runwield/plans/store";
 import { projects } from "@runwield/projects";
 import { listOwnedWorkRecords } from "./recording.ts";
-import { hasRetainedCheckoutSource } from "./retained-source.ts";
+import { hasRetainedCheckoutSource } from "@runwield/plans/retained-checkout";
 import { capturePackageWorkflowAccess } from "./workflows.ts";
 
 export async function listProjectWorkRecords(cwd: string): Promise<ProjectWorkRecord[]> {

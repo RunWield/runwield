@@ -224,7 +224,7 @@ export async function withManagedPlan<T>(
             throw new Error("Original execution owner changed; no replacement was started.");
         const inspected = projects.checkout.inspect(cwd);
         if (inspected.kind !== "existing") throw new Error("Retained execution Project is unavailable.");
-        const { withRetainedCheckoutSource } = await import("./retained-source.ts");
+        const { withRetainedCheckoutSource } = await import("@runwield/plans/retained-checkout");
         return await selections.run(current, () =>
             retainedExecutions.run(retained, () => withRetainedCheckoutSource(inspected.identity, run)),
         );

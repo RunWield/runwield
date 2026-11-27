@@ -7,6 +7,7 @@
         "./format": "./format.ts",
         "./store": "./store.ts",
         "./project-store-binding": "./project-store-binding.ts",
+        "./retained-checkout": "./retained-checkout.ts",
         "./store-format": "./store-format.ts",
         "./file-snapshots": "./file-snapshots.ts",
         "./history": "./history.ts",

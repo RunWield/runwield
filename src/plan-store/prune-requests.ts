@@ -5,7 +5,7 @@ import { assertManagedRuntimePath } from "../shared/project-runtime-managed.ts";
 import { checkedProjectRuntimeLayout } from "../shared/project-runtime-layout.ts";
 import { openNativeFileLock } from "../shared/native-file-lock.ts";
 import { ensurePrivateDir, writeJsonAtomically } from "../shared/private-json-file.ts";
-import { hasRetainedCheckoutSource } from "./retained-source.ts";
+import { hasRetainedCheckoutSource } from "@runwield/plans/retained-checkout";
 import { confirmRetention, type RetentionKind } from "./retention.ts";
 
 export interface ApprovedPrune {
