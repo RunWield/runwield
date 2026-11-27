@@ -1,4 +1,4 @@
-import { projects } from "@runwield/projects";
+import { projects, type ProjectStoreIdentity } from "@runwield/projects";
 /**
  * Real-store fixture setup for legacy and interrupted states that authoring cannot create.
  * Consumer journeys use these only to arrange evidence; exercise behavior through plan-store/index.ts.
@@ -75,9 +75,8 @@ export async function seedPlanAttemptReference(cwd: string, name: string, attemp
 
 import { inspectControllerView } from "../../plan-store/controllers.ts";
 import { assertPackageWorkflowInput } from "../../plan-store/workflows.ts";
-import { planPackageControllerDirectory } from "@runwield/plans/package-storage";
 import { createHash } from "node:crypto";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { openNativeFileLock } from "../native-file-lock.ts";
 
 /** Open existing canonical locks for real contention tests, outside package reentrancy scopes. */
@@ -85,7 +84,7 @@ export async function openPlanFixturePackageLocks(cwd: string, name: string) {
     const paths = await withLocalPlanWorkflow(cwd, name, async () => {
         const identity = currentPackageProject()!;
         const plan = await selectedPackage(name);
-        const directory = join(dirname(planPackageControllerDirectory(identity)), "locks");
+        const directory = join(planFixturePackageRuntimeDirectory(identity), "locks");
         const key = createHash("sha256").update(plan.metadata.planId).digest("hex");
         return { plan: join(directory, `${key}.lock`), catalog: join(directory, "catalog.lock") };
     });
@@ -104,6 +103,10 @@ export async function assertPlanFixtureInput(...args: Parameters<typeof assertPa
     return await assertPackageWorkflowInput(...args);
 }
 /** Locate evidence for deliberate corruption and filesystem-observation qualification. */
-export function planFixtureEvidenceDirectory(...args: Parameters<typeof planPackageControllerDirectory>) {
-    return planPackageControllerDirectory(...args);
+export function planFixtureEvidenceDirectory(identity: ProjectStoreIdentity) {
+    return join(planFixturePackageRuntimeDirectory(identity), "controller-evidence");
+}
+
+function planFixturePackageRuntimeDirectory(identity: ProjectStoreIdentity): string {
+    return join(identity.executionAccountHome, ".wld", "projects", identity.projectId, "internal", "plan-packages");
 }

@@ -25,11 +25,13 @@ import { isAbsolute, join, relative } from "node:path";
 import {
     assertContainedPath,
     openNativeFileLock,
+    recoverWindowsRename,
     syncParentDirectory,
     writeJsonAtomically,
     writeTextAtomically,
     type NativeFileLock,
 } from "@runwield/resources/fs";
+import { syncDirectory } from "@runwield/resources/runtime-recovery-files";
 import { plans, type PlanId, type PlanFrontMatter } from "./index.ts";
 import {
     ensurePackageDirectory,
@@ -60,7 +62,12 @@ import {
     isEpicArtifactName,
 } from "./format.ts";
 import { StalePlanWriteError } from "./store-errors.ts";
-import { CONTROLLER_STATE_FIELDS, type ControllerRecord, type WorkflowControllerState } from "./controller-state.ts";
+import {
+    CONTROLLER_STATE_FIELDS,
+    isValidationCheckpoint,
+    type ControllerRecord,
+    type WorkflowControllerState,
+} from "./controller-state.ts";
 import { isPlanMilestone, isPlanMilestoneVersion, type PackageDocuments, type PlanMilestone } from "./history.ts";
 import { planHistoryFiles } from "./history-files.ts";
 
@@ -1216,20 +1223,73 @@ export async function withPlanPackageCatalogRead<T>(identity: ProjectIdentity, a
     }
 }
 
-export function planPackageControllerDirectory(identity: ProjectIdentity): string {
-    return join(layout(identity).internal, "controller-evidence");
-}
-
-/** Validate every ancestor before the controller owner reads or creates evidence. */
-export async function checkedPlanPackageControllerDirectory(
-    identity: ProjectIdentity,
-    create = false,
-): Promise<string> {
-    const path = planPackageControllerDirectory(identity);
+async function checkedPlanPackageControllerDirectory(identity: ProjectIdentity, create = false): Promise<string> {
+    const path = join(layout(identity).internal, "controller-evidence");
     await safe(identity.executionAccountHome, path);
     if (create) await fs.mkdir(path, { recursive: true, mode: 0o700 });
     await safe(identity.executionAccountHome, path);
     return path;
+}
+
+/** Immutable complex controller evidence; package metadata is the sole live pointer. */
+export async function writePackageControllerEvidence(
+    identity: ProjectIdentity,
+    planId: string,
+    state: WorkflowControllerState,
+): Promise<PackageControllerReference> {
+    const revisionId = randomUUID();
+    const directory = await checkedPlanPackageControllerDirectory(identity, true);
+    const record: ControllerRecord = {
+        version: 1,
+        revision: 1,
+        planId,
+        planName: planId,
+        state,
+    };
+    const path = join(directory, `${revisionId}.json`);
+    const temporary = `${path}.${randomUUID()}.tmp`;
+    const data = new TextEncoder().encode(`${JSON.stringify(record, null, 2)}\n`);
+    try {
+        const file = await fs.open(temporary, "wx");
+        try {
+            await file.writeFile(data);
+            await file.sync();
+        } finally {
+            await file.close();
+        }
+        try {
+            await fs.rename(temporary, path);
+        } catch (error) {
+            if (!(error instanceof Error && recoverWindowsRename(error, temporary, path))) throw error;
+        }
+        await syncDirectory(directory);
+    } finally {
+        await fs.rm(temporary).catch((error) => {
+            if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+        });
+    }
+    return { revisionId, planId };
+}
+
+export async function readPackageControllerEvidence(
+    identity: ProjectIdentity,
+    reference: PackageControllerReference,
+): Promise<WorkflowControllerState> {
+    if (!/^[0-9a-f-]{36}$/.test(reference.revisionId)) throw new Error("Invalid package controller reference.");
+    const directory = await checkedPlanPackageControllerDirectory(identity);
+    const path = join(directory, `${reference.revisionId}.json`);
+    const info = await fs.lstat(path);
+    if (!info.isFile() || info.isSymbolicLink()) throw new Error("Package controller evidence is not a regular file.");
+    const record: ControllerRecord = JSON.parse(await fs.readFile(path, "utf8"));
+    if (record.version !== 1 || record.planId !== reference.planId || record.revision !== 1 || !record.state)
+        throw new Error("Package controller evidence does not match its reference.");
+    if (
+        Object.keys(record.state).some((key) => !CONTROLLER_STATE_FIELDS.includes(key as keyof WorkflowControllerState))
+    )
+        throw new Error("Unsupported package controller evidence.");
+    if (record.state.validationCheckpoint && !isValidationCheckpoint(record.state.validationCheckpoint))
+        throw new Error("Invalid package validation checkpoint.");
+    return record.state;
 }
 
 /** Personal lifecycle journals share the package owner's layout, never the invoking checkout. */

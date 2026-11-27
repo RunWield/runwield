@@ -24,12 +24,12 @@ import {
     packageWorkflowRevision,
     commitPlanPackageBatch,
     listPlanPackages,
+    writePackageControllerEvidence,
     type PlanPackageBatchWrite,
 } from "@runwield/plans/package-storage";
 import { currentPackageProject, packageController } from "./workflows.ts";
 import { buildPlanEventUpdates } from "@runwield/plans/lifecycle";
 import { pickControllerState } from "@runwield/plans/controller-state";
-import { writePackageControllerEvidence } from "./controllers.ts";
 
 /** Allocate the whole family before resolving relations, then publish one recoverable generation. */
 export async function authorPackageChildren(
