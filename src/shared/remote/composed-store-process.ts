@@ -1,4 +1,5 @@
 import { openWorkflow } from "@runwield/workflow";
+import type { ReviseProjectPlan } from "@runwield/plans/store";
 import { deepEqual, equal, ok, rejects } from "node:assert/strict";
 import { mkdir, stat, writeFile, readFile, mkdtemp, rename, symlink, unlink, link, readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -10,6 +11,11 @@ const [command, json] = process.argv.slice(2);
 type ComposedRemoteInput = Pick<RemoteInteractiveConfig, "cwd" | "resources" | "connection"> & { attemptId?: string };
 const input: ComposedRemoteInput = JSON.parse(json);
 const managed = command.startsWith("managed");
+
+interface ManagedAuthoringRevision extends ReviseProjectPlan {
+    planId: string;
+    planName?: string;
+}
 
 type ManagedSourceInterruption = "before-checkpoint" | "after-truncate" | "retry-sync";
 
@@ -679,14 +685,44 @@ try {
         readPublishedDeliverySources,
     } = await import("../../plan-store/index.ts");
     const { listPlans, loadPlan } = await import("../testing/plan-query-fixture.ts");
-    if (command === "managed-author" || command === "managed-author-rename") {
-        const { authorLocalPlan, renamePlan } = await import("../../plan-store/index.ts");
-        if (command === "managed-author")
-            await authorLocalPlan(input.cwd, { planName: "repeatable", contextMarkdown: "# New Plan\n" });
-        const plan = await loadPlan(input.cwd, "repeatable");
-        ok(plan?.attrs.planId);
-        if (command === "managed-author-rename") await renamePlan(input.cwd, "repeatable", "renamed", plan.revision);
-        console.log(plan.attrs.planId);
+    if (command.startsWith("managed-author")) {
+        const { openPlanStoreForCheckout, renamePlan, withPlanSubmission } = await import("../../plan-store/index.ts");
+        if (command === "managed-author") {
+            const planId = await withPlanSubmission(
+                input.cwd,
+                "repeatable",
+                { prepareAuthor: () => ({ contextMarkdown: "# New Plan\n" }) },
+                (document) => Promise.resolve(document.planId),
+            );
+            ok(planId);
+            console.log(planId);
+        } else if (command === "managed-author-revise" || command === "managed-author-by-reference") {
+            const { plans } = await import("@runwield/plans");
+            const store = openPlanStoreForCheckout(input.cwd);
+            ok(store);
+            ok(input.attemptId);
+            const revision: ManagedAuthoringRevision = JSON.parse(input.attemptId);
+            const { planId: reference, planName, ...changes } = revision;
+            const planId = plans.identity.parse(reference);
+            ok(planId);
+            if (command === "managed-author-by-reference") {
+                ok(planName);
+                console.log(JSON.stringify(await store.author({ ...changes, planName }, planId)));
+            } else {
+                console.log(JSON.stringify(await store.revise(planId, changes)));
+            }
+        } else if (command === "managed-author-legacy-directory") {
+            const { enterProjectRuntime } = await import("../project-runtime-layout.ts");
+            const runtime = await enterProjectRuntime(input.cwd);
+            const directory = join(runtime.selected.transitionJournalsDir, "managed-operations");
+            await mkdir(directory, { recursive: true, mode: 0o700 });
+            console.log(directory);
+        } else if (command === "managed-author-rename") {
+            const plan = await loadPlan(input.cwd, "repeatable");
+            ok(plan?.attrs.planId);
+            await renamePlan(input.cwd, "repeatable", "renamed", plan.revision);
+            console.log(plan.attrs.planId);
+        }
     } else if (command.startsWith("managed-artifact-")) {
         const { plans } = await import("@runwield/plans");
         const { authorLocalPlan, openPlanStoreForCheckout, reservePlanExecution, saveChildFeaturePlans } =

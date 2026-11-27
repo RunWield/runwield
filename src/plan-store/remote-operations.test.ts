@@ -8,8 +8,13 @@ import { test } from "node:test";
 import { equal, deepEqual, rejects } from "node:assert/strict";
 import { randomUUID, createHash } from "node:crypto";
 import { dirname, join } from "node:path";
-import { readFile, writeFile, unlink, mkdtemp, rm, rename, symlink, stat, utimes } from "node:fs/promises";
-import { PreparedProjectStore, authorLocalPlan, savePlanProse } from "./index.ts";
+import { readFile, writeFile, unlink, mkdir, mkdtemp, rm, rename, symlink, stat, utimes } from "node:fs/promises";
+import { PreparedProjectStore, authorLocalPlan, savePlanProse, type ProjectStoreReply } from "./index.ts";
+import type { ProjectStoreBinding } from "@runwield/plans/project-store-wire";
+import { PlanNotFoundError, type ProjectPlanDocument } from "@runwield/plans/store";
+import type { ProjectStoreRequest } from "../shared/remote/project-store-protocol.ts";
+import { ProjectStoreClient } from "../shared/remote/project-store-client.ts";
+import type { composedRemoteFixture } from "../shared/remote/composed-store-fixture.ts";
 import { loadPlan } from "../shared/testing/plan-query-fixture.ts";
 import { packageFixture, startDriver } from "../shared/testing/plan-package-fixture.ts";
 
@@ -527,7 +532,6 @@ test("home-only collaboration uses owner credentials without returning them", as
 });
 
 import { startRemoteControlService } from "../shared/remote/control.ts";
-import { ProjectStoreClient } from "../shared/remote/project-store-client.ts";
 async function connectOwner(owner: HomeProjectOwner) {
     const build = { buildId: "a".repeat(64), protocol: 1 };
     const control = startRemoteControlService(build);
@@ -805,59 +809,454 @@ test("managed milestone replay returns the first committed revision after later 
 /** Hold the actual owner response after its operation commits and before execution receives it. */
 function observeOwnerResponse(
     endpoint: string,
-    observe: (kind: string, response: Response, operationId?: string) => Response | Promise<Response>,
+    observe: (
+        kind: string,
+        response: Response,
+        operationId: string | undefined,
+        payload: ProjectStoreRequest,
+        body: string,
+    ) => Response | Promise<Response>,
 ) {
     return Bun.serve({
         port: 0,
         hostname: "127.0.0.1",
         async fetch(request) {
             const path = new URL(request.url).pathname;
-            const command = path === "/project-store" ? (await request.clone().json()).command : null;
+            const body = path === "/project-store" ? await request.clone().text() : undefined;
             const upstream = await fetch(new Request(new URL(path, endpoint), request));
-            return command ? await observe(command.kind, upstream, command.operationId) : upstream;
+            if (body === undefined) return upstream;
+            const payload: ProjectStoreRequest = JSON.parse(body);
+            const { command } = payload;
+            return await observe(
+                command.kind,
+                upstream,
+                "operationId" in command ? command.operationId : undefined,
+                payload,
+                body,
+            );
         },
     });
 }
 
-test("managed authorship retries a lost result and can reuse the name after rename", async () => {
+interface HistoricalAuthoringInput {
+    contextMarkdown: string;
+    expectedRevision?: string;
+    planName: string;
+}
+
+interface HistoricalAuthoringRequest {
+    kind: "author-plan" | "create-plan";
+    input: HistoricalAuthoringInput;
+    operationId?: string;
+    planId?: string;
+}
+
+interface LegacyAuthoringFixture extends HistoricalAuthoringRequest {
+    kind: "author-plan";
+    operationId: string;
+    planId: string;
+}
+
+/** Serialize the authoring fixture fields in the alphabetic order used before the upgrade. */
+function historicalAuthoringDigest(
+    { ownerId, projectId, repositoryId }: ProjectStoreBinding,
+    { input: { contextMarkdown, expectedRevision, planName }, kind, operationId, planId }: HistoricalAuthoringRequest,
+): string {
+    return hash(
+        JSON.stringify({
+            binding: { ownerId, projectId, repositoryId },
+            command: { input: { contextMarkdown, expectedRevision, planName }, kind, operationId, planId },
+        }),
+    );
+}
+
+function completedAuthoring({ result }: ProjectStoreReply) {
+    ok("status" in result && result.status === "completed" && result.planId && result.revision);
+    return { planId: result.planId, revision: result.revision };
+}
+
+test("owner creation restores a missing guard for an unstarted receipt with the original Plan ID", async () => {
+    const fixture = await packageFixture();
+    try {
+        const owner = new PreparedProjectStore(fixture.root);
+        const command = {
+            kind: "create-plan" as const,
+            operationId: randomUUID(),
+            input: { planName: "interrupted", contextMarkdown: "# Original Plan\n" },
+        };
+        const planId = randomUUID();
+        const digest = historicalAuthoringDigest(owner.binding, command);
+        const directory = join(
+            fixture.identity.executionAccountHome,
+            ".wld",
+            "projects",
+            fixture.identity.projectId,
+            "internal",
+            "plan-packages",
+        );
+        const receiptPath = join(directory, "operations", `${command.operationId}.json`);
+        const guardPath = join(directory, "operation-identities", `${command.operationId}.json`);
+        const interrupted = JSON.stringify({
+            version: 1,
+            operationId: command.operationId,
+            digest,
+            planId,
+            outcome: { operationId: command.operationId, status: "unstarted" },
+        });
+        await mkdir(dirname(receiptPath), { recursive: true, mode: 0o700 });
+        await writeFile(receiptPath, interrupted);
+        await rejects(
+            owner.execute({ ...command, input: { ...command.input, contextMarkdown: "# Changed request\n" } }),
+            /different request/,
+        );
+        equal(await readFile(receiptPath, "utf8"), interrupted);
+        await rejects(readFile(guardPath, "utf8"), { code: "ENOENT" });
+
+        const completed = await new PreparedProjectStore(fixture.root).execute(command);
+        equal(completedAuthoring(completed).planId, planId);
+        equal((await loadPlan(fixture.root, "interrupted"))?.attrs.planId, planId);
+        const guard = await readFile(guardPath, "utf8");
+        deepEqual(JSON.parse(guard), { digest });
+        await unlink(guardPath);
+        await rejects(owner.execute(command), /reservation evidence is unavailable/);
+        await writeFile(guardPath, guard);
+
+        const receipt = await readFile(receiptPath, "utf8");
+        await unlink(receiptPath);
+        await rejects(owner.execute(command), /operation evidence is unavailable/);
+        await writeFile(receiptPath, receipt);
+        deepEqual(await owner.execute(command), completed);
+        equal((await loadPlan(fixture.root, "interrupted"))?.body, command.input.contextMarkdown);
+    } finally {
+        await fixture.cleanup();
+    }
+});
+
+async function connectAuthoringOwner(fixture: Awaited<ReturnType<typeof composedRemoteFixture>>) {
+    const admission = await fetch(fixture.endpoint + "/project-store/admit", {
+        method: "POST",
+        headers: fixture.headers,
+    });
+    equal(admission.status, 200);
+    const binding: ProjectStoreBinding = await admission.json();
+    const client = new ProjectStoreClient(
+        authenticatedProjectStoreRequest(fixture.endpoint, fixture.input.connection.credential),
+        binding,
+    );
+    const send = <Command>(command: Command) =>
+        fetch(fixture.endpoint + "/project-store", {
+            method: "POST",
+            headers: { ...fixture.headers, "Content-Type": "application/json" },
+            body: JSON.stringify({ binding, command }),
+        });
+    return { binding, client, send };
+}
+
+test("managed Plan creation reuses its owner receipt when either the write reply or subsequent read is lost", async () => {
     const { withProcessGlobalTestLock } = await import("../testing/process-global-lock.ts");
     const { composedRemoteFixture } = await import("../shared/remote/composed-store-fixture.ts");
     await withProcessGlobalTestLock(async () => {
         const f = await composedRemoteFixture();
-        let lost = false;
-        const requests: string[] = [];
-        const proxy = observeOwnerResponse(f.endpoint, (kind, response, operationId) => {
-            if (kind === "author-plan" && operationId) requests.push(operationId);
-            if (kind === "author-plan" && response.ok && !lost) {
-                lost = true;
+        const requests: ProjectStoreRequest[] = [];
+        let lost: ProjectStoreReply | undefined;
+        let lostResourcePlanId: string | undefined;
+        const proxy = observeOwnerResponse(f.endpoint, async (kind, response, _operationId, payload) => {
+            if (kind === "create-plan" || kind === "author-plan") requests.push(payload);
+            if (kind === "create-plan" && response.ok && !lost) {
+                lost = await response.json();
                 return new Response("lost", { status: 503 });
+            }
+            if (payload.command.kind === "plan-resource" && response.ok && lost && !lostResourcePlanId) {
+                lostResourcePlanId = payload.command.planId;
+                return new Response("lost Plan resource", { status: 503 });
             }
             return response;
         });
         try {
             const first = await f.runRaw("managed-author", proxy.port);
-            equal(first.code === 0, false);
-            equal(lost, true);
+            equal(first.code, 1, new TextDecoder().decode(first.stderr));
+            ok(lost);
+            const [request] = requests;
+            const { command } = request;
+            ok(command.kind === "create-plan");
+            deepEqual(command, {
+                kind: "create-plan",
+                operationId: command.operationId,
+                input: { planName: "repeatable", contextMarkdown: "# New Plan\n" },
+            });
+            const created = completedAuthoring(lost);
+            ok(created.planId !== command.operationId);
+            const { client, send } = await connectAuthoringOwner(f);
+            const duplicates = await Promise.all([client.execute(command), client.execute(command)]);
+            deepEqual(duplicates, [lost, lost]);
+            equal((await send({ ...command, planId: randomUUID() })).status, 400);
+            equal((await send({ ...command, input: { ...command.input, planId: randomUUID() } })).status, 400);
+            equal((await send({ ...command, input: { ...command.input, contextMarkdown: "Changed" } })).status, 409);
+            const readFailed = await f.runRaw("managed-author", proxy.port);
+            equal(readFailed.code, 1, new TextDecoder().decode(readFailed.stderr));
+            equal(lostResourcePlanId, created.planId);
             const original = await f.run("managed-author", proxy.port);
+            equal(original, created.planId);
+            deepEqual(requests.slice(0, 3), [request, request, request]);
             const duplicate = await f.runRaw("managed-author", proxy.port);
             ok(duplicate.code !== 0);
             ok(new TextDecoder().decode(duplicate.stderr).includes("Plan already exists."));
             equal(await f.run("managed-author-rename"), original);
             const next = await f.run("managed-author", proxy.port);
             ok(original !== next);
-            equal(requests.length, 4);
-            equal(requests[0], requests[1]);
-            equal(new Set(requests).size, 3);
-            const admitted = await fetch(f.endpoint + "/project-store/admit", { method: "POST", headers: f.headers });
-            const binding = await admitted.json();
-            const owner = projects.home.inspect(binding.projectId, binding.repositoryId);
-            ok(owner);
-            await projects.home.withOwner(owner, async () => {
-                const { loadPlan } = await import("../shared/testing/plan-query-fixture.ts");
-                const cwd = projects.home.storeLocation(owner);
-                equal((await loadPlan(cwd, "renamed"))?.attrs.planId, original);
-                equal((await loadPlan(cwd, "repeatable"))?.attrs.planId, next);
+            equal(requests.length, 5);
+            equal(new Set(requests.map(({ command }) => "operationId" in command && command.operationId)).size, 3);
+            deepEqual(await client.execute(command), lost);
+            const { result } = await client.execute({ kind: "list-plans" });
+            ok("plans" in result);
+            deepEqual(result.plans.map((plan) => [plan.name, plan.attrs.planId]).sort(), [
+                ["renamed", original],
+                ["repeatable", next],
+            ]);
+        } finally {
+            proxy.stop(true);
+            await f.cleanup();
+        }
+    });
+});
+
+test("managed Plan revision requires an exact ID and revision and replays after an independent edit", async () => {
+    const { withProcessGlobalTestLock } = await import("../testing/process-global-lock.ts");
+    const { composedRemoteFixture } = await import("../shared/remote/composed-store-fixture.ts");
+    await withProcessGlobalTestLock(async () => {
+        const f = await composedRemoteFixture();
+        const requests: ProjectStoreRequest[] = [];
+        let lost: ProjectStoreReply | undefined;
+        const proxy = observeOwnerResponse(f.endpoint, async (kind, response, _operationId, payload) => {
+            if (kind === "revise-plan" || kind === "author-plan") requests.push(payload);
+            if (kind === "revise-plan" && response.ok && !lost) {
+                lost = await response.json();
+                return new Response(null, { status: 503 });
+            }
+            return response;
+        });
+        try {
+            const planId = await f.run("managed-author");
+            const { client, send } = await connectAuthoringOwner(f);
+            const read = async () => {
+                const { result } = await client.execute({ kind: "read", planId, resource: "context.md" });
+                ok("body" in result && result.revision);
+                return { body: result.body, revision: result.revision };
+            };
+            const before = await read();
+            const contextMarkdown = "# Revised\n";
+            const changes = { planId, expectedRevision: before.revision, contextMarkdown };
+            const first = await f.runRaw("managed-author-revise", proxy.port, JSON.stringify(changes));
+            equal(first.code, 1, new TextDecoder().decode(first.stderr));
+            ok(lost);
+            const [request] = requests;
+            const { command } = request;
+            ok(command.kind === "revise-plan");
+            deepEqual(command, {
+                kind: "revise-plan",
+                operationId: command.operationId,
+                planId,
+                expectedRevision: before.revision,
+                input: { contextMarkdown },
             });
+            const revised = completedAuthoring(lost);
+            equal(revised.planId, planId);
+            deepEqual(await read(), { body: contextMarkdown, revision: revised.revision });
+
+            const { expectedRevision: _revision, ...withoutRevision } = command;
+            const { planId: _planId, ...withoutPlanId } = command;
+            equal((await send(withoutRevision)).status, 400);
+            equal((await send(withoutPlanId)).status, 400);
+            equal((await send({ ...command, input: { ...command.input, planName: "repeatable" } })).status, 400);
+            // "repeatable" is syntactically valid as a legacy Plan ID, but only names this Plan.
+            equal(
+                (
+                    await send({
+                        ...command,
+                        operationId: randomUUID(),
+                        planId: "repeatable",
+                        expectedRevision: revised.revision,
+                    })
+                ).status,
+                404,
+            );
+            equal((await send({ ...command, operationId: randomUUID() })).status, 412);
+            equal((await send({ ...command, input: { contextMarkdown: "# Different\n" } })).status, 409);
+
+            const laterBody = "# Independent edit\n";
+            const later = completedAuthoring(
+                await client.execute({
+                    kind: "revise-plan",
+                    operationId: randomUUID(),
+                    planId,
+                    expectedRevision: revised.revision,
+                    input: { contextMarkdown: laterBody },
+                }),
+            );
+            const retry: ProjectPlanDocument = JSON.parse(
+                await f.run("managed-author-revise", proxy.port, JSON.stringify(changes)),
+            );
+            equal(retry.planId, planId);
+            deepEqual(requests, [request, request]);
+            deepEqual(await Promise.all([client.execute(command), client.execute(command)]), [lost, lost]);
+            deepEqual(await read(), { body: laterBody, revision: later.revision });
+            const wrongName = await f.runRaw(
+                "managed-author-by-reference",
+                proxy.port,
+                JSON.stringify({ ...changes, planName: "another-name", expectedRevision: later.revision }),
+            );
+            equal(wrongName.code, 1);
+            ok(new TextDecoder().decode(wrongName.stderr).includes("The bound Plan identity changed."));
+            deepEqual(requests, [request, request]);
+            const stale = await f.runRaw(
+                "managed-author-revise",
+                proxy.port,
+                JSON.stringify({ ...changes, contextMarkdown: "# Competing change\n" }),
+            );
+            equal(stale.code, 1);
+            ok(/revision|stale/i.test(new TextDecoder().decode(stale.stderr)));
+            deepEqual(await read(), { body: laterBody, revision: later.revision });
+
+            const archived = await client.execute({
+                kind: "archive-plan",
+                operationId: randomUUID(),
+                planId,
+                expectedRevision: later.revision,
+                reason: "Test retained receipts",
+                force: true,
+                now: "",
+            });
+            ok("status" in archived.result && archived.result.status === "completed");
+            const fresh = {
+                ...command,
+                operationId: randomUUID(),
+                expectedRevision: later.revision,
+                input: { contextMarkdown: "# Must stay archived\n" },
+            };
+            equal((await send(fresh)).status, 404);
+            await rejects(client.execute(fresh), PlanNotFoundError);
+            const archivedRevision = await f.runRaw(
+                "managed-author-revise",
+                proxy.port,
+                JSON.stringify({
+                    planId,
+                    expectedRevision: fresh.expectedRevision,
+                    contextMarkdown: fresh.input.contextMarkdown,
+                }),
+            );
+            equal(archivedRevision.code, 1);
+            ok(new TextDecoder().decode(archivedRevision.stderr).includes("PlanNotFoundError"));
+            deepEqual(await client.execute(command), lost);
+        } finally {
+            proxy.stop(true);
+            await f.cleanup();
+        }
+    });
+});
+
+test("managed authoring delivers unsent legacy create and revise journals and replays their original receipts", async () => {
+    const { withProcessGlobalTestLock } = await import("../testing/process-global-lock.ts");
+    const { composedRemoteFixture } = await import("../shared/remote/composed-store-fixture.ts");
+    await withProcessGlobalTestLock(async () => {
+        const f = await composedRemoteFixture();
+        const deliveries: { body: string; reply: ProjectStoreReply }[] = [];
+        const dropped = new Set<string>();
+        const proxy = observeOwnerResponse(f.endpoint, async (kind, response, operationId, _payload, body) => {
+            if (kind === "author-plan" && response.ok && operationId) {
+                const reply: ProjectStoreReply = await response.clone().json();
+                deliveries.push({ body, reply });
+                if (!dropped.has(operationId)) {
+                    dropped.add(operationId);
+                    return new Response("lost legacy reply", { status: 503 });
+                }
+            }
+            return response;
+        });
+        try {
+            const { client, binding } = await connectAuthoringOwner(f);
+            const journalDirectory = await f.run("managed-author-legacy-directory");
+            await writeFile(join(journalDirectory, `managed-operation-${hash("unrelated")}.json`), "broken JSON");
+            const owner = projects.home.inspect(binding.projectId, binding.repositoryId);
+            const ownerDirectory = join(
+                owner.executionAccountHome,
+                ".wld",
+                "projects",
+                owner.projectId,
+                "internal",
+                "plan-packages",
+            );
+            // The pre-upgrade client prepared a local journal before sending the request.
+            const retain = async (command: LegacyAuthoringFixture) => {
+                const { kind, operationId, planId, input } = command;
+                const intent = input.expectedRevision === undefined ? { kind, input } : { kind, planId, input };
+                const key = historicalAuthoringDigest(binding, intent);
+                const body = JSON.stringify({ binding, command });
+                const journalPath = join(journalDirectory, `managed-operation-${key}.json`);
+                await writeFile(journalPath, body);
+                const identityPath = join(ownerDirectory, "operation-identities", `${operationId}.json`);
+                const digest = historicalAuthoringDigest(binding, command);
+                const receiptPath = join(ownerDirectory, "operations", `${operationId}.json`);
+                await rejects(readFile(identityPath, "utf8"), { code: "ENOENT" });
+                await rejects(readFile(receiptPath, "utf8"), { code: "ENOENT" });
+                return async () => {
+                    equal(deliveries.length, 1);
+                    const [delivery] = deliveries.splice(0);
+                    equal(delivery.body, body);
+                    const receipt = await readFile(receiptPath, "utf8");
+                    deepEqual(JSON.parse(receipt), {
+                        version: 1,
+                        operationId,
+                        digest,
+                        planId,
+                        outcome: delivery.reply.result,
+                    });
+                    deepEqual(JSON.parse(await readFile(identityPath, "utf8")), { digest });
+                    return { receipt, ...completedAuthoring(delivery.reply) };
+                };
+            };
+
+            const planId = randomUUID();
+            const verifyCreationDelivery = await retain({
+                kind: "author-plan",
+                operationId: randomUUID(),
+                planId,
+                input: { planName: "repeatable", contextMarkdown: "# New Plan\n" },
+            });
+            equal((await f.runRaw("managed-author", proxy.port)).code, 1);
+            const created = await verifyCreationDelivery();
+            equal(created.planId, planId);
+            equal(await f.run("managed-author", proxy.port), planId);
+            deepEqual(await verifyCreationDelivery(), created);
+
+            const expectedRevision = created.revision;
+            const contextMarkdown = "# From the older client\n";
+            const verifyRevisionDelivery = await retain({
+                kind: "author-plan",
+                operationId: randomUUID(),
+                planId,
+                input: { contextMarkdown, expectedRevision, planName: "repeatable" },
+            });
+            const changes = JSON.stringify({ planId, contextMarkdown, expectedRevision });
+            equal((await f.runRaw("managed-author-revise", proxy.port, changes)).code, 1);
+            const revised = await verifyRevisionDelivery();
+            equal(revised.planId, planId);
+            const laterBody = "# Independent edit after the upgrade\n";
+            const later = completedAuthoring(
+                await client.execute({
+                    kind: "revise-plan",
+                    operationId: randomUUID(),
+                    planId,
+                    expectedRevision: revised.revision,
+                    input: { contextMarkdown: laterBody },
+                }),
+            );
+            const retry: ProjectPlanDocument = JSON.parse(await f.run("managed-author-revise", proxy.port, changes));
+            equal(retry.planId, planId);
+            deepEqual(await verifyRevisionDelivery(), revised);
+            const { result } = await client.execute({ kind: "read", planId, resource: "context.md" });
+            ok("body" in result);
+            equal(result.body, laterBody);
+            equal(result.revision, later.revision);
         } finally {
             proxy.stop(true);
             await f.cleanup();

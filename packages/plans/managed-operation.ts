@@ -1,5 +1,5 @@
 import { renameSync } from "node:fs";
-import { readFile, stat } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { projects, ProjectIdentityEntryRequired, type ProjectIdentity } from "@runwield/projects";
 import { enter } from "@runwield/project-runtime";
@@ -10,9 +10,10 @@ import {
     ProjectStorePreconditionError,
     sameProjectStoreBinding,
     validateProjectStoreBinding,
+    type LegacyManagedPlanAuthoring,
     type ProjectStoreBinding,
 } from "./project-store-wire.ts";
-import type { CreateProjectWorkRecord, PackageWorkflowInput } from "./store.ts";
+import type { CreateProjectPlan, CreateProjectWorkRecord, PackageWorkflowInput, ReviseProjectPlan } from "./store.ts";
 import { operationDigest } from "./operation-receipts.ts";
 
 /** The server admits the launch target. The local journal may use another checkout of that repository. */
@@ -54,7 +55,12 @@ export type EpicArtifactRevisionSource = "explicit" | "observed";
 interface ManagedMutation {
     kind: string;
     operationId: string;
-    input?: { expectedRevision?: string } | CreateProjectWorkRecord | PackageWorkflowInput;
+    input?:
+        | CreateProjectPlan
+        | ReviseProjectPlan
+        | Omit<ReviseProjectPlan, "expectedRevision">
+        | CreateProjectWorkRecord
+        | PackageWorkflowInput;
     expectedRevision?: string;
     planId?: string;
     version?: string;
@@ -78,10 +84,17 @@ interface RetainedMutation<Command extends ManagedMutation> {
     artifactRevisionSource: EpicArtifactRevisionSource;
 }
 
+type ManagedCommandReplay<Command extends ManagedMutation> = Command | LegacyManagedPlanAuthoring;
+
 async function readRetainedManagedCommand<Command extends ManagedMutation>(
     path: string,
 ): Promise<RetainedManagedCommand<Command>> {
     const retained: RetainedManagedCommand<Command> = JSON.parse(await readFile(path, "utf8"));
+    validateRetainedManagedCommand(retained);
+    return retained;
+}
+
+function validateRetainedManagedCommand(retained: RetainedManagedCommand<ManagedMutation>): void {
     if (!retained || typeof retained !== "object" || Array.isArray(retained))
         throw new Error("Invalid managed operation journal.");
     const fields = Object.keys(retained).sort().join(",");
@@ -94,11 +107,16 @@ async function readRetainedManagedCommand<Command extends ManagedMutation>(
     )
         throw new Error("Invalid managed operation journal.");
     validateProjectStoreBinding(retained.binding);
-    return retained;
 }
 
 function authoringRevision(command: ManagedMutation): string | undefined {
     return command.input && "expectedRevision" in command.input ? command.input.expectedRevision : undefined;
+}
+
+function isManagedPlanCreation(command: ManagedMutation): boolean {
+    return (
+        command.kind === "create-plan" || (command.kind === "author-plan" && authoringRevision(command) === undefined)
+    );
 }
 
 function managedOperationKey(
@@ -113,8 +131,8 @@ function managedOperationKey(
             return command;
         if (command.kind === "restore-history")
             return { kind: command.kind, planId: command.planId, version: command.version };
-        if (command.kind === "author-plan" && !authoringRevision(command))
-            return { kind: command.kind, input: command.input };
+        // Use the previous creation key and lock so an upgrade keeps any pending request's exact IDs.
+        if (isManagedPlanCreation(command)) return { kind: "author-plan", input: command.input };
         if (command.kind === "append-epic-qa")
             return {
                 kind: command.kind,
@@ -134,17 +152,73 @@ function managedOperationKey(
     return operationDigest(JSON.stringify({ binding, command: stableIntent }));
 }
 
+function legacyRevisionKey(binding: ProjectStoreBinding, command: ManagedMutation): string | undefined {
+    if (
+        command.kind !== "author-plan" ||
+        !command.input ||
+        typeof command.input !== "object" ||
+        !("expectedRevision" in command.input)
+    )
+        return undefined;
+    const { expectedRevision, ...input } = command.input;
+    if (!expectedRevision || !("planName" in input)) return undefined;
+    const { planName: _name, ...content } = input;
+    return managedOperationKey(
+        binding,
+        {
+            kind: "revise-plan",
+            operationId: command.operationId,
+            planId: command.planId,
+            expectedRevision,
+            input: content,
+        },
+        "explicit",
+    );
+}
+
+// The old revision key included the Plan's name. Search only this checkout's journal for the exact durable request.
+async function findLegacyRevisionJournal(directory: string, binding: ProjectStoreBinding, key: string) {
+    let match: string | undefined;
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+        if (!entry.isFile() || !/^managed-operation-[a-f0-9]{64}\.json$/.test(entry.name)) continue;
+        const path = join(directory, entry.name);
+        const contents = await readFile(path, "utf8").catch((error) => {
+            if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+            return undefined;
+        });
+        if (contents === undefined) continue;
+        let prior: RetainedManagedCommand<ManagedMutation>;
+        try {
+            prior = JSON.parse(contents);
+        } catch (error) {
+            if (!(error instanceof SyntaxError)) throw error;
+            continue;
+        }
+        if (
+            !prior?.binding ||
+            prior.command?.kind !== "author-plan" ||
+            !sameProjectStoreBinding(prior.binding, binding) ||
+            legacyRevisionKey(binding, prior.command) !== key
+        )
+            continue;
+        validateRetainedManagedCommand(prior);
+        if (entry.name !== `managed-operation-${managedOperationKey(prior.binding, prior.command, "explicit")}.json`)
+            throw new Error("Managed operation intent changed.");
+        if (match) throw new Error("More than one retained operation matches this Plan revision.");
+        match = path;
+    }
+    return match;
+}
+
 /** Retain the exact mutation across lost acknowledgments and replay it against the same owner. */
 export async function executeRetainedManagedMutation<Command extends ManagedMutation, Result>(
     mutation: RetainedMutation<Command>,
-    validate: (binding: ProjectStoreBinding, command: Command) => void,
-    execute: (command: Command) => Promise<Result>,
+    validate: (binding: ProjectStoreBinding, command: ManagedCommandReplay<Command>) => void,
+    execute: (command: ManagedCommandReplay<Command>) => Promise<Result>,
 ): Promise<Result> {
     const { cwd, binding, checkout, command, artifactRevisionSource } = mutation;
     validate(binding, command);
-    const repeatableCreation =
-        command.kind === "create-project-work-record" ||
-        (command.kind === "author-plan" && !authoringRevision(command));
+    const repeatableCreation = command.kind === "create-project-work-record" || isManagedPlanCreation(command);
     const artifactMutation = command.kind === "save-epic-artifact" || command.kind === "append-epic-qa";
     const key = managedOperationKey(binding, command, artifactRevisionSource);
     const directory = await managedOperationDirectory(cwd, binding, checkout);
@@ -152,27 +226,41 @@ export async function executeRetainedManagedMutation<Command extends ManagedMuta
     const path = join(directory, `managed-operation-${key}.json`);
     ensurePrivateDir(directory);
     const lock = openNativeFileLock(`${path}.lock`);
+    let legacyLock: ReturnType<typeof openNativeFileLock> | undefined;
+    let legacyPath: string | undefined;
     try {
         await lock.lock(true);
         assertManagedProjectConnection();
-        let retained: RetainedManagedCommand<Command>;
+        let retained: RetainedManagedCommand<ManagedCommandReplay<Command>>;
         try {
-            retained = await readRetainedManagedCommand<Command>(path);
+            retained = await readRetainedManagedCommand<ManagedCommandReplay<Command>>(path);
         } catch (error) {
             if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
-            assertManagedProjectConnection();
-            retained = { binding, command };
-            writeJsonAtomically(path, retained);
+            if (command.kind === "revise-plan") legacyPath = await findLegacyRevisionJournal(directory, binding, key);
+            if (legacyPath) {
+                legacyLock = openNativeFileLock(`${legacyPath}.lock`);
+                await legacyLock.lock(true);
+                retained = await readRetainedManagedCommand<LegacyManagedPlanAuthoring>(legacyPath);
+            } else {
+                assertManagedProjectConnection();
+                retained = { binding, command };
+                writeJsonAtomically(path, retained);
+            }
         }
         assertManagedProjectConnection();
         if (!sameProjectStoreBinding(retained.binding, binding)) throw new Error("Managed operation owner changed.");
         validate(retained.binding, retained.command);
-        if (
-            !retained.command ||
-            retained.command.kind !== command.kind ||
-            managedOperationKey(retained.binding, retained.command, artifactRevisionSource) !== key
-        )
-            throw new Error("Managed operation intent changed.");
+        const matched = legacyPath
+            ? legacyRevisionKey(retained.binding, retained.command) === key &&
+              legacyPath ===
+                  join(
+                      directory,
+                      `managed-operation-${managedOperationKey(retained.binding, retained.command, "explicit")}.json`,
+                  )
+            : (retained.command.kind === command.kind ||
+                  (command.kind === "create-plan" && isManagedPlanCreation(retained.command))) &&
+              managedOperationKey(retained.binding, retained.command, artifactRevisionSource) === key;
+        if (!matched) throw new Error("Managed operation intent changed.");
         if (
             retained.acknowledged &&
             (repeatableCreation ||
@@ -188,9 +276,7 @@ export async function executeRetainedManagedMutation<Command extends ManagedMuta
         const result = await execute(retained.command).catch((error) => {
             if (
                 error instanceof ProjectStorePreconditionError &&
-                (command.kind === "restore-history" ||
-                    artifactMutation ||
-                    (command.kind === "author-plan" && authoringRevision(command) === undefined))
+                (command.kind === "restore-history" || artifactMutation || isManagedPlanCreation(command))
             ) {
                 assertManagedProjectConnection();
                 writeJsonAtomically(path, { ...retained, acknowledged: true });
@@ -203,6 +289,7 @@ export async function executeRetainedManagedMutation<Command extends ManagedMuta
             writeJsonAtomically(path, { ...retained, acknowledged: true });
         return result;
     } finally {
+        legacyLock?.close();
         lock.close();
     }
 }

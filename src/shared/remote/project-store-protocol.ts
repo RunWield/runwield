@@ -16,6 +16,7 @@ import {
 import type { ProjectStoreCommand, ProjectStoreReply } from "../../plan-store/index.ts";
 // Six bytes per UTF-16 code unit covers JSON escaping in the response envelope.
 export const HISTORY_PAGE_CHARS = 128 * 1024;
+export const PROJECT_STORE_PLAN_REVISION_HEADER = "X-RunWield-Plan-Revision";
 export interface ProjectStoreRequest {
     binding: ProjectStoreBinding;
     command: ProjectStoreCommand;
@@ -41,6 +42,7 @@ export function validateProjectStoreRequest(request: ProjectStoreRequest): void 
             command.kind === "list-history" ||
             command.kind === "show-history" ||
             command.kind === "restore-history" ||
+            command.kind === "revise-plan" ||
             command.kind === "plan-resource" ||
             command.kind === "read-documents" ||
             command.kind === "save-epic-artifact" ||
@@ -97,6 +99,8 @@ export function validateProjectStoreRequest(request: ProjectStoreRequest): void 
         "settle-publication": [...common, "reference"],
         "settle-in-place": [...common, "attemptId"],
         "read-execution-documents": ["kind", "planId", "input"],
+        "create-plan": ["kind", "operationId", "input"],
+        "revise-plan": [...common, "input"],
         "author-plan": ["kind", "operationId", "planId", "input"],
         "resolve-plan": ["kind", "reference"],
         "list-plans": ["kind"],
@@ -175,29 +179,26 @@ export function validateProjectStoreRequest(request: ProjectStoreRequest): void 
         (typeof command.reference !== "string" || !command.reference || command.reference.length > 1024)
     )
         throw new Error("Invalid Plan reference.");
-    if (
-        command.kind === "author-plan" &&
-        (!command.input ||
-            typeof command.input !== "object" ||
-            Array.isArray(command.input) ||
-            Object.keys(command.input).some(
-                (key) =>
-                    ![
-                        "planName",
-                        "contextMarkdown",
-                        "validationMarkdown",
-                        "expectedRevision",
-                        "definition",
-                        "parentPlan",
-                        "dependencies",
-                    ].includes(key),
-            ) ||
-            typeof command.input.planName !== "string" ||
-            !command.input.planName ||
-            typeof command.input.contextMarkdown !== "string" ||
-            (command.input.expectedRevision !== undefined && !/^[a-f0-9]{64}$/.test(command.input.expectedRevision)))
-    )
-        throw new Error("Invalid Plan authoring input.");
+    if (command.kind === "create-plan" || command.kind === "revise-plan" || command.kind === "author-plan") {
+        const { input } = command;
+        const allowed = ["contextMarkdown", "validationMarkdown", "definition", "parentPlan", "dependencies"];
+        if (command.kind !== "revise-plan") allowed.push("planName");
+        if (command.kind === "author-plan") allowed.push("expectedRevision");
+        if (
+            !input ||
+            typeof input !== "object" ||
+            Array.isArray(input) ||
+            Object.keys(input).some((key) => !allowed.includes(key)) ||
+            (command.kind !== "revise-plan" &&
+                (typeof command.input.planName !== "string" || !command.input.planName)) ||
+            typeof input.contextMarkdown !== "string" ||
+            (command.kind === "author-plan" &&
+                command.input.expectedRevision !== undefined &&
+                (typeof command.input.expectedRevision !== "string" ||
+                    !/^[a-f0-9]{64}$/.test(command.input.expectedRevision)))
+        )
+            throw new Error("Invalid Plan authoring input.");
+    }
     if (
         command.kind === "import-plans" &&
         (typeof command.selection !== "string" || !command.selection.startsWith("/") || command.selection.length > 4096)
@@ -225,7 +226,10 @@ export function validateProjectStoreRequest(request: ProjectStoreRequest): void 
         (typeof command.operationId !== "string" || !/^[a-f0-9-]{36}$/.test(command.operationId))
     )
         throw new Error("Invalid operation identity.");
-    if ("expectedRevision" in command && !/^[a-f0-9]{64}$/.test(command.expectedRevision))
+    if (
+        "expectedRevision" in command &&
+        (typeof command.expectedRevision !== "string" || !/^[a-f0-9]{64}$/.test(command.expectedRevision))
+    )
         throw new Error("Expected revision is required.");
     if (
         "resource" in command &&
@@ -751,6 +755,22 @@ export function validateProjectStoreReply(reply: ProjectStoreReply, request: Pro
             typeof result.writable !== "boolean"
         )
             throw new Error("Invalid document reply.");
+    } else if (
+        request.command.kind === "create-plan" ||
+        request.command.kind === "revise-plan" ||
+        request.command.kind === "author-plan"
+    ) {
+        if (
+            !("status" in result) ||
+            Object.keys(result).sort().join(",") !== "operationId,planId,revision,status" ||
+            result.operationId !== request.command.operationId ||
+            result.status !== "completed" ||
+            !plans.identity.isValid(result.planId) ||
+            ("planId" in request.command && result.planId !== request.command.planId) ||
+            typeof result.revision !== "string" ||
+            !/^[a-f0-9]{64}$/.test(result.revision)
+        )
+            throw new Error("Invalid Plan authoring reply.");
     } else if (
         !("status" in result) ||
         result.operationId !== request.command.operationId ||

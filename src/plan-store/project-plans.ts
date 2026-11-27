@@ -43,15 +43,17 @@ import {
 import { managedPersonalStoreActive } from "@runwield/plans/managed-project-connection";
 import {
     admitManagedPlanCheckout,
+    createManagedPlanDocument,
     currentManagedRetainedExecution,
     createManagedProjectWorkRecord,
     managedPlanStoreActive,
-    readManagedActivePlanById,
+    readManagedActivePlanDocument,
     readManagedPlanHistory,
     readManagedPublication,
     readManagedPlanMilestone,
     resolveManagedHistoryPlan,
     restoreManagedPlanMilestone,
+    reviseManagedPlan,
 } from "./managed.ts";
 import {
     findPlanById,
@@ -87,11 +89,7 @@ function document(resource: PlanResource, planId: PlanId): ProjectPlanDocument {
 }
 
 async function readActive(cwd: string, planId: PlanId): Promise<ProjectPlanDocument> {
-    if (managedPlanStoreActive()) {
-        const resource = await readManagedActivePlanById(cwd, planId);
-        if (!resource) throw new PlanNotFoundError(planId);
-        return document(resource, planId);
-    }
+    if (managedPlanStoreActive()) return await readManagedActivePlanDocument(cwd, planId);
     const identity = currentPackageProject();
     if (identity) return await projectPlanFiles.forOwner(identity).read(planId);
     return document(await findPlanById(cwd, planId), planId);
@@ -212,6 +210,7 @@ function projectPlanStore(projectId: ProjectId, run: ReturnType<typeof bindProje
         readArchived: (planId) => run((cwd) => readArchived(cwd, requirePlanId(planId)), "read"),
         create: (input) =>
             run(async (cwd) => {
+                if (managedPlanStoreActive()) return await createManagedPlanDocument(cwd, input);
                 const planId = requirePlanId(await createSavedPlan(cwd, input));
                 return await readActive(cwd, planId);
             }),
@@ -219,6 +218,10 @@ function projectPlanStore(projectId: ProjectId, run: ReturnType<typeof bindProje
             run(async (cwd) => {
                 const planId = requirePlanId(id);
                 requireRevision(input.expectedRevision);
+                if (managedPlanStoreActive()) {
+                    await reviseManagedPlan(cwd, planId, input);
+                    return await readActive(cwd, planId);
+                }
                 const current = await readActive(cwd, planId);
                 checkRevision(input.expectedRevision, current.revision);
                 await reviseSavedPlan(cwd, planId, { ...input, planName: current.name });

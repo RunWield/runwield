@@ -3,7 +3,7 @@ import type { ManualQaSectionAppend } from "./store.ts";
 import type { ProjectStoreIdentity } from "@runwield/projects";
 import { localPackageLayout } from "./package-files.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync, readFileSync, unlinkSync, lstatSync } from "node:fs";
 import { dirname, join, relative, isAbsolute } from "node:path";
 import { writeJsonAtomically, writeTextAtomically, syncParentDirectory } from "@runwield/resources/fs";
@@ -212,33 +212,71 @@ export async function runReceiptedOperation(
     operationId: string,
     digest: string,
     planId: string,
-    action: (recovering: boolean) => Promise<Omit<OperationOutcome, "operationId" | "status">>,
+    action: (recovering: boolean) => Promise<OperationResult>,
     settlementRequired = false,
 ): Promise<OperationOutcome> {
+    return await runOperation(directory, operationId, digest, planId, action, settlementRequired);
+}
+
+/** Authoring chooses a Plan identity only for new creation, under the owner's catalog lock. */
+export async function runReceiptedPlanAuthoring(
+    directory: string,
+    operationId: string,
+    digest: string,
+    existingPlanId: string | undefined,
+    action: (planId: string) => Promise<string>,
+): Promise<OperationOutcome> {
+    return await runOperation(directory, operationId, digest, { existingPlanId }, async (_recovering, planId) => ({
+        planId,
+        revision: await action(planId),
+    }));
+}
+
+type OperationResult = Omit<OperationOutcome, "operationId" | "status">;
+interface AuthoringIdentity {
+    existingPlanId?: string;
+}
+
+async function runOperation(
+    directory: string,
+    operationId: string,
+    digest: string,
+    target: string | AuthoringIdentity,
+    action: (recovering: boolean, planId: string) => Promise<OperationResult>,
+    settlementRequired = false,
+): Promise<OperationOutcome> {
+    const authoring = typeof target !== "string";
+    const planId = authoring ? target.existingPlanId : target;
     const reservation = join(directory, "operation-identities", `${operationId}.json`);
     assertSafePath(directory, reservation);
     const prior = readReceipt(directory, operationId);
-    if (existsSync(reservation)) {
+    if (prior && (prior.digest !== digest || (planId !== undefined && prior.planId !== planId)))
+        throw new Error("Operation ID was already bound to a different request.");
+    const reserved = existsSync(reservation);
+    if (reserved) {
         const retained: { digest: string } = JSON.parse(readFileSync(reservation, "utf8"));
         if (retained.digest !== digest) throw new Error("Operation ID was already bound to a different request.");
         if (!prior) throw new Error("Reserved operation evidence is unavailable.");
     } else {
-        if (prior) throw new Error("Operation reservation evidence is unavailable.");
-        writeJsonAtomically(reservation, { digest });
+        if (prior && (!authoring || prior.outcome.status !== "unstarted"))
+            throw new Error("Operation reservation evidence is unavailable.");
+        if (!authoring) writeJsonAtomically(reservation, { digest });
     }
-    if (prior && (prior.digest !== digest || prior.planId !== planId))
-        throw new Error("Operation ID was already bound to a different request.");
     if (prior?.outcome.status === "completed") return prior.outcome;
     if (prior && prior.outcome.status !== "unstarted" && !settlementRequired) return prior.outcome;
     const receipt: Receipt = prior || {
         version: 1,
         operationId,
         digest,
-        planId,
+        planId: planId ?? randomUUID(),
         outcome: { operationId, status: settlementRequired ? "pending" : "unstarted" },
     };
+    // Authoring retains the chosen identity first so an interrupted request can restore its guard.
     if (!prior) writeJsonAtomically(receiptPath(directory, operationId), receipt);
-    const observed = await operations.run({ directory, receipt, settlementRequired }, () => action(Boolean(prior)));
+    if (authoring && !reserved) writeJsonAtomically(reservation, { digest });
+    const observed = await operations.run({ directory, receipt, settlementRequired }, () =>
+        action(Boolean(prior), receipt.planId),
+    );
     const outcome = inspectOperationReceipt(directory, operationId);
     if (outcome.status === "unstarted" || (settlementRequired && outcome.status === "pending"))
         writeJsonAtomically(receiptPath(directory, operationId), {

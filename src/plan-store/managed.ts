@@ -3,13 +3,17 @@ import {
     executeRetainedManagedMutation,
     type EpicArtifactRevisionSource,
 } from "@runwield/plans/managed-operation";
-import { StalePlanWriteError } from "@runwield/plans/store";
+import { PlanNotFoundError, StalePlanWriteError } from "@runwield/plans/store";
+import { projectPlanDocumentFields } from "@runwield/plans/project-plan-files";
 import type { PublicationAttempt } from "@runwield/workflow/publication";
 import type {
+    CreateProjectPlan,
     CreateProjectWorkRecord,
     ManualQaSection,
     PackageWorkflowInput,
+    ProjectPlanDocument,
     ProjectWorkRecord,
+    ReviseProjectPlan,
 } from "@runwield/plans/store";
 import {
     managedExecutionRoot,
@@ -43,7 +47,7 @@ import type { ProjectStoreCommand, ProjectStoreReply } from "./project-service.t
 import type { PlanAuthoringInput } from "./access.ts";
 import type { ManagedExecutionRecreationContext } from "./recovery.ts";
 import type { PlanExecutionReservation } from "./workflows.ts";
-import type { PlanFrontMatter, PlanId } from "@runwield/plans";
+import { plans, type PlanFrontMatter, type PlanId } from "@runwield/plans";
 import type { WorkflowIdentity } from "@runwield/plans/retained-checkout";
 import { decodePackageMarkdown, planArtifactReference, type EpicArtifactName } from "@runwield/plans/format";
 
@@ -211,7 +215,7 @@ async function runWithManagedPlan<T>(cwd: string, selection: ManagedPlanSelectio
 async function executeManagedMutation<Result>(
     cwd: string,
     command: ProjectStoreCommand,
-    readResult: (result: ProjectStoreReply["result"]) => Result,
+    readResult: (result: ProjectStoreReply["result"]) => Result | Promise<Result>,
     artifactRevisionSource: EpicArtifactRevisionSource = "explicit",
 ): Promise<Result> {
     if (!("operationId" in command)) throw new Error("Managed mutation requires an operation identity.");
@@ -251,19 +255,41 @@ export async function authorManagedPlanWithIdentity(
     input: PlanAuthoringInput,
     expectedPlanId?: string,
 ): Promise<string> {
+    const { expectedRevision, ...draft } = input;
+    if (expectedRevision === undefined && expectedPlanId === undefined)
+        return await completeManagedPlanCreation(cwd, draft, (planId) => planId);
     return await withManagedProjectConnection(async () => {
         await client(cwd, true);
-        const prior =
-            expectedPlanId || input.expectedRevision === undefined ? null : await readManagedPlan(cwd, input.planName);
-        const result = await mutateManagedPlan(cwd, {
-            kind: "author-plan",
-            operationId: randomUUID(),
-            planId: expectedPlanId || prior?.attrs.planId || randomUUID(),
-            input,
-        });
-        if (!result.planId) throw new Error("Managed authoring did not return a Plan ID.");
-        return result.planId;
+        const prior = expectedPlanId ? null : await readManagedPlan(cwd, input.planName);
+        const planId = expectedPlanId ?? prior?.attrs.planId;
+        if (!planId || !expectedRevision)
+            throw new StalePlanWriteError(expectedRevision || "required", prior?.revision || "missing");
+        const { planName: _name, ...content } = draft;
+        await reviseManagedPlan(cwd, planId, { ...content, expectedRevision });
+        return planId;
     });
+}
+
+async function completeManagedPlanCreation<Result>(
+    cwd: string,
+    input: CreateProjectPlan,
+    complete: (planId: PlanId) => Result | Promise<Result>,
+): Promise<Result> {
+    return await executeManagedMutation(cwd, { kind: "create-plan", operationId: randomUUID(), input }, (result) => {
+        if (!("status" in result) || result.status !== "completed" || !plans.identity.isValid(result.planId))
+            throw new Error("Managed authoring did not return a Plan ID.");
+        return complete(result.planId);
+    });
+}
+
+export async function createManagedPlanDocument(cwd: string, input: CreateProjectPlan): Promise<ProjectPlanDocument> {
+    // Keep the create journal pending until the public store has the document.
+    return await completeManagedPlanCreation(cwd, input, (planId) => readManagedActivePlanDocument(cwd, planId));
+}
+
+export async function reviseManagedPlan(cwd: string, planId: string, request: ReviseProjectPlan): Promise<void> {
+    const { expectedRevision, ...input } = request;
+    await mutateManagedPlan(cwd, { kind: "revise-plan", operationId: randomUUID(), planId, expectedRevision, input });
 }
 export async function reserveManagedExecution(
     planName: string,
@@ -775,6 +801,12 @@ export async function readManagedPlanResource(cwd: string, planId: string) {
 export async function readManagedActivePlanById(cwd: string, planId: string) {
     const resource = await readManagedPlanResource(cwd, planId);
     return resource.attrs.archivedAt ? null : resource;
+}
+
+export async function readManagedActivePlanDocument(cwd: string, planId: PlanId): Promise<ProjectPlanDocument> {
+    const resource = await readManagedActivePlanById(cwd, planId);
+    if (!resource) throw new PlanNotFoundError(planId);
+    return { ...projectPlanDocumentFields(resource), planId };
 }
 export async function readManagedReviewPresentation(planId: string) {
     const owner = await client(managedExecutionRoot());

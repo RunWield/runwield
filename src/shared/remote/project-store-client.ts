@@ -4,10 +4,15 @@ import {
     type ProjectStoreBinding,
     type RequestManagedPlanStore,
 } from "@runwield/plans/project-store-wire";
+import { PlanNotFoundError, StalePlanWriteError } from "@runwield/plans/store";
 import type { ProjectStoreCommand, ProjectStoreReply } from "../../plan-store/index.ts";
-import { validateProjectStoreRequest, validateProjectStoreReply } from "./project-store-protocol.ts";
+import {
+    PROJECT_STORE_PLAN_REVISION_HEADER,
+    validateProjectStoreRequest,
+    validateProjectStoreReply,
+} from "./project-store-protocol.ts";
 
-/** Validate and execute one legacy command against a bound Plan store. */
+/** Validate and execute a command against a bound Plan store. */
 export class ProjectStoreClient {
     /** Bind the authenticated request to the supplied Plan store owner. */
     constructor(
@@ -19,16 +24,28 @@ export class ProjectStoreClient {
         const request = { binding: this.binding, command };
         validateProjectStoreRequest(request);
         const response = await this.request({ route: "/project-store", body: JSON.stringify(request) }, signal);
-        if (response.status === 412)
-            throw new ProjectStorePreconditionError(
-                command.kind === "author-plan"
-                    ? "Plan already exists."
-                    : command.kind === "edit-documents" || command.kind === "save-epic-artifact"
-                      ? "A Plan document changed before the edit."
-                      : command.kind === "append-epic-qa"
-                        ? "Epic family changed or has no reserved child attempt."
-                        : "Plan revision changed before restore.",
-            );
+        if (command.kind === "revise-plan") {
+            const revision = response.headers.get(PROJECT_STORE_PLAN_REVISION_HEADER);
+            if (response.status === 404 && revision === "missing") throw new PlanNotFoundError(command.planId);
+            if (response.status === 412 && revision && /^[a-f0-9]{64}$/.test(revision))
+                throw new StalePlanWriteError(command.expectedRevision, revision);
+        }
+        if (response.status === 412) {
+            switch (command.kind) {
+                case "author-plan":
+                case "create-plan":
+                    throw new ProjectStorePreconditionError("Plan already exists.");
+                case "revise-plan":
+                    throw new ProjectStorePreconditionError("Plan revision changed before authoring.");
+                case "edit-documents":
+                case "save-epic-artifact":
+                    throw new ProjectStorePreconditionError("A Plan document changed before the edit.");
+                case "append-epic-qa":
+                    throw new ProjectStorePreconditionError("Epic family changed or has no reserved child attempt.");
+                case "restore-history":
+                    throw new ProjectStorePreconditionError("Plan revision changed before restore.");
+            }
+        }
         if (!response.ok)
             throw new Error(`Project store request refused (${response.status}); retain its operation identity.`);
         const reply: ProjectStoreReply = JSON.parse(await readProjectStoreBody(response));

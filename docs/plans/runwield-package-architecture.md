@@ -253,6 +253,11 @@ the switch between them. Desktop, TUI, ACP and worker callers continue to use `s
 The same driver lists active Plans and looks up archived Plans by ID. The public catalog returns logical Plan
 references and diagnostics. The CLI computes checkout-relative paths when it displays archived resources.
 
+The SSH adapter sends distinct create and revise commands. A create carries the content and operation ID. The
+Plan store reserves its Plan ID with that operation. A revise carries the existing Plan ID and expected revision.
+An older saved authoring request replays with its original identity and payload. The public store and
+`plan_written` continue to use the same create and revise methods.
+
 Plans owns the canonical operation receipt files and validates the retained operation identity before completion. The application owns typed command result files, including `sequence-review-results/<operationId>.json`. It reads the retained Sequence decision and passes its operation identity, digest, Plan ID, and revision to Plans to settle the canonical receipt.
 The host coordinates milestone capture with the lifecycle event that makes the version visible.
 PostgreSQL remains a future driver. [Store operations](../../src/plan-store/index.ts)
