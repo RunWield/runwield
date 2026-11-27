@@ -16,6 +16,8 @@ const privateMembers = new Set([
     "packages/plans/artifact-files.ts",
     "packages/plans/publication-files.ts",
     "packages/plans/package-files.ts",
+    "packages/plans/project-store-binding.ts",
+    "packages/plans/managed-project-binding.ts",
     // Existing retained-copy implementation. Its operations are public only through the owner interface.
     "src/shared/workflow/execution-plan-file.ts",
 ]);

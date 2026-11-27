@@ -1,4 +1,4 @@
-import type { ProjectId } from "@runwield/projects";
+import type { ProjectId, ProjectRegistry, ProjectStoreIdentity } from "@runwield/projects";
 import type { PlanFrontMatter } from "./document.ts";
 import type { EpicArtifactName } from "./format/artifacts.ts";
 import type { PackageDocuments, PlanHistory } from "./history.ts";
@@ -6,6 +6,20 @@ import type { PlanId } from "./identity.ts";
 import type { ProjectPublicationCopies } from "./publication-copies.ts";
 import type { PlanEvent, PlanEventDetails } from "./lifecycle.ts";
 import type { WorkRecordFrontMatter, WorkRecordResource } from "./work-records.ts";
+
+export type ProjectPlanStoreOptions = RegisteredProjectPlanOptions | AdmittedProjectPlanOptions;
+
+interface RegisteredProjectPlanOptions {
+    /** Trusted registration already opened by the application. */
+    registry?: ProjectRegistry;
+    admitted?: never;
+}
+
+interface AdmittedProjectPlanOptions {
+    /** The checkout or owner already admitted by Projects. */
+    admitted: ProjectStoreIdentity;
+    registry?: never;
+}
 
 export type ProjectWorkRecord = Omit<WorkRecordResource, "path">;
 

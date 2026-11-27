@@ -1,5 +1,6 @@
 import type { PublicationAttempt } from "@runwield/workflow/publication";
 import type { CreateProjectWorkRecord, ManualQaSection, ProjectWorkRecord } from "@runwield/plans/store";
+import { captureManagedCheckoutBinding } from "@runwield/plans/project-store-binding";
 import { workRecords } from "@runwield/plans/work-records";
 import { projects, type ProjectId, type ProjectStoreIdentity } from "@runwield/projects";
 import { openNativeFileLock } from "../shared/native-file-lock.ts";
@@ -108,41 +109,16 @@ export function captureManagedProjectPlanAccess(projectId: ProjectId, admitted?:
     if (!managedPersonalStoreActive()) return undefined;
     const configured = projectConnections.getStore() ?? active;
     if (!configured || configured.closed) throw new Error("Managed Plan owner is unavailable.");
-    const inspect = () => {
+    const verifyConnection = () => {
         if (configured !== active || configured.closed || !managedPersonalStoreActive())
             throw new Error("Managed Plan owner is unavailable.");
-        const root = projects.checkout.inspect(configured.cwd);
-        if (root.kind !== "existing" || root.identity.projectId !== projectId)
-            throw new Error("Managed Plan access belongs to a different Project.");
-        return root.identity;
     };
-    const initial = inspect();
-    const verifyAdmission = () => {
-        if (!admitted) return configured.cwd;
-        projects.home.assertStoreIdentity(admitted);
-        if (
-            projects.home.isOwner(admitted) ||
-            initial.repositoryId !== admitted.repositoryId ||
-            initial.personalOwner.kind !== admitted.personalOwner.kind ||
-            initial.personalOwner.identity !== admitted.personalOwner.identity ||
-            initial.executionAccountHome !== admitted.executionAccountHome
-        )
-            throw new Error("Managed Plan access requires its configured Project repository and account.");
-        return admitted.checkoutRoot;
-    };
-    verifyAdmission();
+    verifyConnection();
+    const verifyCheckout = captureManagedCheckoutBinding(configured.cwd, projectId, admitted);
     return async <Result>(operation: (cwd: string) => Promise<Result>, allowRetained: boolean) => {
         if (!allowRetained && currentManagedRetainedExecution()) throw new Error("Managed Plan owner is unavailable.");
-        const current = inspect();
-        if (
-            current.repositoryId !== initial.repositoryId ||
-            current.checkoutId !== initial.checkoutId ||
-            current.personalOwner.kind !== initial.personalOwner.kind ||
-            current.personalOwner.identity !== initial.personalOwner.identity ||
-            current.executionAccountHome !== initial.executionAccountHome
-        )
-            throw new Error("Managed Plan Project authority changed.");
-        const cwd = verifyAdmission();
+        verifyConnection();
+        const cwd = verifyCheckout();
         return await projectConnections.run(configured, () => operation(cwd));
     };
 }

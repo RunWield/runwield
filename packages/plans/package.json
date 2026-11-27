@@ -6,6 +6,7 @@
         ".": "./index.ts",
         "./format": "./format.ts",
         "./store": "./store.ts",
+        "./project-store-binding": "./project-store-binding.ts",
         "./store-format": "./store-format.ts",
         "./file-snapshots": "./file-snapshots.ts",
         "./history": "./history.ts",

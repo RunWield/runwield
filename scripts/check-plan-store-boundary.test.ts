@@ -56,6 +56,15 @@ test("only the Plan store binds its retained-input, artifact and publication fil
     }
 });
 
+test("only the Plan store can bind a Project's Plan owner", () => {
+    const source = 'import { projectPlanStoreBinding } from "@runwield/plans/project-store-binding";';
+    equal(inspectPlanStoreImports("src/plan-store/project-binding.ts", source).length, 0);
+    equal(inspectPlanStoreImports("src/tools/example.ts", source).length, 1);
+    const rawManagedBinding =
+        'import { captureManagedCheckoutBinding } from "../../packages/plans/managed-project-binding.ts";';
+    equal(inspectPlanStoreImports("src/tools/example.ts", rawManagedBinding).length, 1);
+});
+
 test("the Plans package cannot import application code, including type-only imports", () => {
     const file = "packages/plans/lifecycle.ts";
     const source = 'import type { Project } from "../../src/shared/project-runtime-layout.ts";';

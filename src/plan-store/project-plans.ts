@@ -8,6 +8,7 @@ import type {
     ProjectPlanCatalog,
     ProjectPlanDocument,
     ProjectPlanStore,
+    ProjectPlanStoreOptions,
     ReviseProjectPlan,
 } from "@runwield/plans/store";
 import { type ProjectId } from "@runwield/projects";
@@ -16,7 +17,7 @@ import {
     listProjectWorkRecords,
     selectProjectWorkRecord,
 } from "./project-work-records.ts";
-import { bindProjectPlanStore, checkoutPlanIdentity, type ProjectPlanStoreOptions } from "./project-binding.ts";
+import { bindProjectPlanStore, checkoutPlanIdentity } from "./project-binding.ts";
 import { packagePublicationInput } from "./publication.ts";
 import { PlanNotFoundError, StalePlanWriteError, type PlanResource } from "../plan-store.ts";
 import {
