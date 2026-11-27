@@ -191,7 +191,7 @@ export interface ProjectPlanStore {
     restore(planId: PlanId, expectedRevision: string): Promise<ProjectPlanDocument>;
 }
 
-export { StalePlanWriteError } from "./store-errors.ts";
+export { PlanNotFoundError, StalePlanWriteError } from "./store-errors.ts";
 export type {
     PackageAttemptContinuation,
     PackagePublicationManifest,

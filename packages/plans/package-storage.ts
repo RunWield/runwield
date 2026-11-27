@@ -57,6 +57,7 @@ import {
     type PlanDeviation,
     canonicalPlanStatus,
     decodePackageMarkdown,
+    isEpicArtifactName,
 } from "./format.ts";
 import { StalePlanWriteError } from "./store-errors.ts";
 import { CONTROLLER_STATE_FIELDS, type ControllerRecord, type WorkflowControllerState } from "./controller-state.ts";
@@ -991,6 +992,24 @@ export async function listPlanPackages(identity: ProjectIdentity, includeArchive
         return { packages: [], issues: [issue(error, projects.home.storeLocation(identity))] };
     }
 }
+/** Determine the full lock set for the selected Plans, including their current families. */
+export async function planPackageFamilyIds(identity: ProjectIdentity, packages: readonly LoadedPlanPackage[]) {
+    const catalog = await listPlanPackages(identity, true);
+    const family = packages.flatMap((plan) => {
+        const { metadata } = plan;
+        if (metadata.definition.classification !== "PROJECT" && !metadata.parentPlanId) return [plan];
+        const epicId = metadata.parentPlanId || metadata.planId;
+        return [plan, ...catalog.packages.filter((entry) => entry.metadata.parentPlanId === epicId)];
+    });
+    return [
+        ...new Set(
+            family.flatMap(({ metadata }) =>
+                metadata.parentPlanId ? [metadata.planId, metadata.parentPlanId] : [metadata.planId],
+            ),
+        ),
+    ];
+}
+
 async function select(paths: PackageLayout, selector: PackageSelector): Promise<PackageInspection> {
     if (!selector.planId && !selector.name) fail("malformed_metadata", "A Plan ID or name is required.");
     if (selector.name) normalizeName(selector.name);
@@ -2267,6 +2286,15 @@ export async function retainPlanPackagePublication(
     return reference;
 }
 
+/** Read from the active personal owner or the verified checkout's package store. */
+export async function readPlanPackagePublicationForCheckout(root: string, reference: PackagePublicationReference) {
+    const owner = projects.home.current();
+    if (owner) return await readPlanPackagePublication(owner, reference);
+    const checkout = projects.checkout.inspect(root);
+    if (checkout.kind !== "existing") throw new Error("Publication owner is unavailable.");
+    return await readPlanPackagePublication(checkout.identity, reference);
+}
+
 export async function readPlanPackagePublication(
     identity: ProjectIdentity,
     reference: PackagePublicationReference,
@@ -2390,6 +2418,19 @@ export function packageWorkflowRevision(plan: LoadedPlanPackage): string {
             }),
         )
         .digest("hex");
+}
+
+/** Read the document and revision from the same committed package snapshot. */
+export function packageDocumentContent(plan: LoadedPlanPackage, name: string) {
+    const document = plan.documents.find((entry) => entry.name === name);
+    if (!document) return null;
+    return {
+        body: isEpicArtifactName(document.name)
+            ? decodePackageMarkdown(document.bytes)
+            : new TextDecoder().decode(document.bytes),
+        revision: packageWorkflowRevision(plan),
+        packageHash: document.hash,
+    };
 }
 
 export async function readManagedPlanImportResult(

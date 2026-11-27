@@ -9,3 +9,10 @@ export class StalePlanWriteError extends Error {
         this.currentRevision = currentRevision;
     }
 }
+
+export class PlanNotFoundError extends Error {
+    constructor(planId: string) {
+        super(`Plan not found for planId: ${planId}`);
+        this.name = "PlanNotFoundError";
+    }
+}

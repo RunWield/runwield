@@ -13,6 +13,7 @@ import {
 import { packageDocumentText, type PackageResourceRole } from "@runwield/plans/file-snapshots";
 import {
     packageWorkflowRevision,
+    packageDocumentContent,
     savePlanPackageDocument,
     commitPlanPackageBatch,
     listPlanPackages,
@@ -55,19 +56,6 @@ export interface PlanDocumentView {
     body: string;
     writable: boolean;
     documents: Array<{ name: string; role: PackageResourceRole }>;
-}
-
-/** Read one document and its revision from the same package snapshot. */
-export function packageDocumentContent(plan: LoadedPlanPackage, name: string) {
-    const document = plan.documents.find((entry) => entry.name === name);
-    if (!document) return null;
-    return {
-        body: isEpicArtifactName(document.name)
-            ? decodePackageMarkdown(document.bytes)
-            : new TextDecoder().decode(document.bytes),
-        revision: packageWorkflowRevision(plan),
-        packageHash: document.hash,
-    };
 }
 
 /** Document identity is resolved inside the admitted Project, never from a host path. */

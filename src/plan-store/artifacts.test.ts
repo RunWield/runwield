@@ -1,4 +1,4 @@
-import { StalePlanWriteError } from "@runwield/plans/store";
+import { PlanNotFoundError, StalePlanWriteError } from "@runwield/plans/store";
 import { seedPlan } from "../shared/testing/plan-state-fixture.ts";
 import {
     mkdir as fsMkdir,
@@ -154,6 +154,32 @@ test("project-bound artifact access uses the Epic ID and its current revision", 
         );
         assertEquals(await store.artifacts.read(epic.planId, "integration-report.md"), revised);
         assertEquals(await foreign.artifacts.read(namedAlias.planId, "integration-report.md"), null);
+
+        const editedEpic = await store.editBody(epic.planId, {
+            body: "# Updated Epic context",
+            expectedRevision: revised.revision,
+        });
+        const reportAfterContextEdit = await store.artifacts.read(epic.planId, "integration-report.md");
+        assertEquals(reportAfterContextEdit, { ...revised, revision: editedEpic.revision });
+        await assertRejects(
+            () => store.artifacts.save(epic.planId, "integration-report.md", "# Stale report", revised.revision),
+            StalePlanWriteError,
+        );
+        assertEquals(await store.artifacts.read(epic.planId, "integration-report.md"), reportAfterContextEdit);
+
+        await store.archive(epic.planId, { expectedRevision: editedEpic.revision, force: true });
+        const planReadError = await assertRejects(() => store.read(epic.planId), PlanNotFoundError);
+        const artifactReadError = await assertRejects(
+            () => store.artifacts.read(epic.planId, "integration-report.md"),
+            PlanNotFoundError,
+        );
+        const artifactSaveError = await assertRejects(
+            () => store.artifacts.save(epic.planId, "integration-report.md", "# Archived report"),
+            PlanNotFoundError,
+        );
+        assertEquals(planReadError.constructor, PlanNotFoundError);
+        assertEquals(artifactReadError.constructor, PlanNotFoundError);
+        assertEquals(artifactSaveError.constructor, PlanNotFoundError);
     } finally {
         await Promise.all([fixture.cleanup(), other.cleanup()]);
     }

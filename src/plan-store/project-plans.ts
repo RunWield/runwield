@@ -1,4 +1,4 @@
-import { StalePlanWriteError } from "@runwield/plans/store";
+import { PlanNotFoundError, StalePlanWriteError } from "@runwield/plans/store";
 import { projectPlanDocuments } from "./checkout-documents.ts";
 import { projectPlanArtifacts } from "./artifacts.ts";
 
@@ -17,8 +17,8 @@ import { requestWorkspaceSearchRefresh } from "@runwield/resources/workspace-sea
 import { requireOwnedWorkRecordFiles } from "../shared/work-records/owner.ts";
 import { projectWorkRecordReads } from "./project-work-records.ts";
 import { bindProjectPlanStore, checkoutPlanIdentity } from "./project-binding.ts";
-import { packagePublicationInput } from "./publication.ts";
-import { PlanNotFoundError, type PlanResource } from "../plan-store.ts";
+import { readPlanPackagePublicationForCheckout } from "@runwield/plans/package-storage";
+import type { PlanResource } from "../plan-store.ts";
 import {
     createSavedPlan,
     reviseSavedPlan,
@@ -43,6 +43,7 @@ import {
     managedPlanStoreActive,
     readManagedActivePlanById,
     readManagedPlanHistory,
+    readManagedPublication,
     readManagedPlanMilestone,
     resolveManagedHistoryPlan,
     restoreManagedPlanMilestone,
@@ -219,7 +220,10 @@ function projectPlanStore(projectId: ProjectId, run: ReturnType<typeof bindProje
                 run(async (cwd) => {
                     if (reference.projectId !== projectId)
                         throw new Error("Publication reference belongs to another Project.");
-                    return (await packagePublicationInput(cwd, reference)).copies;
+                    const manifest = managedPlanStoreActive()
+                        ? await readManagedPublication(cwd, reference)
+                        : await readPlanPackagePublicationForCheckout(cwd, reference);
+                    return manifest.copies;
                 }, "workflow-read"),
         },
         workRecords: {
