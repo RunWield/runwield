@@ -18,8 +18,8 @@ provenance:
 
 ## Summary
 
-RunWield advances workflow state from accepted Workflow Tool Events instead of Agent transcript inspection. Typed consume-once events support outbox recovery, owner and attempt scoping, and event-first routing across planning, execution, repair, review, and validation. Transcripts serve display and audit needs, not workflow authority.
+RunWield moved root workflow handoffs to accepted Workflow Tool Events. Typed events support one-time consumption, recovery from a durable outbox, and scoping by owner and attempt. At delivery, isolated repair still used transcript evidence as a fallback for completion, and Claude review still used transcript evidence to decide whether a separate diff read was required.
 
 ## Future Planning Notes
 
-For future workflow-tool changes, publish only after semantic acceptance and prerequisite writes succeed, then consume events through scoped owners. Keep transcript readers limited to compatibility, display, audit, or non-authoritative handoff text.
+For future workflow-tool changes, publish only after semantic acceptance and prerequisite writes succeed, then consume events through scoped owners. Check each completion and review path for transcript-based decisions before treating events as its sole authority.

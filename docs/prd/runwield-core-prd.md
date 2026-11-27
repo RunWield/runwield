@@ -2710,7 +2710,9 @@ offers **Open in new session** or **Cancel**; the original workflow Session stay
 the choice explain how to run the template in a new Session. Model or thinking changes
 alone keep the workflow owner.
 
-**Requirement: Bundled maintenance prompts.** `/commit` groups, commits, and pushes pending changes. `/release` runs the
+**Requirement: Bundled maintenance prompts.** `/commit` groups, commits, and pushes pending changes. It checks staged
+changes for conflict markers before committing. If the configured upstream has new commits, it fetches and rebases
+from a clean working tree, verifies each conflict resolution, and retries the push without forcing it. `/release` runs the
 repository's release workflow and asks its release choices as structured questions, on clients that support them,
 before any release command. `/code-optimizer` improves
 maintainability. `/test-seams` runs with Engineer as an advisory audit of tests that replace product-owned behavior:
@@ -2794,6 +2796,8 @@ server-supported absolute arguments for deliberate laptop-checkout access.
 - After installation, `/skill:review` reviews a user-selected change.
 - Given `/test-seams`, Engineer reports findings with evidence and alternatives and asks before recording them.
 - Given `wld /commit` without settings, it runs with Operator's configured model and thinking level.
+- Given `/commit` rebases onto upstream and hits a conflict, Operator lists the marker locations, resolves each hunk,
+  and checks the staged resolutions before continuing. It retries the push without forcing it.
 - Given `/release` while Planner is discussing a change, the user chooses a new Session or Cancel; the planning
   conversation stays resumable.
 - Given `/release` from a Router Session, the release choices appear as a structured interview; canceling it leaves

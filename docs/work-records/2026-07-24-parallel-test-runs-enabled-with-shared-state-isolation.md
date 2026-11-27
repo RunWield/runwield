@@ -15,7 +15,7 @@ provenance:
 
 ## Summary
 
-Deno-era general and Workspace test tasks support native module-level parallelism and configurable concurrency. Non-standalone execution resolves bundled resources from source, while standalone execution retains resource extraction.
+After the original Plan closed, follow-up changes enabled Deno's module-level parallelism for the general and Workspace test tasks. They also added safeguards for tests that change shared process state, such as the home directory, working directory, and environment variables.
 
 ## Future Planning Notes
 
