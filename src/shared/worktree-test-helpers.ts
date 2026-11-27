@@ -1,4 +1,4 @@
-import { captureForegroundProcess } from "./captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { writeFile as fsWriteFile } from "node:fs/promises";
 import { createWorktreeGitArtifacts, settleWorktreeAttempt } from "./worktree.ts";
 import { defineGitFixture } from "./git-test-fixture.ts";

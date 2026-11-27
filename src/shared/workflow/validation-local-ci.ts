@@ -15,7 +15,7 @@ import {
     setCustomSetting,
     setExactProjectCustomSetting,
 } from "../settings.ts";
-import { spawnForegroundShell } from "../foreground-process.ts";
+import { spawnForegroundShell } from "@runwield/resources/process";
 import { captureValidationSettingsWrite, recordValidationSettingsWrite } from "../worktree-project-context.ts";
 import { captureProcessOutput } from "./process-output.ts";
 import { openValidationLog, formatValidationOutput, VALIDATION_OUTPUT_LIMIT_BYTES } from "./validation-log.ts";

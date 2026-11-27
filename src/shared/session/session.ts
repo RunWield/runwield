@@ -41,7 +41,7 @@ import type { ThinkingLevel, AgentMessage } from "@earendil-works/pi-agent-core"
 import type { AgentSwitchOptions } from "./agent-switching.ts";
 import type { ContextSnapshotObservation, ExecutionOutcome } from "../workflow/execution-metrics.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { readdir as fsReaddir, readFile as fsReadFile, realpath as fsRealpath } from "node:fs/promises";
 import { env } from "node:process";

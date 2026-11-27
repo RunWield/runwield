@@ -5,7 +5,7 @@ import { load, JSON_SCHEMA } from "js-yaml";
 import { join, resolve } from "node:path";
 import { fauxAssistantMessage, fauxText, fauxToolCall, type FauxResponseFactory } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../src/cmd/testing/runtime-command-fixture.ts";
-import { captureForegroundProcess } from "../../src/shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { openNativeFileLock } from "../../src/shared/native-file-lock.ts";
 import type { FixtureOracle } from "./fixtures.ts";
 import { checkoutRoot } from "./configuration.ts";

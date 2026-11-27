@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
-import { captureForegroundProcess } from "./captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { defineCommittedGitFixture } from "./git-test-fixture.ts";
 import { openOwnerCoordinationStore } from "./owner-coordination/index.ts";
 

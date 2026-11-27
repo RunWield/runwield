@@ -1,7 +1,7 @@
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { decodeTextStream } from "../../testing/decode-text-stream.ts";
 import { readFile as fsReadFile, writeFile as fsWriteFile, mkdir as fsMkdir } from "node:fs/promises";
-import { spawnNativeProcess } from "../foreground-process.ts";
+import { spawnNativeProcess } from "@runwield/resources/process";
 import { readdirSync } from "node:fs";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
@@ -129,7 +129,7 @@ await running;
 console.log("RETURNED_AFTER_TERMINATION");
 `,
             );
-            let child: import("../foreground-process.ts").NativeProcess | undefined;
+            let child: import("@runwield/resources/process").NativeProcess | undefined;
             try {
                 for (const [path, body] of [
                     ["handshake", JSON.stringify(identity)],

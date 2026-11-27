@@ -13,7 +13,7 @@ import type { RuntimeValidationProgress } from "@runwield/session-runtime/events
 import { seedPlan } from "../shared/testing/plan-state-fixture.ts";
 import { collectProcessOutput } from "../testing/subprocess-output.ts";
 import { runtimeSourceArgs } from "../testing/runtime-source-args.ts";
-import { spawnNativeProcess } from "../shared/foreground-process.ts";
+import { spawnNativeProcess } from "@runwield/resources/process";
 import { makeTempFile } from "../testing/temp-file.ts";
 import { test } from "node:test";
 import {

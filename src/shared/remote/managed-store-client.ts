@@ -521,7 +521,7 @@ async function executeManagedFixture() {
             const deliveries = openPublication(input.cwd);
             const { selectedPublicationCopies, settlePackagePublication } = await import("../../plan-store/index.ts");
             const { publishExecutionWorktreeIsolated } = await import("../isolated-publication.ts");
-            const { captureForegroundProcess } = await import("../captured-process.ts");
+            const { captureForegroundProcess } = await import("@runwield/resources/process");
             const commit = async (cwd: string, ref: string) => {
                 const result = await captureForegroundProcess("git", { cwd, args: ["rev-parse", ref] });
                 if (!result.success) throw new Error("Git commit unavailable.");
@@ -1243,7 +1243,7 @@ async function executeManagedFixture() {
             await seedDirectory(seedPath(input.cwd, "published-import"));
             completedSource = seedPath(input.cwd, "published-import", "retained.md");
             const publishedSource = await (
-                await import("../captured-process.ts")
+                await import("@runwield/resources/process")
             ).captureForegroundProcess("git", {
                 cwd: input.cwd,
                 args: ["show", "origin/main:docs/plans/retained.md"],
@@ -1323,7 +1323,7 @@ async function executeManagedFixture() {
         }
         if (!historyUnavailable) throw new Error("Disconnected history read selected the execution account.");
         const reconnected = await (
-            await import("../captured-process.ts")
+            await import("@runwield/resources/process")
         ).captureForegroundProcess(process.execPath, {
             cwd: input.cwd,
             args: [new URL("./managed-store-reconnect-client.ts", import.meta.url).pathname],

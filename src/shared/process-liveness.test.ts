@@ -4,7 +4,7 @@ import { once } from "node:events";
 import { hostname } from "node:os";
 import { execPath, pid } from "node:process";
 import { test } from "node:test";
-import { getLockHostname, isLockHolderGone, isLockHolderUnattributable, isPidAlive } from "./process-liveness.ts";
+import { getLockHostname, isLockHolderGone, isLockHolderUnattributable, isPidAlive } from "@runwield/resources/locks";
 
 test("process liveness recognizes this host and rejects invalid process identities", async () => {
     equal(getLockHostname(), hostname());

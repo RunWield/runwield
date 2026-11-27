@@ -2,7 +2,7 @@ import { restoreNonGitPlanExecution, reconcilePlanExecutionBinding } from "../..
 import { executionWorktreePathExists } from "./execution-worktree-rescue.ts";
 import { preparePlanController } from "../../plan-store/index.ts";
 import { resolve } from "node:path";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { findExistingProjectPath } from "../project-checkout.ts";
 import { effectiveDeliveryBranch } from "@runwield/workflow/publication";
 /**

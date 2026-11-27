@@ -1,8 +1,7 @@
 import { readFile, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import process from "node:process";
-import { spawnNativeProcess } from "../foreground-process.ts";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { spawnNativeProcess, captureForegroundProcess } from "@runwield/resources/process";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { processLines } from "./remote-runtime-lines.ts";
 import type { RuntimeFixture } from "./remote-runtime-test-fixture.ts";

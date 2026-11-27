@@ -7,8 +7,7 @@ import { type PlanFrontMatter } from "@runwield/plans";
 import { parsePlanFrontMatter, mergeFrontMatterText, planDocumentMarkdown } from "@runwield/plans/format";
 import { stripRuntimeFields } from "@runwield/plans/controller-state";
 import { platform } from "node:process";
-import { captureForegroundProcess } from "../captured-process.ts";
-import { spawnForegroundShell } from "../foreground-process.ts";
+import { captureForegroundProcess, spawnForegroundShell } from "@runwield/resources/process";
 import {
     getCustomSetting,
     getExactProjectCustomSetting,

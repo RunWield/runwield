@@ -1,6 +1,6 @@
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { captureForegroundProcess } from "../../src/shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { fixtureVariant, regularFile } from "./fixtures.ts";
 import type { FixtureProof, ProofOutcome, ReviewerFixture, VariantId } from "./fixtures.ts";
 import { applyFixturePatch, createProjectDirectory, materializeFixture, projectGit } from "./materialize.ts";

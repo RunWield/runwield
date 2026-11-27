@@ -1,4 +1,4 @@
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { realpath as fsRealpath } from "node:fs/promises";
 import type { HostedSession } from "@runwield/session-runtime/host";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";

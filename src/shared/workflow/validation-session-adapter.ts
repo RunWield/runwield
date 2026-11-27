@@ -23,7 +23,7 @@ import { runValidationAgentUntilEvent } from "../session/agent-workflow-step.ts"
 import { logValidationFailure } from "./validation-state-errors.ts";
 import { planDocumentsForCheckout } from "../../plan-store/index.ts";
 import { recordWorkflowOutcome } from "./outcome-observations.ts";
-import { getLockHostname } from "../process-liveness.ts";
+import { getLockHostname } from "@runwield/resources/locks";
 import { makeValidationCheckpoint } from "./validation-checkpoint.ts";
 import { renderOpenItems } from "./review-ledger.ts";
 import { recordValidationRepairCompletion } from "./validation-supervisor.ts";

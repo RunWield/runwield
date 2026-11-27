@@ -1,5 +1,5 @@
 import { bashFixtureExecutable, bashFixturePath } from "../../../scripts/bash-fixture.ts";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { serveHttp } from "../http-server.ts";
 import {
     mkdir as fsMkdir,

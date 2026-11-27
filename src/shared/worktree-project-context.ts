@@ -1,7 +1,7 @@
 import { projects } from "@runwield/projects";
 import { mkdtemp, rename } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { captureForegroundProcess } from "./captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import {
     lstat as fsLstat,
     mkdir as fsMkdir,

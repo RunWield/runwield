@@ -4,7 +4,7 @@ import process from "node:process";
 import manifest from "../../../packaging/remote/tested-dependencies.json" with { type: "json" };
 import { getCwd, getHomeDir } from "../../constants.ts";
 import { sha256Bytes } from "../../../scripts/build-metadata.ts";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { openNativeFileLock } from "../native-file-lock.ts";
 import { linuxTarget, prepareRemoteFiles } from "./runtime.ts";
 

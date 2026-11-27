@@ -1,5 +1,5 @@
 import { rename } from "node:fs/promises";
-import { captureForegroundProcess } from "../../src/shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { lstat as fsLstat, mkdir as fsMkdir, readFile as fsReadFile, realpath as fsRealpath } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 

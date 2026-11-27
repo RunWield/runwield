@@ -1,6 +1,6 @@
 import { recoverWindowsRename } from "./native-file-replace-windows.ts";
 import { rename as fsRename } from "node:fs/promises";
-import { captureForegroundProcess } from "./captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import process from "node:process";
 import {
     chmod as fsChmod,

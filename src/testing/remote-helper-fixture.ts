@@ -15,7 +15,7 @@ export async function writeFixtureHelperModule(root: string, manifestPath: strin
     await writeFile(path, source);
     return path;
 }
-import { captureForegroundProcess } from "../shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { sha256Bytes } from "../../scripts/build-metadata.ts";
 import { remoteHelperPaths, type RemoteHelperPin } from "../shared/remote/helpers.ts";
 

@@ -7,7 +7,7 @@ import { composedRemoteFixture } from "./composed-store-fixture.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { git } from "../git-test-fixture.ts";
 import { serveHttp } from "../http-server.ts";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { ProjectStoreClient } from "./project-store-client.ts";
 import type { ProjectStoreRequest } from "./project-store-protocol.ts";
 

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { assertStringIncludes } from "../../testing/assertions.ts";
-import { spawnNativeProcess } from "../foreground-process.ts";
+import { spawnNativeProcess } from "@runwield/resources/process";
 import { makeControlFixture, within } from "./session-save-test-fixture.ts";
 
 const cli = fileURLToPath(new URL("../../cli.ts", import.meta.url));

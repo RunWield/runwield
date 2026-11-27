@@ -1,7 +1,7 @@
 import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
 import { withRetainedPlanFixture } from "../../shared/testing/retained-plan-fixture.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
-import { captureForegroundProcess } from "../../shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
 import {

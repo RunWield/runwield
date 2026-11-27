@@ -2,7 +2,7 @@ import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { test } from "node:test";
 import { mkdir as fsMkdir, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
 import { getCwd } from "../../constants.ts";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { assertEquals } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { makeControlFixture, within } from "./session-save-test-fixture.ts";

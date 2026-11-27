@@ -1,7 +1,7 @@
 import { removeExecutableFixtureDirectory } from "../src/testing/runtime-executable-fixture.ts";
 import { captureScriptProcess } from "./script-process.ts";
 import { getCwd } from "../src/constants.ts";
-import { type NativeProcess, spawnNativeProcess } from "../src/shared/foreground-process.ts";
+import { type NativeProcess, spawnNativeProcess } from "@runwield/resources/process";
 import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, stat as fsStat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import process from "node:process";

@@ -5,7 +5,7 @@ import {
 } from "../../plan-store/index.ts";
 import { tmpdir } from "node:os";
 import { mkdtemp } from "node:fs/promises";
-import { captureForegroundProcess, type CapturedProcessOptions } from "../captured-process.ts";
+import { captureForegroundProcess, type CapturedProcessOptions } from "@runwield/resources/process";
 import { rm as fsRm } from "node:fs/promises";
 /** Import published code before resuming an unstarted child's planning checkout. */
 import { join } from "node:path";

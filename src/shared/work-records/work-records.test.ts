@@ -10,7 +10,7 @@ import { seedPlan, seedPlanState } from "../testing/plan-state-fixture.ts";
 import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 import { syncEpicChildPlanDeviations, archivePlan } from "../../plan-store/index.ts";
 import { loadArchivedPlan, loadPlan } from "../testing/plan-query-fixture.ts";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { mkdtemp as fsMkdtemp, rm as fsRm, stat as fsStat, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { dirname, join } from "node:path";

@@ -2,8 +2,7 @@
 
 import { projects } from "@runwield/projects";
 import { hasCanonicalPlanAccess } from "../plan-store/index.ts";
-import { isMissingExecutableError } from "./foreground-process.ts";
-import { captureForegroundProcess } from "./captured-process.ts";
+import { isMissingExecutableError, captureForegroundProcess } from "@runwield/resources/process";
 import {
     lstat as fsLstat,
     mkdir as fsMkdir,

@@ -3,7 +3,7 @@ import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
 import { withRetainedPlanFixture } from "../../shared/testing/retained-plan-fixture.ts";
 import { preparePlanWorkflow } from "../../plan-store/index.ts";
 import { fileURLToPath } from "node:url";
-import { captureForegroundProcess } from "../../shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
 import { mkdtemp as fsMkdtemp, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";

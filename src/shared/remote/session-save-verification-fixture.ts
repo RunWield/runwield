@@ -1,7 +1,7 @@
 import { collectProcessOutput } from "../../testing/subprocess-output.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { getCwd } from "../../constants.ts";
-import { spawnNativeProcess } from "../foreground-process.ts";
+import { spawnNativeProcess } from "@runwield/resources/process";
 import { serveHttp } from "../http-server.ts";
 import { assertEquals } from "../../testing/assertions.ts";
 import { join } from "node:path";

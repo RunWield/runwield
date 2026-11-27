@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { getHomeDir } from "../../constants.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { startRemoteControlService } from "./control.ts";
 import type { ProjectStoreBinding } from "../../plan-store/index.ts";
 

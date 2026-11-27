@@ -6,7 +6,7 @@
 import { realpathSync } from "node:fs";
 import { lstat, readFile, realpath } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
-import { captureForegroundProcess } from "./captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 
 async function git(cwd: string, args: string[]): Promise<string> {
     const result = await captureForegroundProcess("git", { cwd, args });

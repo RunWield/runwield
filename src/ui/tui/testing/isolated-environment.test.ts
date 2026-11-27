@@ -1,4 +1,4 @@
-import { captureForegroundProcess } from "../../../shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
 import {

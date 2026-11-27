@@ -1,6 +1,6 @@
 import type { TerminalRuntime } from "./terminal-fixture.ts";
 import { bashFixtureExecutable, bashFixturePath, quoteBashFixture } from "./bash-fixture.ts";
-import { captureForegroundProcess } from "../src/shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { captureScriptProcess } from "./script-process.ts";
 import { tmpdir } from "node:os";
 import {

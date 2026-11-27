@@ -13,7 +13,7 @@ import {
     assertWorkflowBinaryCallsSupported,
 } from "../../../testing/workflow-binary-fixtures.ts";
 import { runtimeSourceArgs } from "../../../testing/runtime-source-args.ts";
-import { captureForegroundProcess } from "../../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { makeTempFile } from "../../../testing/temp-file.ts";
 import { after, before, test } from "node:test";
 import { tmpdir } from "node:os";

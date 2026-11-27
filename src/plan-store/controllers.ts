@@ -45,7 +45,7 @@ import {
     inspectWorktreeRegistryAtPath,
     type WorktreeRegistryEntry,
 } from "../shared/worktree-registry.ts";
-import { captureForegroundProcess } from "../shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { parsePlanFrontMatter } from "@runwield/plans/format";
 import { isPublicationCleanupPending } from "@runwield/workflow/publication";
 import {

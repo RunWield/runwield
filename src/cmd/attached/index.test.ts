@@ -6,7 +6,7 @@ import { compactResult, compactStatus } from "../../shared/attached/presentation
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { rm as fsRm } from "node:fs/promises";
 import { test } from "node:test";
-import { captureForegroundProcess } from "../../shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals } from "../../testing/assertions.ts";
 import { git } from "../../shared/git-test-fixture.ts";

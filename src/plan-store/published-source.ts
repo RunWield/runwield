@@ -25,7 +25,7 @@ import {
     updatePackageWorkflowMetadata,
 } from "./workflows.ts";
 import { isCommitPublishedToTarget } from "../shared/isolated-publication.ts";
-import { captureForegroundProcess } from "../shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { effectiveDeliveryBranch, type PublicationAttempt } from "@runwield/workflow/publication";
 /** Immutable recording input retained after delivery removes the execution worktree. */
 import { join } from "node:path";

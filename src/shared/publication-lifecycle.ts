@@ -1,7 +1,7 @@
 import { retainedPublicationCopiesForCheckout } from "../plan-store/index.ts";
 import { tmpdir } from "node:os";
 import { mkdtemp } from "node:fs/promises";
-import { captureForegroundProcess } from "./captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { rm as fsRm } from "node:fs/promises";
 /** Finalize only the Plan and Work Record documents owned by a sealed delivery. */
 import { join } from "node:path";

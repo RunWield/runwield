@@ -4,8 +4,7 @@ import {
     withWorktreeRegistryLockAtPath,
     type WorktreeRegistryEntry,
 } from "./worktree-registry.ts";
-import { readLockFileSnapshot } from "./lock-file-snapshot.ts";
-import { isLockHolderGone } from "./process-liveness.ts";
+import { readLockFileSnapshot, isLockHolderGone } from "@runwield/resources/locks";
 /** Staged personal-runtime transfer. The verified launcher binds both hosts before exchanging bytes. */
 import { createHash } from "node:crypto";
 import { join, dirname, relative, isAbsolute } from "node:path";
@@ -14,7 +13,7 @@ import { getRunWieldRuntimeDir, WORKTREE_REGISTRY_LOCK_FILE } from "../constants
 import { ensurePrivateDir, writeJsonAtomically, syncParentDirectory } from "./private-json-file.ts";
 import { openNativeFileLock, type NativeFileLock } from "./native-file-lock.ts";
 import { DatabaseSync } from "./sqlite.ts";
-import { captureForegroundProcess } from "./captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { isRunWieldOwnedRuntimePath } from "./runwield-owned-paths.ts";
 
 const personalNames = [

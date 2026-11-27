@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import { join } from "node:path";
 import { publicationFixture } from "./package-publication-fixture.ts";
 import { setExactProjectCustomSetting } from "../../settings.ts";
-import { captureForegroundProcess } from "../../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import type { ValidationHostResume, HostTurnValidationResult } from "@runwield/workflow/host-contract";
 
 export async function recordingFixture(

@@ -1,6 +1,5 @@
 import { getCwd } from "../../constants.ts";
-import { spawnNativeProcess } from "../foreground-process.ts";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { spawnNativeProcess, captureForegroundProcess } from "@runwield/resources/process";
 import { REMOTE_PYTHON_REQUIRED } from "./host-prerequisites.ts";
 /* Remote location resolution. This source is constant: only JSON on stdin contains user input.
  * OpenSSH still owns host configuration, authentication and host verification.

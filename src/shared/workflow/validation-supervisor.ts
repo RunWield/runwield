@@ -13,7 +13,7 @@ import { ensurePlanIdentity, StalePlanWriteError, planDocumentsForCheckout } fro
 import { StaleControllerWriteError } from "../../plan-store/index.ts";
 import { runPlansDoctor } from "../../cmd/plans/doctor.ts";
 import { isRecordedProcessAlive, readProcessIdentity } from "../process-identity.ts";
-import { getLockHostname } from "../process-liveness.ts";
+import { getLockHostname } from "@runwield/resources/locks";
 import { findActiveByPlanName as findWorktreeByPlanName } from "../worktree-registry.ts";
 import { hostSemanticRepairPrompt, requestHostRepair } from "./validation-host-state.ts";
 import { runValidationLoop } from "./validation-engine.ts";

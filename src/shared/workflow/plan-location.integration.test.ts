@@ -9,7 +9,7 @@ import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
 import { tmpdir } from "node:os";

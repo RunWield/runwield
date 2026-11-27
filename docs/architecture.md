@@ -495,7 +495,7 @@ and root-affecting configuration remain active.
 
 `SessionRuntime.cancelSession()` is the sole cancellation authority: TUI Escape, ACP, and every other consumer call it
 and never hold process handles themselves. Process-tree ownership lives one layer down, in
-`src/shared/foreground-process.ts`. Every RunWield-owned foreground shell — local `!`/`!!` commands and configured local
+`packages/resources/foreground-process.ts`. Every RunWield-owned foreground shell — local `!`/`!!` commands and configured local
 CI — is spawned through that module as an independently terminable process tree (detached process group plus
 negative-pid group signal on Unix-like systems, `taskkill /F /T` on Windows), bound to a Session active-interaction
 `AbortSignal` and an optional timeout. Cancellation therefore terminates the whole descendant tree, not just the wrapper

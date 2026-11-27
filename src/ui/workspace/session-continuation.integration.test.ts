@@ -9,7 +9,7 @@ import { openNativeFileLock } from "../../shared/native-file-lock.ts";
 // @ts-nocheck: Owner-service result records have implicit types.
 import { collectProcessOutput } from "../../testing/subprocess-output.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
-import { spawnNativeProcess } from "../../shared/foreground-process.ts";
+import { spawnNativeProcess } from "@runwield/resources/process";
 import { makeTempFile } from "../../testing/temp-file.ts";
 import { test } from "node:test";
 import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";

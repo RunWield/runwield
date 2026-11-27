@@ -1,4 +1,4 @@
-import { spawnNativeProcess } from "../../shared/foreground-process.ts";
+import { spawnNativeProcess } from "@runwield/resources/process";
 import { collectProcessOutput } from "../../testing/subprocess-output.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { test } from "node:test";

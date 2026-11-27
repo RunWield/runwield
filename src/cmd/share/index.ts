@@ -3,7 +3,7 @@ import { renderSessionExportHtml } from "../../ui/session-export/session-export-
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { getCwd } from "../../constants.ts";
-import { captureForegroundProcess } from "../../shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { rm as fsRm } from "node:fs/promises";
 /**
  * @module cmd/share

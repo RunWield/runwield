@@ -1,7 +1,7 @@
 import { seedPlan } from "../testing/plan-state-fixture.ts";
 import { approvePlanForExecution } from "../testing/ready-plan-fixture.ts";
 import { isAbsolute, join } from "node:path";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { test } from "node:test";
 import { readFile as fsReadFile, stat as fsStat, writeFile as fsWriteFile } from "node:fs/promises";
 import { ok as assert } from "node:assert/strict";

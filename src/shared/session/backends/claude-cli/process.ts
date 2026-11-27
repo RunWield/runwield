@@ -1,4 +1,4 @@
-import { isMissingExecutableError, spawnForegroundProcess } from "../../../foreground-process.ts";
+import { isMissingExecutableError, spawnForegroundProcess } from "@runwield/resources/process";
 import type { PreparedClaudeCliCommand } from "./command.ts";
 import { ClaudeCliBackendError } from "./failure.ts";
 

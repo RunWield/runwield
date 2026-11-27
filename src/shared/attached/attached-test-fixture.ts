@@ -2,7 +2,7 @@ import { seedPlan } from "../testing/plan-state-fixture.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { collectProcessOutput } from "../../testing/subprocess-output.ts";
 import { rm as fsRm, readFile as fsReadFile } from "node:fs/promises";
-import { spawnNativeProcess } from "../foreground-process.ts";
+import { spawnNativeProcess } from "@runwield/resources/process";
 import { fileURLToPath as fromFileUrl } from "node:url";
 import { join } from "node:path";
 import { defineCommittedGitFixture } from "../git-test-fixture.ts";

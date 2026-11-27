@@ -1,4 +1,4 @@
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { stat as fsStat } from "node:fs/promises";
 /**
  * @module shared/workflow/transition-recovery

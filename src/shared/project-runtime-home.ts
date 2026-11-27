@@ -8,9 +8,13 @@ import {
     reusedGitRead,
     rememberGitRead,
 } from "./git-evidence-cache.ts";
-import { readLockFileSnapshot, lockFileSnapshotMatches, type LockFileSnapshot } from "./lock-file-snapshot.ts";
+import {
+    readLockFileSnapshot,
+    lockFileSnapshotMatches,
+    type LockFileSnapshot,
+    isLockHolderGone,
+} from "@runwield/resources/locks";
 import { DatabaseSync } from "./sqlite.ts";
-import { isLockHolderGone } from "./process-liveness.ts";
 import { getRunWieldRuntimeDir } from "../constants.ts";
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";

@@ -1,4 +1,4 @@
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 
 /** Local Git commands. No Plan registry operations belong in standalone review. */
 export async function git(cwd: string, args: string[]): Promise<string> {

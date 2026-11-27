@@ -1,7 +1,7 @@
 import { ok as assert } from "node:assert/strict";
 import { getCwd } from "../../constants.ts";
 import { writeFile } from "node:fs/promises";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { join } from "node:path";
 import { attachedValidationFixture } from "./validation-test-fixture.ts";
 import { parseDiffFiles } from "../workflow/review-diff.ts";

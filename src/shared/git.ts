@@ -1,5 +1,4 @@
-import { captureForegroundProcess } from "./captured-process.ts";
-import { isMissingExecutableError } from "./foreground-process.ts";
+import { captureForegroundProcess, isMissingExecutableError } from "@runwield/resources/process";
 /**
  * @module shared/git
  * Shared Git repository detection and non-Git execution consent helpers.

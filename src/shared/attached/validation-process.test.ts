@@ -2,7 +2,7 @@ import { compactStatus } from "./presentation.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { collectProcessOutput } from "../../testing/subprocess-output.ts";
 import { test } from "node:test";
-import { spawnNativeProcess } from "../foreground-process.ts";
+import { spawnNativeProcess } from "@runwield/resources/process";
 import { stat as fsStat, writeFile as fsWriteFile } from "node:fs/promises";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals } from "../../testing/assertions.ts";
@@ -46,7 +46,7 @@ test("CI runs outside the Attached record lock; concurrent calls are bounded and
     const fixture = await attachedValidationFixture({
         command: "sh -c 'touch ci-started; while ! test -f release-ci; do sleep 0.1; done'",
     });
-    let child: import("../foreground-process.ts").NativeProcess | undefined;
+    let child: import("@runwield/resources/process").NativeProcess | undefined;
     try {
         const workflow = await fixture.status();
         child = spawnNativeProcess(process.execPath, {

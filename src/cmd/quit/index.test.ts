@@ -2,7 +2,7 @@ import { test } from "node:test";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { execPath } from "node:process";
-import { type CapturedProcessOutput, captureForegroundProcess } from "../../shared/captured-process.ts";
+import { type CapturedProcessOutput, captureForegroundProcess } from "@runwield/resources/process";
 import { mkdir as fsMkdir, rm as fsRm } from "node:fs/promises";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";

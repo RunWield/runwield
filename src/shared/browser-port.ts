@@ -1,4 +1,4 @@
-import { captureForegroundProcess } from "./captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { getCwd } from "../constants.ts";
 import process from "node:process";
 /** External capability for asking the operating system to open a URL. */

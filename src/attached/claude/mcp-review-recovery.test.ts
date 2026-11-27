@@ -1,7 +1,7 @@
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
-import { spawnNativeProcess } from "../../shared/foreground-process.ts";
+import { spawnNativeProcess } from "@runwield/resources/process";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { join } from "node:path";

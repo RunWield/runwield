@@ -11,7 +11,7 @@ import {
 import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { DENO_CONFIG_PATH, EVIDENCE, withProject } from "./attached-test-fixture.ts";

@@ -14,8 +14,7 @@ import {
     recordExecutionSetupCheckpoint,
     recordExecutionSetupLifecycle,
 } from "./execution-setup.ts";
-import { isMissingExecutableError } from "../foreground-process.ts";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { isMissingExecutableError, captureForegroundProcess } from "@runwield/resources/process";
 import { stat as fsStat } from "node:fs/promises";
 import { prepareEditedSiblingPlans } from "../../plan-store/index.ts";
 import { CLI_BIN } from "../../constants.ts";

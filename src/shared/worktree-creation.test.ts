@@ -1,6 +1,6 @@
 import process from "node:process";
 import { readdir } from "node:fs/promises";
-import { captureForegroundProcess } from "./captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import {
     mkdir as fsMkdir,
     mkdtemp as fsMkdtemp,

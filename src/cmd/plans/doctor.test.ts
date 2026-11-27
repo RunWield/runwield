@@ -36,7 +36,7 @@ import {
     inspectProjectRuntimeReadAccess,
     withProjectRuntimeReadScope,
 } from "../../shared/project-runtime-layout.ts";
-import { getLockHostname } from "../../shared/process-liveness.ts";
+import { getLockHostname } from "@runwield/resources/locks";
 import { inspectTargetBranchPlansByParent } from "../../shared/workflow/planning-worktree.ts";
 import { seedPlan as savePlan } from "../../shared/testing/plan-state-fixture.ts";
 

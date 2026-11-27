@@ -6,7 +6,7 @@ import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assertEquals } from "../../testing/assertions.ts";
 import { writeRuntimeExecutableFixture } from "../../testing/runtime-executable-fixture.ts";
-import { captureForegroundProcess } from "../../shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { getCwd } from "../../constants.ts";
 
 for (const host of [

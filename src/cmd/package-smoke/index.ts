@@ -1,5 +1,5 @@
 import { serveHttp } from "../../shared/http-server.ts";
-import { captureForegroundProcess } from "../../shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { getCwd } from "../../constants.ts";
 import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
 /**

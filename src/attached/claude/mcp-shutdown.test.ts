@@ -6,7 +6,7 @@ import { join } from "node:path";
 import process from "node:process";
 import { assertEquals } from "../../testing/assertions.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
-import { spawnNativeProcess } from "../../shared/foreground-process.ts";
+import { spawnNativeProcess } from "@runwield/resources/process";
 import { attachedValidationFixture } from "../../shared/attached/validation-test-fixture.ts";
 import { CLI_PATH, DENO_CONFIG_PATH, EVIDENCE, spawnAttachedCli } from "../../shared/attached/attached-test-fixture.ts";
 import { saveValidationCommand } from "../../shared/workflow/validation-local-ci.ts";

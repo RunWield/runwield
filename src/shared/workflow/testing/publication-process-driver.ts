@@ -5,7 +5,7 @@ import { withPackageWorkflow } from "../../../plan-store/workflows.ts";
 import { readPlanPackage } from "../../../plan-store/packages.ts";
 import { advancePublicationAttempt } from "@runwield/workflow/publication";
 import { openPublication } from "@runwield/workflow/publication-runtime";
-import { captureForegroundProcess } from "../../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import process from "node:process";
 import { publishExecutionWorktreeIsolated } from "../../isolated-publication.ts";

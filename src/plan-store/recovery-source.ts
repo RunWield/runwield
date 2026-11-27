@@ -1,6 +1,6 @@
 import type { PublicationAttempt } from "@runwield/workflow/publication";
 import { findExistingProjectPath } from "../shared/project-checkout.ts";
-import { captureForegroundProcess } from "../shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { type PlanFrontMatter } from "@runwield/plans";
 import { loadPlan } from "../plan-store.ts";
 import { slugify } from "../shared/worktree.ts";

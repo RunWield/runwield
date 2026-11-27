@@ -4,15 +4,19 @@ import type { Socket } from "node:net";
 import { getCwd } from "../../constants.ts";
 import { isStandaloneExecutable } from "../runtime-identity.ts";
 import { listenSocket, readStreamInto, type SocketListener } from "../socket-listener.ts";
-import { type NativeProcess, spawnNativeProcess } from "../foreground-process.ts";
+import {
+    type NativeProcess,
+    spawnNativeProcess,
+    terminateOwnedLinuxGroup,
+    setChildSubreaper,
+    terminateOwnedLinuxDescendants,
+} from "@runwield/resources/process";
 import { realpath as fsRealpath, rm as fsRm } from "node:fs/promises";
 /* Runs in the remote executable, independently of the TUI process. The
  * launcher delivers the private header through a separate non-terminal SSH
  * channel into an owned Unix socket, never through the terminal or a file. */
 
 import type { RemoteConnectionViewConfig } from "../../ui/tui/remote-connection-view.ts";
-import { terminateOwnedLinuxGroup } from "../foreground-process.ts";
-import { setChildSubreaper, terminateOwnedLinuxDescendants } from "../linux-process-group.ts";
 import { type MountHeader, mountLaptopHome, type RemoteMount, validateMountHeader } from "./sftp-mount.ts";
 import { parseRemoteModelProof, type RemoteModelProof } from "./model-proof-config.ts";
 import { verifiedRemoteHelperPath } from "./helpers.ts";

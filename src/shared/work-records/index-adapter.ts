@@ -3,7 +3,7 @@ import { readLocalHomeStore, workRecordsForCheckout } from "../../plan-store/ind
 import { workRecordOwnerLayout } from "./owner.ts";
 import { assertContainedPath } from "@runwield/resources/fs";
 import { mkdir as fsMkdir } from "node:fs/promises";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 /**
  * @module shared/work-records/index-adapter
  * Derived Mnemoteca index for canonical Work Records.

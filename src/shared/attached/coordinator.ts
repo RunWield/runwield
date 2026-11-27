@@ -35,7 +35,7 @@ import { isCommitPublishedToTarget } from "../isolated-publication.ts";
 import { readPublishedDeliverySources } from "../../plan-store/index.ts";
 import { parseRecorderSections } from "../work-records/generation.ts";
 import { stat as fsStat } from "node:fs/promises";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { probeGitRepository } from "../git.ts";
 import { hasNonGitExecutionConsent, rememberNonGitExecutionConsent } from "../non-git-execution-consent.ts";
 import { findActiveByPlanName, findById } from "../worktree-registry.ts";
@@ -124,7 +124,7 @@ import {
     transactAttachedWorkflowRecord,
     writeAttachedWorkflowRecord,
 } from "./record-store.ts";
-import { getLockHostname, isLockHolderGone } from "../process-liveness.ts";
+import { getLockHostname, isLockHolderGone } from "@runwield/resources/locks";
 import { sameHostIdentity, ValidationHostRejected, type ValidationHostResume } from "@runwield/workflow/host-contract";
 import { readReviewDiff, type ReviewDiffTexts } from "../workflow/review-diff.ts";
 import { getWorktreeReviewDiff } from "../workflow/git-snapshot.ts";

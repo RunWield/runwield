@@ -2,7 +2,7 @@ import { collectProcessOutput } from "../../testing/subprocess-output.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { serveHttp } from "../http-server.ts";
 import { getCwd } from "../../constants.ts";
-import { spawnNativeProcess } from "../foreground-process.ts";
+import { spawnNativeProcess } from "@runwield/resources/process";
 import { readdirSync } from "node:fs";
 import { stat as fsStat, readFile as fsReadFile } from "node:fs/promises";
 import { test } from "node:test";

@@ -1,5 +1,5 @@
 /**
- * @module shared/foreground-process
+ * @module @runwield/resources/process
  *
  * Runs one RunWield-owned foreground command as an independently terminable
  * process tree.
@@ -191,8 +191,6 @@ export interface ForegroundProcess {
 
 /** A running (or already-settled) foreground shell command. */
 export type ForegroundShell = ForegroundProcess;
-
-export { terminateOwnedLinuxGroup } from "./linux-process-group.ts";
 
 function emptyClosedStream(): ReadableStream<Uint8Array> {
     return new ReadableStream<Uint8Array>({

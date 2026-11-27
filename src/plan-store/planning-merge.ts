@@ -1,7 +1,7 @@
 import { tmpdir } from "node:os";
 import { mkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { captureForegroundProcess } from "../shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { injectFrontMatter, parsePlanFrontMatter, planDocumentMarkdown } from "@runwield/plans/format";
 async function readPlanAt(cwd: string, ref: string, path: string) {
     const result = await captureForegroundProcess("git", { cwd, args: ["show", `${ref}:${path}`] });

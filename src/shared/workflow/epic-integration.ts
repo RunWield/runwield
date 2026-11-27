@@ -5,7 +5,7 @@ import { preparePlanWorkflow } from "../../plan-store/index.ts";
 import { REVIEW_DIFF_FORMAT_ARGS } from "./git-snapshot.ts";
 import { tmpdir } from "node:os";
 import { mkdtemp } from "node:fs/promises";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess, spawnForegroundShell } from "@runwield/resources/process";
 import { rm as fsRm } from "node:fs/promises";
 /**
  * @module shared/workflow/epic-integration
@@ -30,7 +30,6 @@ import { AGENTS } from "../session/agent-registry.ts";
 import { isCommitPublishedToTarget } from "../isolated-publication.ts";
 import { isGitRepository } from "../git.ts";
 import { getCodeReviewMode, getCustomSetting, getExactProjectCustomSetting } from "../settings.ts";
-import { spawnForegroundShell } from "../foreground-process.ts";
 import {
     captureProcessStreamTail,
     formatCapturedProcessOutput,

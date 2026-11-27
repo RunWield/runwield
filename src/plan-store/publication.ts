@@ -24,7 +24,7 @@ import {
 } from "./published-source.ts";
 import fs from "node:fs/promises";
 import { join } from "node:path";
-import { captureForegroundProcess } from "../shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import {
     capturePlanPackageInput,
     listPlanPackages,

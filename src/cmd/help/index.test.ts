@@ -1,6 +1,5 @@
-import { type CapturedProcessOutput } from "../../shared/captured-process.ts";
+import { type CapturedProcessOutput, captureForegroundProcess } from "@runwield/resources/process";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
-import { captureForegroundProcess } from "../../shared/captured-process.ts";
 import { test } from "node:test";
 import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";
 import { tmpdir } from "node:os";

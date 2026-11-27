@@ -1,5 +1,5 @@
 import { bashFixtureExecutable } from "../../../scripts/bash-fixture.ts";
-import { captureForegroundProcess } from "../../shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { test } from "node:test";
 import {
     mkdtemp as fsMkdtemp,

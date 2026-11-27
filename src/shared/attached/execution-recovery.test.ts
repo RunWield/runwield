@@ -4,7 +4,7 @@ import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { readAttachedAction } from "./coordinator.ts";
 import { test } from "node:test";
 import { mkdir as fsMkdir, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";

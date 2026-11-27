@@ -3,7 +3,7 @@ import { seedPlanState, seedPlan } from "../testing/plan-state-fixture.ts";
 import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 import { makeReadOnlyDirectoryFixture } from "../../testing/read-only-directory-fixture.ts";
 import { collectProcessOutput } from "../../testing/subprocess-output.ts";
-import { spawnNativeProcess } from "../foreground-process.ts";
+import { spawnNativeProcess } from "@runwield/resources/process";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { test } from "node:test";
 import { mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";

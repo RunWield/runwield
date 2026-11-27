@@ -300,7 +300,7 @@ for (const scenario of ["changed", "unchanged", "externally-edited"] as const) {
 
 test("retained Markdown preserves BOM and CRLF bytes in copies and Recorder source", async () => {
     const { publicationFixture } = await import("./testing/package-publication-fixture.ts");
-    const { captureForegroundProcess } = await import("../captured-process.ts");
+    const { captureForegroundProcess } = await import("@runwield/resources/process");
     const { loadPublishedWorkRecordSource } = await import("../../plan-store/index.ts");
     const { decodePackageMarkdown } = await import("@runwield/plans/format");
     const { assertDeliveryCopies } = await import("@runwield/plans/publication-copies");

@@ -1,5 +1,5 @@
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
-import { spawnNativeProcess } from "../../shared/foreground-process.ts";
+import { spawnNativeProcess } from "@runwield/resources/process";
 import { readFileSync, chmodSync } from "node:fs";
 import { stat as fsStat, chmod as fsChmod, readFile as fsReadFile, rename as fsRename } from "node:fs/promises";
 import { test } from "node:test";

@@ -18,7 +18,7 @@ import {
     stat as fsStat,
     writeFile as fsWriteFile,
 } from "node:fs/promises";
-import { captureForegroundProcess } from "../../shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { test as registerTest } from "node:test";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";

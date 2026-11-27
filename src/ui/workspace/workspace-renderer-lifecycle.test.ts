@@ -1,5 +1,5 @@
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
-import { captureForegroundProcess } from "../../shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { test } from "node:test";

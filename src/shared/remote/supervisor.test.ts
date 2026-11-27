@@ -5,8 +5,7 @@ import {
 } from "../../testing/remote-helper-fixture.ts";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { randomBytes } from "node:crypto";
-import { spawnNativeProcess } from "../foreground-process.ts";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { spawnNativeProcess, captureForegroundProcess } from "@runwield/resources/process";
 import { serveHttp } from "../http-server.ts";
 import { getCwd } from "../../constants.ts";
 import process from "node:process";

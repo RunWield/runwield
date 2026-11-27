@@ -325,7 +325,7 @@ test("a linked checkout process waits for the shared native record lock", async 
     const clone = `${f.root}-clone`;
     try {
         const { git } = await import("../git-test-fixture.ts");
-        const { captureForegroundProcess } = await import("../captured-process.ts");
+        const { captureForegroundProcess } = await import("@runwield/resources/process");
         await git(f.root, ["remote", "add", "origin", "https://example.test/records/shared.git"]);
         await projects.checkout.admit(f.root);
         await git(f.root, ["clone", f.root, clone]);

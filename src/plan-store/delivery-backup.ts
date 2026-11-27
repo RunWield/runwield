@@ -1,6 +1,6 @@
 import { readFile, mkdir, writeFile, rm } from "node:fs/promises";
 import { dirname, resolve, relative, isAbsolute } from "node:path";
-import { captureForegroundProcess } from "../shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 
 const backupToken = Symbol("Plan delivery backup");
 export interface PlanDeliveryBackup {

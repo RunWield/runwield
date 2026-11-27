@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { captureForegroundProcess } from "../../src/shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { createProjectDirectory, materializeFixture } from "./materialize.ts";
 import { loadFixture } from "./fixtures.ts";
 import { admitFixtures } from "./admission.ts";

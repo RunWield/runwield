@@ -1,7 +1,7 @@
 import { runtimeSourceArgs } from "../../../testing/runtime-source-args.ts";
 import { serveHttp } from "../../../shared/http-server.ts";
 import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
-import { spawnNativeProcess } from "../../../shared/foreground-process.ts";
+import { spawnNativeProcess } from "@runwield/resources/process";
 import { assertEquals } from "../../../testing/assertions.ts";
 import { join } from "node:path";
 import { getModelRegistry } from "@runwield/pi-ai";

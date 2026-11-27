@@ -2,7 +2,7 @@ import { projects } from "@runwield/projects";
 import { savePlanDefinition } from "../../plan-store/index.ts";
 import { tmpdir } from "node:os";
 import { mkdtemp } from "node:fs/promises";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { rm as fsRm } from "node:fs/promises";
 /**
  * @module shared/workflow/epic-branch

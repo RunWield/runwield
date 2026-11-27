@@ -2,7 +2,7 @@ import { stdinStream } from "../../testing/stdin-stream.ts";
 import { isStandaloneExecutable } from "../runtime-identity.ts";
 import { collectProcessOutput } from "../../testing/subprocess-output.ts";
 import { getCwd } from "../../constants.ts";
-import { spawnNativeProcess, terminateOwnedLinuxGroup } from "../foreground-process.ts";
+import { spawnNativeProcess, terminateOwnedLinuxGroup } from "@runwield/resources/process";
 import process from "node:process";
 
 /** Compiled-only launcher for owned qualification processes. Not a normal remote CLI. */

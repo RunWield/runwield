@@ -1,4 +1,4 @@
-import { captureForegroundProcess } from "./captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import {
     PROJECT_INTERNAL_RUNTIME_DIR_NAME,
     PROJECT_SECRET_STORE_RELATIVE_PATH,

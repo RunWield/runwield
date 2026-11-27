@@ -24,7 +24,7 @@ import {
     settleRetainedExecutionCleanup,
     settleRetainedExecutionRecording,
 } from "../../src/plan-store/index.ts";
-import { captureForegroundProcess } from "../../src/shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { getDeliveryCopyPolicy, shouldAutoGenerateWorkRecordsOnPlanCompletion } from "../../src/shared/settings.ts";
 import { resolvePublicationUpstream as resolveRemoteTarget } from "../../src/shared/publication-target.ts";
 import {

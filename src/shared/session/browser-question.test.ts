@@ -2,7 +2,7 @@ import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import process from "node:process";
 import { getCwd } from "../../constants.ts";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 
 for (const mode of ["answer", "cancel", "bounded-drain"]) {

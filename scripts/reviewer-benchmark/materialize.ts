@@ -2,7 +2,7 @@ import { cp, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/p
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { captureForegroundProcess } from "../../src/shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { getWorktreeReviewDiff } from "../../src/shared/workflow/git-snapshot.ts";
 import { fixtureVariant, readFixturePatch, validateSourceTree } from "./fixtures.ts";
 import type { ReviewerFixture, VariantId } from "./fixtures.ts";

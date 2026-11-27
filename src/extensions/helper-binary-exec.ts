@@ -1,4 +1,4 @@
-import { isMissingExecutableError, spawnForegroundProcess } from "../shared/foreground-process.ts";
+import { isMissingExecutableError, spawnForegroundProcess } from "@runwield/resources/process";
 
 export interface HelperBinaryExecResult {
     code: number;

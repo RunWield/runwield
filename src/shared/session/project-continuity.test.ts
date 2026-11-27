@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import process from "node:process";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { openFileSessionStore } from "./file-session-store.ts";
 import { createRootSessionManager, resolveCreatedRootSessionPath, openPersistedRootSession } from "./root-session.ts";
 import { captureTranscriptEvidence } from "@runwield/session-runtime/transcript";

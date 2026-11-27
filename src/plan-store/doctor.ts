@@ -12,7 +12,7 @@ import { listArchivedPlans } from "./queries.ts";
 import { inspectControllerDocumentWorktrees } from "./controllers.ts";
 import { hasApplicablePublicationReceipt, effectiveDeliveryBranch } from "@runwield/workflow/publication";
 import { platform } from "node:process";
-import { captureForegroundProcess } from "../shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { opendir as fsOpendir } from "node:fs/promises";
 import { readFile as fsReadFile, realpath as fsRealpath, stat as fsStat } from "node:fs/promises";
 
@@ -41,12 +41,16 @@ import {
     resolveProjectRuntimeLayout,
 } from "../shared/project-runtime-layout.ts";
 import { inspectRunWieldGitignore } from "../shared/runwield-owned-paths.ts";
-import { readLockFileSnapshot, removeLockFileIfSnapshotMatches } from "../shared/lock-file-snapshot.ts";
+import {
+    readLockFileSnapshot,
+    removeLockFileIfSnapshotMatches,
+    isLockHolderGone,
+    isLockHolderUnattributable,
+} from "@runwield/resources/locks";
 import { inspectPlanIdentityDocuments } from "./index.ts";
 import { getTransitionJournalDir } from "./transitions.ts";
 import { reconcileTransitionRecoveryRecords, type TransitionReconciliation } from "./index.ts";
 import { buildEffectProver, listGitWorktreePaths, runGitLines } from "../shared/workflow/transition-recovery.ts";
-import { isLockHolderGone, isLockHolderUnattributable } from "../shared/process-liveness.ts";
 
 import {
     inspectWorktreeRegistryAtPath,

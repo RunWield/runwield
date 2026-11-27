@@ -1,11 +1,11 @@
 import { seedPlanState } from "../testing/plan-state-fixture.ts";
 import { test } from "node:test";
 import { getCwd } from "../../constants.ts";
-import { spawnNativeProcess } from "../foreground-process.ts";
+import { spawnNativeProcess } from "@runwield/resources/process";
 import { writeFile as fsWriteFile, stat as fsStat } from "node:fs/promises";
 import { assertEquals, assertExists, assertRejects } from "../../testing/assertions.ts";
 import { join } from "node:path";
-import { getLockHostname } from "../process-liveness.ts";
+import { getLockHostname } from "@runwield/resources/locks";
 
 import { recordValidationRepairCompletion } from "./validation-supervisor.ts";
 import { complete, hostFixture, hostRequest } from "./testing/validation-host-fixture.ts";

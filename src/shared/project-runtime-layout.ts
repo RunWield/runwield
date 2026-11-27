@@ -9,7 +9,7 @@ import { recoverWindowsRename } from "./native-file-replace-windows.ts";
 import fsPromises from "node:fs/promises";
 import { open as fsOpen, rmdir as fsRmdir } from "node:fs/promises";
 import { type NativeFileLock, openNativeFileLock } from "./native-file-lock.ts";
-import { type CapturedProcessOutput, captureForegroundProcess } from "./captured-process.ts";
+import { type CapturedProcessOutput, captureForegroundProcess } from "@runwield/resources/process";
 import { type Dirent, type Stats } from "node:fs";
 import {
     chmod as fsChmod,
@@ -42,7 +42,9 @@ import {
     lockFileSnapshotMatches,
     readLockFileSnapshot,
     removeLockFileIfSnapshotMatches,
-} from "./lock-file-snapshot.ts";
+    getLockHostname,
+    isLockHolderGone,
+} from "@runwield/resources/locks";
 import {
     gitIndexEvidence,
     gitWorktreeListEvidence,
@@ -50,7 +52,6 @@ import {
     rememberGitRead,
     reusedGitRead,
 } from "./git-evidence-cache.ts";
-import { getLockHostname, isLockHolderGone } from "./process-liveness.ts";
 import { resolveProjectRoot, prepareProjectCheckout } from "./project-checkout.ts";
 import { inspectWorktreeRegistryAtPath, withWorktreeRegistryLockAtPath } from "./worktree-registry.ts";
 import { ensureRunWieldOwnedGitignoreBlock, LEGACY_PROJECT_RUNTIME_HAZARD_PATHS } from "./runwield-owned-paths.ts";

@@ -1,7 +1,7 @@
 import { openWorkflow } from "@runwield/workflow";
 import { injectFrontMatter, parsePlanFrontMatter } from "@runwield/plans/format";
 import { join } from "node:path";
-import { captureForegroundProcess } from "../captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { getCwd } from "../../constants.ts";
 import { mkdtemp as fsMkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";

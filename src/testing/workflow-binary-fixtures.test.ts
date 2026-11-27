@@ -1,5 +1,5 @@
 import { delimiter } from "node:path";
-import { captureForegroundProcess } from "../shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { getCwd } from "../constants.ts";
 import { makeTempFile } from "./temp-file.ts";
 import { removeExecutableFixtureDirectory } from "./runtime-executable-fixture.ts";

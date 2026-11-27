@@ -1,6 +1,6 @@
 import { stdinStream } from "../../testing/stdin-stream.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
-import { spawnNativeProcess } from "../foreground-process.ts";
+import { spawnNativeProcess } from "@runwield/resources/process";
 import { writeFile as fsWriteFile, readFile as fsReadFile, copyFile as fsCopyFile } from "node:fs/promises";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";

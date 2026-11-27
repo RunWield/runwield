@@ -13,7 +13,7 @@ import {
     writeFileSync,
 } from "node:fs";
 import { open } from "node:fs/promises";
-import { readLockFileSnapshot, removeLockFileIfSnapshotMatches } from "./lock-file-snapshot.ts";
+import { readLockFileSnapshot, removeLockFileIfSnapshotMatches } from "@runwield/resources/locks";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join, toNamespacedPath } from "node:path";

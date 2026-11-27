@@ -1,5 +1,5 @@
 import { rmdir as fsRmdir } from "node:fs/promises";
-import { captureForegroundProcess } from "../../shared/captured-process.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { test } from "node:test";
 import {
     mkdir as fsMkdir,
