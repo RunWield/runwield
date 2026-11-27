@@ -1,5 +1,5 @@
 import { projects } from "@runwield/projects";
-import { markCollaborationNetworkEffect, retainCollaborationMutation } from "../operation-receipts.ts";
+import { markCollaborationNetworkEffect, retainCollaborationMutation } from "../operation-results.ts";
 import { managedPersonalStoreActive, unshareManagedPlan } from "../managed.ts";
 import { prepareCollaborationPlan as preparePlanWorkflow } from "./operations.ts";
 import { prepareWorktreeRegistry } from "../../shared/worktree-registry.ts";
@@ -293,7 +293,7 @@ export interface UnsharePreview {
 export async function previewUnsharePlan(options: UnsharePlanOptions): Promise<UnsharePreview> {
     const context = await inspectUnshareContext(options);
     return {
-        confirmation: (await import("../operation-receipts.ts")).operationDigest(
+        confirmation: (await import("@runwield/plans/operation-receipts")).operationDigest(
             JSON.stringify({ planId: context.planId, details: context.remoteDetails }),
         ),
         message: confirmationMessage(context.remoteDetails),
@@ -310,7 +310,7 @@ export async function unsharePlan(unshareOptions: UnsharePlanOptions): Promise<U
     if (
         unshareOptions.confirmation &&
         unshareOptions.confirmation !==
-            (await import("../operation-receipts.ts")).operationDigest(
+            (await import("@runwield/plans/operation-receipts")).operationDigest(
                 JSON.stringify({ planId, details: remoteDetails }),
             )
     )

@@ -9,7 +9,7 @@ import {
     updatePlanPackageMetadata,
     withPlanPackageLocks,
     type LoadedPlanPackage,
-} from "./packages.ts";
+} from "@runwield/plans/package-storage";
 import { findById } from "../shared/worktree-registry.ts";
 import { inspectControllerDocumentWorktrees, assertControllerDocumentAvailable } from "./controllers.ts";
 import { healSettledTransitionRecords } from "../shared/workflow/transition-recovery.ts";

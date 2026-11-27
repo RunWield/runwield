@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { publicationFixture } from "./testing/package-publication-fixture.ts";
 import { read } from "../testing/plan-package-fixture.ts";
 import { git } from "../git-test-fixture.ts";
-import { readPlanPackagePublication } from "../../plan-store/packages.ts";
+import { readPlanPackagePublication } from "@runwield/plans/package-storage";
 import { loadPublishedWorkRecordSource } from "../../plan-store/index.ts";
 
 test("corrupt retained input refuses publication, then exact restoration resumes without losing editor bytes", async () => {
@@ -82,7 +82,7 @@ for (const interrupted of [false, true]) {
 for (const issue of ["missing-manifest", "foreign-reference", "missing-registry"] as const) {
     test(`${issue} refuses without freeing ownership and exact repair resumes the same attempt`, async () => {
         const { getWorktreeRegistryPath } = await import("../worktree-registry.ts");
-        const { updatePlanPackageMetadata } = await import("../../plan-store/packages.ts");
+        const { updatePlanPackageMetadata } = await import("@runwield/plans/package-storage");
         const f = await publicationFixture(false);
         try {
             equal((await f.drive("candidate_receipt")).code, 86);
@@ -277,7 +277,7 @@ for (const place of ["linked-clone", "foreign-owner"] as const) {
 
 test("stale receipt cannot complete or promote an active attempt; fresh proof settles and reopening invalidates completion", async () => {
     const { rejects } = await import("node:assert/strict");
-    const { updatePlanPackageMetadata } = await import("../../plan-store/packages.ts");
+    const { updatePlanPackageMetadata } = await import("@runwield/plans/package-storage");
     const { recordPlanEvent } = await import("../../plan-store/index.ts");
     const f = await publicationFixture(false);
     try {

@@ -8,7 +8,7 @@ import { requiresPlanWorkflow } from "../../plan-store/index.ts";
 import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
 import { withPlanSubmission, type PlanSubmissionDocument, type PlanSubmissionOptions } from "../../plan-store/index.ts";
 
-import type { PackageWorkflowInput } from "../../plan-store/index.ts";
+import type { PackageWorkflowInput } from "@runwield/plans/store";
 
 import { readWorkRecordById, searchWorkRecords, formatWorkRecordReadResult } from "../work-records/search.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";
@@ -1975,8 +1975,8 @@ async function withRoleInstructions(
                 reviewerMode: action.request.reviewMode,
                 projectRoot: cwd,
             });
-            const schema = ATTACHED_OPERATIONS.find((operation) => operation.name === "review_complete")!
-                .inputSchema.properties.payload;
+            const schema = ATTACHED_OPERATIONS.find((operation) => operation.name === "review_complete")!.inputSchema
+                .properties.payload;
             text = [
                 policy.systemPrompt,
                 roleInstructions,

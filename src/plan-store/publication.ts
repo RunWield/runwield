@@ -1,3 +1,4 @@
+import type { PackagePublicationManifest } from "@runwield/plans/store";
 import { decodePackageMarkdown } from "@runwield/plans/format";
 import { projects } from "@runwield/projects";
 import { createHash } from "node:crypto";
@@ -35,8 +36,7 @@ import {
     withPlanPackageLocks,
     findPlanPackagePublication,
     findPlanPackageRecordingPreparation,
-    type PackagePublicationManifest,
-} from "./packages.ts";
+} from "@runwield/plans/package-storage";
 import {
     currentPackageSelection,
     selectedPackage,

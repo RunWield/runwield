@@ -1,3 +1,4 @@
+import { StalePlanWriteError } from "@runwield/plans/store";
 import { projects } from "@runwield/projects";
 import type { PlanFrontMatter, PlanFrontMatterInput, PlanFrontMatterWithCustomFields } from "@runwield/plans";
 
@@ -7,7 +8,6 @@ import type { ControllerDocumentWorktree, PendingControllerRepair } from "./plan
 import { assertContainedProjectPath } from "./plan-store/resources.ts";
 
 import type { FrontMatterValue } from "./shared/front-matter.ts";
-
 
 type CreatePulledCollaborationPlanOptions = {
     preferredName?: string;
@@ -365,7 +365,7 @@ import {
     listPlanPackages,
     readPlanPackage,
     savePlanPackageDocument,
-} from "./plan-store/packages.ts";
+} from "@runwield/plans/package-storage";
 
 import {
     currentPackageProject,
@@ -412,7 +412,6 @@ import {
     isLockHolderGone,
 } from "@runwield/resources/locks";
 
-
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -435,7 +434,7 @@ import { prepareWorktreeRegistry, renameRestoredPlanEntry } from "./shared/workt
 
 import { writePlanDocumentAndController } from "./plan-store/transitions.ts";
 
-import { requestWorkspaceSearchRefresh } from "./shared/workspace-search-refresh.ts";
+import { requestWorkspaceSearchRefresh } from "@runwield/resources/workspace-search-refresh";
 
 import {
     type WorkflowControllerState,
@@ -666,18 +665,6 @@ function effectivePlanLifecycleAttrs(
  */
 function formatErrorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
-}
-
-export class StalePlanWriteError extends Error {
-    declare expectedRevision: string;
-    declare currentRevision: string;
-
-    constructor(expectedRevision: string, currentRevision: string) {
-        super("Plan changed on disk after this operation loaded it.");
-        this.name = "StalePlanWriteError";
-        this.expectedRevision = expectedRevision;
-        this.currentRevision = currentRevision;
-    }
 }
 
 export class PlanFileIssueError extends Error {

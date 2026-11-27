@@ -8,7 +8,7 @@ import { loadPlan, listPlans } from "../testing/plan-query-fixture.ts";
 
 import { packageFixture } from "../testing/plan-package-fixture.ts";
 import { authorPackageChildren } from "../../plan-store/index.ts";
-import { recoverPlanPackages, type PlanPackageBatchWrite } from "../../plan-store/packages.ts";
+import { recoverPlanPackages, type PlanPackageBatchWrite } from "@runwield/plans/package-storage";
 
 const child = (title: string, dependencies: string[] = []): ChildFeaturePlanDescriptor => ({
     title,

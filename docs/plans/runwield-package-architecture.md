@@ -219,10 +219,12 @@ for the current status. [Package entry point](../../packages/plans/index.ts)
 
 ## Project-bound Plan Store
 
-Open the store with the canonical `ProjectId` from Projects. Each handle addresses one project.
+The application's Plan operations, including `openProjectPlanStore(projectId, options?)`, are exposed through `src/plan-store/index.ts`. Each handle addresses one canonical `ProjectId` from Projects.
 The personal Workspace uses its active registration. A CLI or worker with an admitted checkout can use the identity returned by Projects.
 The managed runtime uses its configured owner connection. The store checks the binding before each operation.
-[Store contract](../../packages/plans/store.ts) · [Runtime opener](../../src/plan-store/project-plans.ts)
+[Application Plan operations](../../src/plan-store/index.ts) · [Runtime opener](../../src/plan-store/project-plans.ts)
+
+Import the `ProjectPlanStore` contract, `StalePlanWriteError`, and the retained data types `PackageAttemptContinuation`, `PackageWorkflowInput`, `PackagePublicationManifest`, and `PreparedPlanImport` directly from `@runwield/plans/store`. The application and its managed worker share these definitions across the existing owner connection. [Store contract](../../packages/plans/store.ts)
 
 | Operation | Caller supplies | Result |
 | --- | --- | --- |
@@ -234,8 +236,8 @@ The managed runtime uses its configured owner connection. The store checks the b
 | `applyEvent` | Plan ID, named lifecycle event, observed revision, and any required event evidence | The persisted lifecycle result. |
 | `archive`, `restore` | Plan ID and observed revision | An archived or restored Plan with its original ID. |
 
-Plans owns the opener options, the authority checks for the Project and personal owner, and the retained checkout scope for explicit import and original execution. The runtime still opens the configured local or managed store and coordinates locking, conflict checks, recovery, and writes.
-The filesystem driver in Plans captures and verifies the immutable input documents used by workflow attempts.
+Plans owns the opener options, Project and personal-owner checks, and the retained checkout scope for explicit import and original execution. The Plans filesystem driver owns canonical package reads and writes, catalog and Plan locks, revision checks, immutable workflow inputs, and recovery of package writes and operation receipts. The application still opens the configured local or managed store and coordinates its workflow operations. For explicit import, the application observes and revalidates the checkout or SSH source while the Plans driver holds the existing locks and commits the resulting import evidence.
+Plans owns the canonical operation receipt files and validates the retained operation identity before completion. The application owns typed command result files, including `sequence-review-results/<operationId>.json`. It reads the retained Sequence decision and passes its operation identity, digest, Plan ID, and revision to Plans to settle the canonical receipt.
 The host coordinates milestone capture with the lifecycle event that makes the version visible.
 PostgreSQL remains a future driver. [Store operations](../../src/plan-store/index.ts)
 

@@ -24,7 +24,7 @@ type EpicContinuationResolution = import("./epic-continuation.ts").EpicContinuat
 /** The engine's result shape, mirroring the public entry's `WorkflowValidationResult`. */
 export type WorkflowValidationResult = {
     kind: "verified" | "paused" | "failed" | "semantic_repair_handoff" | "host_request";
-    packageContinuation?: import("../../plan-store/index.ts").PackageAttemptContinuation;
+    packageContinuation?: import("@runwield/plans/store").PackageAttemptContinuation;
     hostRequest?: import("@runwield/workflow/host-contract").ValidationHostRequest;
     workRecord?: PlanFrontMatter["workRecord"];
     planName: string;

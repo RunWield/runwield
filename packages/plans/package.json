@@ -6,6 +6,8 @@
         ".": "./index.ts",
         "./format": "./format.ts",
         "./store": "./store.ts",
+        "./package-storage": "./package-storage.ts",
+        "./operation-receipts": "./operation-receipts.ts",
         "./project-store-binding": "./project-store-binding.ts",
         "./retained-checkout": "./retained-checkout.ts",
         "./store-format": "./store-format.ts",

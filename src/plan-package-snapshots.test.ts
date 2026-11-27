@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import { join } from "node:path";
 import { create, read, driver, packageFixture, documents, tree } from "./shared/testing/plan-package-fixture.ts";
 import { PlanPackageError } from "@runwield/plans/file-snapshots";
-import { capturePlanPackageInput, readPlanPackageInput, recoverPlanPackages } from "./plan-store/packages.ts";
+import { capturePlanPackageInput, readPlanPackageInput, recoverPlanPackages } from "@runwield/plans/package-storage";
 
 test("durable capture retains exact bytes, metadata revision, optional membership and explicit Epic resource roles", async () => {
     const f = await packageFixture();

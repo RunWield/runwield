@@ -258,6 +258,7 @@
     "src/plan-store-passive-reads.test.ts",
     "src/plan-store.test.ts",
     "src/plan-store/artifacts.test.ts",
+    "src/plan-store/operation-results.test.ts",
     "src/plan-store/operations.test.ts",
     "src/plan-store/project-plans.test.ts",
     "src/plan-store/project-work-records.test.ts",

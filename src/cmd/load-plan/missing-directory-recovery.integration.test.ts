@@ -1,7 +1,7 @@
 import { projects } from "@runwield/projects";
 import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
 import { continueMissingPlanExecution } from "../../plan-store/index.ts";
-import { readPlanPackage } from "../../plan-store/packages.ts";
+import { readPlanPackage } from "@runwield/plans/package-storage";
 import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
 import { withRetainedPlanFixture, importCanonicalPlanFixture } from "../../shared/testing/retained-plan-fixture.ts";
 import { mkdirSync, realpathSync, mkdtempSync, existsSync, rmSync, readFileSync, writeFileSync } from "node:fs";

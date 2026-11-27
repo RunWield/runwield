@@ -1,3 +1,4 @@
+import type { PreparedPlanImport } from "@runwield/plans/store";
 import type { PublicationAttempt } from "@runwield/workflow/publication";
 import { projects, type HomeProjectOwner, type ProjectIdentity } from "@runwield/projects";
 import { validateManagedRuntimeTransfer, type ManagedRuntimeTransfer } from "../project-runtime-managed.ts";
@@ -97,7 +98,7 @@ sys.exit(result.returncode)
 `);
 export async function proveManagedProjectPublication(
     launch: ManagedProjectStoreLaunch,
-    manifest: import("../../plan-store/index.ts").PackagePublicationManifest,
+    manifest: import("@runwield/plans/store").PackagePublicationManifest,
     retained?: PublicationAttempt,
     signal?: AbortSignal,
 ) {
@@ -339,7 +340,7 @@ export async function readManagedImportSource(
     launch: ManagedProjectStoreLaunch,
     request: import("../../plan-store/index.ts").ManagedImportPreparationRequest,
     signal?: AbortSignal,
-): Promise<import("../../plan-store/index.ts").PreparedPlanImport> {
+): Promise<PreparedPlanImport> {
     const result = await captureForegroundProcess("ssh", {
         cwd: getCwd(),
         args: ["-T", "--", launch.host, PUBLICATION_PROOF],
@@ -352,9 +353,7 @@ export async function readManagedImportSource(
     });
     if (!result.success || result.stdout.byteLength > 8 * 1024 * 1024)
         throw new Error("Managed import source is unavailable or changed.");
-    const prepared: import("../../plan-store/index.ts").PreparedPlanImport = JSON.parse(
-        new TextDecoder("utf-8", { fatal: true }).decode(result.stdout),
-    );
+    const prepared: PreparedPlanImport = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(result.stdout));
     if (
         prepared.selection !== request.selection ||
         !Array.isArray(prepared.members) ||

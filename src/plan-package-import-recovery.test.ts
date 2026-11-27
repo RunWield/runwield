@@ -1,3 +1,4 @@
+import { importPlanPackages } from "./plan-store/import-packages.ts";
 import { projects } from "@runwield/projects";
 import { test } from "node:test";
 import { deepEqual, equal, ok } from "node:assert/strict";
@@ -5,13 +6,12 @@ import fs from "node:fs/promises";
 import { join } from "node:path";
 import { packageFixture, tree, driver, read, create, startDriver } from "./shared/testing/plan-package-fixture.ts";
 import {
-    importPlanPackages,
     listPlanPackages,
     readPlanPackage,
     recoverPlanPackages,
     updatePlanPackageMetadata,
     readPlanImportEvidence,
-} from "./plan-store/packages.ts";
+} from "@runwield/plans/package-storage";
 import { git } from "./shared/git-test-fixture.ts";
 
 async function family(root: string) {

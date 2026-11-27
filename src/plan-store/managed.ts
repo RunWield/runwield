@@ -1,5 +1,11 @@
+import { StalePlanWriteError } from "@runwield/plans/store";
 import type { PublicationAttempt } from "@runwield/workflow/publication";
-import type { CreateProjectWorkRecord, ManualQaSection, ProjectWorkRecord } from "@runwield/plans/store";
+import type {
+    CreateProjectWorkRecord,
+    ManualQaSection,
+    PackageWorkflowInput,
+    ProjectWorkRecord,
+} from "@runwield/plans/store";
 import { captureManagedCheckoutBinding } from "@runwield/plans/project-store-binding";
 import { workRecords } from "@runwield/plans/work-records";
 import { enter } from "@runwield/project-runtime";
@@ -29,13 +35,12 @@ import {
 import type { RemoteSessionControlConnection } from "../shared/remote/session-control-client.ts";
 import { enterProjectRuntime } from "../shared/project-runtime-layout.ts";
 import { writeJsonAtomically, ensurePrivateDir } from "../shared/private-json-file.ts";
-import { operationDigest, operationHash } from "./operation-receipts.ts";
+import { operationDigest, operationHash } from "@runwield/plans/operation-receipts";
 import type { ProjectStoreBinding, ProjectStoreCommand, ProjectStoreReply } from "./project-service.ts";
 import type { PlanAuthoringInput } from "./access.ts";
 import type { PlanExecutionReservation } from "./workflows.ts";
 import type { PlanId } from "@runwield/plans";
 import { decodePackageMarkdown, planArtifactReference, type EpicArtifactName } from "@runwield/plans/format";
-import { StalePlanWriteError } from "../plan-store.ts";
 
 interface ManagedConnection {
     closed: boolean;
@@ -434,10 +439,7 @@ export async function readManagedExecution(cwd: string, planId: string) {
     if (!("execution" in result)) throw new Error("Managed execution context is unavailable.");
     return result.execution;
 }
-export async function readManagedExecutionDocuments(
-    planName: string,
-    input: import("./packages.ts").PackageWorkflowInput | undefined,
-) {
+export async function readManagedExecutionDocuments(planName: string, input: PackageWorkflowInput | undefined) {
     const selected = currentManagedPlanSelection();
     if (!active || !selected || selected.planName !== planName || !input)
         throw new Error("Managed execution requires its reserved Plan input.");
@@ -839,7 +841,7 @@ export async function captureManagedReview(
     cwd: string,
     name: string,
     expectedRevision: string,
-): Promise<import("./packages.ts").PackageWorkflowInput> {
+): Promise<PackageWorkflowInput> {
     const selection = await selectManagedPlan(cwd, name);
     const result = (
         await (await client(cwd, true)).execute({ kind: "capture-review", planId: selection.planId, expectedRevision })
@@ -1087,7 +1089,7 @@ export async function writeManagedRetainedController(
     identity: import("./controllers.ts").WorkflowIdentity,
     updates: import("@runwield/plans/controller-state").WorkflowControllerState,
     options: import("./controllers.ts").ControllerWriteOptions,
-): Promise<import("./controllers.ts").ControllerRecord> {
+): Promise<import("@runwield/plans/controller-state").ControllerRecord> {
     const selected = currentManagedRetainedExecution();
     if (
         !selected ||

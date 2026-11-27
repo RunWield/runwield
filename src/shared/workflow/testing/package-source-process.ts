@@ -1,5 +1,5 @@
 import { projects } from "@runwield/projects";
-import { readPlanPackage } from "../../../plan-store/packages.ts";
+import { readPlanPackage } from "@runwield/plans/package-storage";
 import { type PackageWorkflowSelection } from "../../../plan-store/workflows.ts";
 import { withPackageWorkflow } from "../../../plan-store/workflows.ts";
 import { readPublishedDeliverySources, loadPublishedWorkRecordSource } from "../../../plan-store/index.ts";

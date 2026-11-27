@@ -1,8 +1,6 @@
-/** @module shared/workspace-search-refresh */
-
 import { mkdir, realpath, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { getHomeDir } from "../constants.ts";
+import { getHomeDir } from "./home.ts";
 
 function refreshDirectory() {
     return join(getHomeDir(), ".runwield-workspace-search-refresh");

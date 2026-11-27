@@ -16,7 +16,7 @@ import {
     readPlanPackageInput,
     readPlanPackagePublication,
     type PackageDeliveryReceipt,
-} from "./packages.ts";
+} from "@runwield/plans/package-storage";
 import {
     currentPackageSelection,
     currentPackageProject,

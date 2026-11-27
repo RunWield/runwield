@@ -1,3 +1,4 @@
+import { packageWorkflowRevision } from "@runwield/plans/package-storage";
 import { plans } from "@runwield/plans";
 import { fileURLToPath } from "node:url";
 import { getHomeDir } from "../constants.ts";
@@ -11,14 +12,10 @@ import {
 import { mkdir, readFile, stat, realpath, lstat } from "node:fs/promises";
 import { dirname, basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { inspectLocalHomeStore } from "./access.ts";
-import { readPlanPackage } from "./packages.ts";
-import { withPackageProject, packageWorkflowRevision } from "./workflows.ts";
+import { readPlanPackage } from "@runwield/plans/package-storage";
+import { withPackageProject } from "./workflows.ts";
 import { savePlanDocument, savePlanDocumentBatch, type PreparedPlanDocumentEdit } from "./documents.ts";
-import {
-    withPlanCatalogLock,
-    withPlanLock,
-    writePlanMarkdownWithRevisionLocked,
-} from "../plan-store.ts";
+import { withPlanCatalogLock, withPlanLock, writePlanMarkdownWithRevisionLocked } from "../plan-store.ts";
 import { atomicWriteTextFileIfAbsent } from "../shared/atomic-text-file.ts";
 
 export interface PlanFileCommand {

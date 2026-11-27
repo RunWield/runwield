@@ -22,7 +22,7 @@ import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import { HostedSession } from "@runwield/session-runtime/host";
 import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { findById } from "../../shared/worktree-registry.ts";
-import type { PlanFixtureController as ControllerRecord } from "../../shared/testing/plan-state-fixture.ts";
+import type { ControllerRecord } from "@runwield/plans/controller-state";
 import { makeValidationCheckpoint } from "../../shared/workflow/validation-checkpoint.ts";
 import { runLocalCI } from "../../shared/workflow/validation-local-ci.ts";
 import { runWorkflowValidationToStableBoundary } from "../../shared/workflow/validation.ts";

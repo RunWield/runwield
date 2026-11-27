@@ -1,3 +1,4 @@
+import { StalePlanWriteError } from "@runwield/plans/store";
 import type { PackageDocuments } from "@runwield/plans/history";
 import { packageDocumentText } from "@runwield/plans/file-snapshots";
 import { bindProjectPlanStore, PlanAccessMismatchError } from "./project-binding.ts";
@@ -96,6 +97,7 @@ export function missingHomePlan(path: string) {
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import {
+    packageWorkflowRevision,
     commitPlanPackageBatch,
     listPlanPackages,
     readPlanPackage,
@@ -104,13 +106,13 @@ import {
     packageDefinitionStrings,
     resolvePlanPackageReference,
     type PackageDefinition,
-} from "./packages.ts";
+} from "@runwield/plans/package-storage";
 import { enter } from "@runwield/project-runtime";
 import { enterProjectRuntime } from "../shared/project-runtime-layout.ts";
-import { packageWorkflowRevision, packageController } from "./workflows.ts";
+import { packageController } from "./workflows.ts";
 import { assertSharedPlanWriteAllowed } from "../shared/collaboration/lock.ts";
 import { canonicalizeStoredPlanName } from "@runwield/plans/format";
-import { StalePlanWriteError, getStoredPlanPath } from "../plan-store.ts";
+import { getStoredPlanPath } from "../plan-store.ts";
 
 /** A diagnostic/edit reference follows the selected storage owner even when loading the document failed. */
 export async function planDocumentReference(cwd: string, reference: string): Promise<string> {
@@ -344,7 +346,7 @@ export async function continueMissingPlanExecution(
 
 import { resolve } from "node:path";
 import { stat, realpath } from "node:fs/promises";
-import { importPlanPackages } from "./packages.ts";
+import { importPlanPackages } from "./import-packages.ts";
 
 /** A pathname is an explicit import request; a name never searches the checkout. */
 export async function importLocalPlanReference(cwd: string, reference: string) {

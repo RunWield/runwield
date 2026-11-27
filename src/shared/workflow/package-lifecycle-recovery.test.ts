@@ -2,8 +2,8 @@ import { seedPlanState, seedPlanController, inspectPlanFixtureController } from 
 
 import { listFixturePlanHistory, readFixtureMilestone, loadPlan } from "../testing/plan-query-fixture.ts";
 import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
-import { planPackageJournalDirectory } from "../../plan-store/packages.ts";
-import { importPlanPackages } from "../../plan-store/packages.ts";
+import { planPackageJournalDirectory } from "@runwield/plans/package-storage";
+import { importPlanPackages } from "../../plan-store/import-packages.ts";
 import { addEntry } from "../worktree-registry.ts";
 
 import { preparePlanWorkflow } from "../../plan-store/index.ts";

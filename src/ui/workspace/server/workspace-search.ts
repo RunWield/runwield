@@ -16,7 +16,7 @@ import {
 } from "../../../plan-store/index.ts";
 import { isCurrentWorkRecord, workRecordNotices } from "../../../shared/work-records/list.ts";
 import { projectAggregateTranscript } from "@runwield/session-runtime/transcript";
-import { getWorkspaceSearchRefreshMarker } from "../../../shared/workspace-search-refresh.ts";
+import { getWorkspaceSearchRefreshMarker } from "@runwield/resources/workspace-search-refresh";
 import { assertContainedProjectPath, domainLanguagePaths, readSafeProjectMarkdown } from "./project-artifacts.ts";
 
 const SEARCH_SCHEMA_VERSION = 1;

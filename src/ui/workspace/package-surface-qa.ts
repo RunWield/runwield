@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import { join } from "node:path";
 import { defineCommittedGitFixture } from "../../shared/git-test-fixture.ts";
 import { packageFixture, create } from "../../shared/testing/plan-package-fixture.ts";
-import { readPlanPackage } from "../../plan-store/packages.ts";
+import { readPlanPackage } from "@runwield/plans/package-storage";
 import { withPackageWorkflow } from "../../plan-store/workflows.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { restoreWorkRecordDocument } from "../../shared/work-records/store.ts";

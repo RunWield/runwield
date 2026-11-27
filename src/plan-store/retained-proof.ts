@@ -9,7 +9,7 @@ import {
     proveManagedProjectPublication,
     type ManagedProjectStoreLaunch,
 } from "../shared/remote/project-store-launch.ts";
-import { readPlanPackagePublication } from "./packages.ts";
+import { readPlanPackagePublication } from "@runwield/plans/package-storage";
 import type { PublicationAttempt } from "@runwield/workflow/publication";
 
 export async function confirmManagedPublication(

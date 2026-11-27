@@ -5,7 +5,7 @@ import fs from "node:fs/promises";
 import { join } from "node:path";
 import { recordingFixture } from "./testing/package-recording-fixture.ts";
 import { read } from "../testing/plan-package-fixture.ts";
-import { readPlanPackagePublication } from "../../plan-store/packages.ts";
+import { readPlanPackagePublication } from "@runwield/plans/package-storage";
 import { listWorkRecords } from "../work-records/store.ts";
 import { withWorkRecordOwner } from "../work-records/owner.ts";
 import { git } from "../git-test-fixture.ts";

@@ -8,7 +8,7 @@ import {
 } from "./managed.ts";
 import { importPlans } from "./imports.ts";
 import { retainPlanAccess, withPlanAccess, type PlanAccess } from "./handles.ts";
-import { readPlanPackage, readPlanImportEvidence, listPlanPackages } from "./packages.ts";
+import { readPlanPackage, readPlanImportEvidence, listPlanPackages } from "@runwield/plans/package-storage";
 import { importLocalPlanReference, inspectLocalHomeStore } from "./access.ts";
 import { selectLocalPlanWorkflow } from "./access.ts";
 import { LegacyPackageContinuation } from "./workflows.ts";

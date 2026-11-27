@@ -10,6 +10,7 @@
         "./personal": "./personal.ts",
         "./process": "./process.ts",
         "./runtime-recovery-files": "./runtime-recovery-files.ts",
-        "./sqlite": "./sqlite.ts"
+        "./sqlite": "./sqlite.ts",
+        "./workspace-search-refresh": "./workspace-search-refresh.ts"
     }
 }

@@ -1,3 +1,4 @@
+import { StalePlanWriteError } from "@runwield/plans/store";
 import { projects } from "@runwield/projects";
 import { planControllerRoot } from "../../plan-store/index.ts";
 import { requiresPlanWorkflow } from "../../plan-store/index.ts";
@@ -9,7 +10,7 @@ import { preparePlanValidationInput } from "../../plan-store/index.ts";
 import { preparePlanController } from "../../plan-store/index.ts";
 import { type OutcomeSession, recordWorkflowOutcome } from "./outcome-observations.ts";
 import { resolvePlanExecutionPolicy } from "@runwield/plans/format";
-import { ensurePlanIdentity, StalePlanWriteError, planDocumentsForCheckout } from "../../plan-store/index.ts";
+import { ensurePlanIdentity, planDocumentsForCheckout } from "../../plan-store/index.ts";
 import { StaleControllerWriteError } from "../../plan-store/index.ts";
 import { runPlansDoctor } from "../../cmd/plans/doctor.ts";
 import { isRecordedProcessAlive, readProcessIdentity } from "../process-identity.ts";

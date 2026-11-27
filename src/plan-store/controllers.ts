@@ -19,7 +19,10 @@ import {
     packageController,
     updatePackageWorkflowMetadata,
 } from "./workflows.ts";
-import { checkedPlanPackageControllerDirectory, type PackageControllerReference } from "./packages.ts";
+import {
+    checkedPlanPackageControllerDirectory,
+    type PackageControllerReference,
+} from "@runwield/plans/package-storage";
 import { recoverWindowsRename } from "../shared/native-file-replace-windows.ts";
 import { platform } from "node:process";
 import { open as fsOpen } from "node:fs/promises";
@@ -51,6 +54,7 @@ import { isPublicationCleanupPending } from "@runwield/workflow/publication";
 import {
     CONTROLLER_STATE_FIELDS,
     pickControllerState,
+    type ControllerRecord,
     type WorkflowControllerState,
     type WorkflowWorktreeContext,
 } from "@runwield/plans/controller-state";
@@ -107,16 +111,6 @@ export async function restoreOwnControllerWrite(
 export interface WorkflowIdentity {
     planId?: string;
     planName: string;
-}
-
-export interface ControllerRecord {
-    version: 1;
-    revision: number;
-    planId?: string;
-    planName: string;
-    state: WorkflowControllerState;
-    /** Imported only when the old registry is missing; removed after registry recovery. */
-    recovery?: WorkflowWorktreeContext;
 }
 
 export class StaleControllerWriteError extends Error {

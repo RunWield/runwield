@@ -1,6 +1,7 @@
+import { StalePlanWriteError } from "@runwield/plans/store";
 import { plans } from "@runwield/plans";
 import { hashPlanBody } from "@runwield/plans/format";
-import { PlanNotFoundError, StalePlanBodyError, StalePlanWriteError } from "../plan-store.ts";
+import { PlanNotFoundError, StalePlanBodyError } from "../plan-store.ts";
 import { currentManagedRetainedExecution } from "./managed.ts";
 import { openPlanStoreForCheckout, planDocumentsForCheckout, readProjectPlanDisplayCatalog } from "./project-plans.ts";
 import { savePlanBodyById } from "./queries.ts";

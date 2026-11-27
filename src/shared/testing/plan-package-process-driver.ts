@@ -165,7 +165,7 @@ Object.defineProperty(Bun, "spawn", {
     }),
 });
 if (request.command !== "import") mock.module("node:fs/promises", () => ({ ...promises, default: promises }));
-const store = await import("../../plan-store/packages.ts");
+const store = await import("@runwield/plans/package-storage");
 const planId = request.planId ?? "plan-one";
 try {
     if (request.command === "hold") {
@@ -298,7 +298,9 @@ try {
                 result = await store.readPlanImportEvidence(request.identity, current.metadata.references.legacyImport);
                 break;
             case "import":
-                result = await store.importPlanPackages(request.identity, request.selection!);
+                result = await (
+                    await import("../../plan-store/import-packages.ts")
+                ).importPlanPackages(request.identity, request.selection!);
                 break;
             case "list":
                 result = await store.listPlanPackages(request.identity, true);

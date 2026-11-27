@@ -1,3 +1,4 @@
+import type { PackagePublicationManifest } from "@runwield/plans/store";
 /**
  * The worktree registry entry is the only mutable publication authority. Plan
  * front matter remains validation truth, and Git refs and commits prove each
@@ -11,7 +12,6 @@ import { samePackagePublicationReference } from "@runwield/plans/publication-cop
 import {
     hasCanonicalPlanAccess,
     hasRetainedPublicationReceipt,
-    type PackagePublicationManifest,
     publicationCopiesForCheckout,
     readPublishedDeliverySources,
     recordPublicationObservation,

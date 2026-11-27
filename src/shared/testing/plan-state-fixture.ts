@@ -52,7 +52,7 @@ export async function holdPlanFixtureCatalogLock<T>(cwd: string, action: () => P
 
 import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
 import { currentPackageProject, selectedPackage, capturePackageWorkflowInput } from "../../plan-store/workflows.ts";
-import { updatePlanPackageMetadata } from "../../plan-store/packages.ts";
+import { updatePlanPackageMetadata } from "@runwield/plans/package-storage";
 /** Arrange an already delivered attempt for read-only catalog/progress scenarios. */
 export async function seedPlanAttemptReference(cwd: string, name: string, attemptId: string): Promise<void> {
     await withLocalPlanWorkflow(cwd, name, async () => {
@@ -73,10 +73,9 @@ export async function seedPlanAttemptReference(cwd: string, name: string, attemp
     });
 }
 
-export type { ControllerRecord as PlanFixtureController } from "../../plan-store/controllers.ts";
 import { inspectControllerView } from "../../plan-store/controllers.ts";
 import { assertPackageWorkflowInput } from "../../plan-store/workflows.ts";
-import { planPackageControllerDirectory } from "../../plan-store/packages.ts";
+import { planPackageControllerDirectory } from "@runwield/plans/package-storage";
 import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 import { openNativeFileLock } from "../native-file-lock.ts";

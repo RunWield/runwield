@@ -16,7 +16,7 @@ import { git } from "../git-test-fixture.ts";
 import { inspectWorktreeRegistry } from "../worktree-registry.ts";
 import { coverage } from "./testing/validation-host-fixture.ts";
 import type { ValidationHostResume } from "@runwield/workflow/host-contract";
-import { readPlanPackage, readPlanPackagePublication } from "../../plan-store/packages.ts";
+import { readPlanPackage, readPlanPackagePublication } from "@runwield/plans/package-storage";
 import { loadPublishedWorkRecordSource } from "../../plan-store/index.ts";
 
 for (const remote of [false, true])

@@ -4,11 +4,8 @@ import type { PlanFrontMatter } from "@runwield/plans";
 import { normalizeCollaborationFrontMatter } from "@runwield/plans/format";
 import { COLLABORATION_LOCK_BYPASS } from "../../shared/collaboration/lock.ts";
 import { loadPlan } from "../queries.ts";
-import {
-    operationDigest,
-    inspectCollaborationMutation,
-    retainCollaborationOperationResult,
-} from "../operation-receipts.ts";
+import { operationDigest } from "@runwield/plans/operation-receipts";
+import { inspectCollaborationMutation, retainCollaborationOperationResult } from "../operation-results.ts";
 export interface CollaborationMutation {
     action: "share" | "push" | "unshare";
     planName: string;

@@ -13,7 +13,7 @@ import {
     withLocalProjectAction,
 } from "../../plan-store/index.ts";
 import { ownedWorkRecordFiles, withWorkRecordMutation } from "./owner.ts";
-import { requestWorkspaceSearchRefresh } from "../workspace-search-refresh.ts";
+import { requestWorkspaceSearchRefresh } from "@runwield/resources/workspace-search-refresh";
 
 export { readWorkRecord, listWorkRecords };
 

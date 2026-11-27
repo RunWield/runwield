@@ -1,3 +1,4 @@
+import { StalePlanWriteError } from "@runwield/plans/store";
 import { seedPlan } from "../shared/testing/plan-state-fixture.ts";
 import {
     mkdir as fsMkdir,
@@ -13,7 +14,7 @@ import { join } from "node:path";
 import { loadPlan } from "../shared/testing/plan-query-fixture.ts";
 
 import { moveCheckoutEpicArtifacts } from "@runwield/plans/artifact-files";
-import { openPlanStoreForCheckout, StalePlanWriteError, workflowEpicArtifacts } from "./index.ts";
+import { openPlanStoreForCheckout, workflowEpicArtifacts } from "./index.ts";
 import { packageFixture } from "../shared/testing/plan-package-fixture.ts";
 import { plans } from "@runwield/plans";
 import { withRetainedPlanFixture } from "../shared/testing/retained-plan-fixture.ts";

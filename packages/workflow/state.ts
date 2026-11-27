@@ -1,5 +1,6 @@
+import type { PackageWorkflowInput } from "@runwield/plans/store";
 import type { ReviewLedger } from "@runwield/plans/controller-state";
-import type { PlanAccess, PackageWorkflowInput } from "../../src/plan-store/index.ts";
+import type { PlanAccess } from "../../src/plan-store/index.ts";
 import type { PlanFrontMatter } from "@runwield/plans";
 import type { PlanClassification } from "@runwield/plans/format";
 import type { WorkKind } from "@runwield/tools";
