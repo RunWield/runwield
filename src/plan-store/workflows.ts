@@ -14,52 +14,33 @@ import {
     captureManagedExecution,
     readManagedExecutionDocuments,
 } from "./managed.ts";
-import { packageWorkflowRevision, type PackageAttemptReference } from "@runwield/plans/package-storage";
+import { projectPlanFiles, type PackagePlanTarget } from "@runwield/plans/project-plan-files";
 import { retainPlanAccess, retainManagedPlanAccess, type PlanAccess } from "./handles.ts";
 import { continueImportedPackage } from "./legacy.ts";
-import {
-    currentRetainedCheckoutSource,
-    readRetainedExecutionPlan,
-    type RetainedExecutionRead,
-} from "@runwield/plans/retained-checkout";
+import { currentRetainedCheckoutSource } from "@runwield/plans/retained-checkout";
 import { withWorkRecordOwner, withoutWorkRecordOwner } from "../shared/work-records/owner.ts";
 import { journalPackageMetadataWrite } from "./transitions.ts";
 /** Explicit internal package authority. A scope propagates an admitted source through existing workflow owners. */
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
-import { join } from "node:path";
 import { packageDocumentText, type PackageInputReference } from "@runwield/plans/file-snapshots";
 import {
     capturePlanPackageInput,
     packageDocumentContent,
     commitPlanPackageBatch,
     savePlanPackageDocument,
-    listPlanPackages,
-    resolvePlanPackageReference,
     readPlanPackage,
     readPlanPackageInput,
     readPlanPackagePublication,
-    readPackageControllerEvidence,
-    writePackageControllerEvidence,
     updatePlanPackageMetadata,
     withPlanPackageLocks,
     planPackageFamilyIds,
-    packageDefinitionStrings,
-    packageControllerStrings,
-    packageControllerNumbers,
-    packageControllerEnums,
     type LoadedPlanPackage,
     type PackageDefinition,
-    type PackageControllerState,
     type PackageWorkflowEvidence,
 } from "@runwield/plans/package-storage";
-import {
-    CONTROLLER_STATE_FIELDS,
-    pickControllerState,
-    type WorkflowControllerState,
-} from "@runwield/plans/controller-state";
-import { findById } from "../shared/worktree-registry.ts";
-import { plans, type PlanFrontMatter, type PlanId } from "@runwield/plans";
+import type { WorkflowControllerState } from "@runwield/plans/controller-state";
+import type { PlanFrontMatter, PlanId } from "@runwield/plans";
 
 export interface PlanExecutionHost {
     projectId: string;
@@ -70,48 +51,6 @@ export interface PlanExecutionHost {
     personalOwner: { kind: "managed-remote"; identity: string };
 }
 const executionHosts = new AsyncLocalStorage<PlanExecutionHost>();
-const recoveryEvidence = new AsyncLocalStorage<
-    import("../shared/workflow/execution-recovery-proof.ts").ExecutionRecoveryEvidence
->();
-export async function withConfirmedExecutionRecovery<T>(
-    planName: string,
-    proof: import("../shared/workflow/execution-recovery-proof.ts").ExecutionRecoveryEvidence,
-    run: () => Promise<T>,
-): Promise<T> {
-    const owner = currentPackageProject();
-    const plan = await selectedPackage(planName);
-    const attempt = plan.metadata.workflow?.attempt;
-    if (
-        !owner ||
-        !projects.home.isOwner(owner) ||
-        !attempt ||
-        proof.request.projectId !== owner.projectId ||
-        proof.request.repositoryId !== owner.repositoryId ||
-        proof.request.personalOwner !== owner.personalOwner.identity ||
-        proof.request.planId !== plan.metadata.planId ||
-        proof.request.planName !== plan.metadata.name ||
-        proof.request.attemptId !== attempt.attemptId
-    )
-        throw new Error("Execution recovery proof does not match its personal owner.");
-    return await recoveryEvidence.run(proof, run);
-}
-export async function readRecoveryExecution(cwd: string, attemptId: string) {
-    const proof = recoveryEvidence.getStore();
-    if (proof) {
-        if (proof.request.attemptId !== attemptId) throw new Error("Recovery observation belongs to another attempt.");
-        return proof.entry;
-    }
-    return await findById(cwd, attemptId);
-}
-async function observedPackageAttempt(binding: PackageAttemptReference | undefined) {
-    if (!binding) return null;
-    if (projects.home.isOwner(currentPackageProject()!))
-        return recoveryEvidence.getStore()?.request.attemptId === binding.attemptId
-            ? recoveryEvidence.getStore()!.entry
-            : null;
-    return await findById(binding.repositoryRoot, binding.attemptId);
-}
-
 export async function withPackageExecutionHost<T>(host: PlanExecutionHost, run: () => Promise<T>): Promise<T> {
     return await executionHosts.run(host, run);
 }
@@ -270,43 +209,13 @@ export async function withPackageWorkflow<T>(
     return await continueImportedPackage(selection.identity, selected, run, canonical);
 }
 
-interface PackagePlanIdentity {
-    planId: string;
-}
-type PackageWorkflowTarget = string | PackagePlanIdentity;
-
-export async function selectedPackage(target: PackageWorkflowTarget): Promise<LoadedPlanPackage> {
+export async function selectedPackage(target: PackagePlanTarget): Promise<LoadedPlanPackage> {
     const identity = currentPackageProject();
     if (!identity) throw new Error("Package authority requires explicit admission.");
-    // Known identities never pass through the admitted publication's frozen-name alias.
-    if (typeof target !== "string") {
-        const plan = await readPlanPackage(identity, target);
-        if (plan.kind !== "loaded") throw new Error(plan.message);
-        return plan;
-    }
-    const planName = target;
-    const catalog = await listPlanPackages(identity, true);
-    if (catalog.issues.length) throw new Error(catalog.issues[0].message);
-    const selection = currentPackageSelection();
-    const admitted = catalog.packages.find((p) => p.metadata.planId === selection?.planId);
-    if (admitted?.metadata.name === planName) return admitted;
-    if (selection?.expectedName === planName) throw new Error("The bound Plan identity changed.");
-    const reference = admitted?.metadata.workflow?.publication;
-    if (reference) {
-        const retained = await readPlanPackagePublication(identity, reference);
-        if (
-            retained.members.some(
-                (member) => member.metadata.planId === selection?.planId && member.metadata.name === planName,
-            )
-        )
-            return admitted;
-    }
-    const selected = catalog.packages.find((p) => p.metadata.name === planName);
-    if (!selected) throw new Error(`No canonical package named ${planName}.`);
-    return selected;
+    return await projectPlanFiles.forOwner(identity).select(target, currentPackageSelection());
 }
 
-export async function packageWorkflowLocks<T>(planNames: PackageWorkflowTarget[], run: () => Promise<T>): Promise<T> {
+export async function packageWorkflowLocks<T>(planNames: PackagePlanTarget[], run: () => Promise<T>): Promise<T> {
     const identity = currentPackageProject();
     if (!identity) return await run();
     const packages = await Promise.all(planNames.map(selectedPackage));
@@ -353,7 +262,7 @@ async function requiredPackages(plan: LoadedPlanPackage): Promise<LoadedPlanPack
     return result;
 }
 export async function capturePackageWorkflowInput(
-    planName: PackageWorkflowTarget,
+    planName: PackagePlanTarget,
     nextDefinition?: PackageDefinition,
     reviewedContext?: string,
 ): Promise<PackageWorkflowInput> {
@@ -399,7 +308,7 @@ export async function capturePackageWorkflowInput(
     );
 }
 export async function assertPackageWorkflowInput(
-    planName: PackageWorkflowTarget,
+    planName: PackagePlanTarget,
     input: PackageWorkflowInput,
     equivalent?: (left: string, right: string, documentName: string, planId: string) => boolean,
 ): Promise<void> {
@@ -415,7 +324,10 @@ export async function assertPackageWorkflowInput(
     }
     const owner = await selectedPackage(planName);
     const generated = owner.metadata.workflow?.generatedArtifact;
-    const artifact = generated?.attemptId === owner.metadata.workflow?.attempt?.attemptId ? generated : undefined;
+    const artifact =
+        (generated?.reusedByAttemptId ?? generated?.attemptId) === owner.metadata.workflow?.attempt?.attemptId
+            ? generated
+            : undefined;
     for (const plan of packages) {
         const reference = input.inputs.find((ref) => ref.planId === plan.metadata.planId);
         if (!reference) throw new Error("Required parent input is missing.");
@@ -493,180 +405,32 @@ export async function releaseSettledPackageAttempt(planName: string): Promise<vo
         await loadPackageWorkflowPlan(planName);
         const plan = await selectedPackage(planName);
         const binding = plan.metadata.workflow?.attempt;
-        const entry = await observedPackageAttempt(binding);
+        const entry = await projectPlanFiles.forOwner(currentPackageProject()!).observeAttempt(plan, binding);
         if (entry?.status === "abandoned") await updatePackageWorkflowMetadata(planName, {});
     });
 }
 
 export async function packageController(plan: LoadedPlanPackage): Promise<WorkflowControllerState> {
-    const ref = plan.metadata.workflow?.controller;
-    const evidence = ref ? await readPackageControllerEvidence(currentPackageProject()!, ref) : {};
-    return { ...evidence, ...plan.metadata.controller };
-}
-
-async function selectPackageWorkflowRead(
-    identity: ProjectIdentity,
-    target: PackageWorkflowTarget,
-): Promise<RetainedExecutionRead> {
-    const checkout = !projects.home.isOwner(identity) ? identity : undefined;
-    if (checkout && typeof target !== "string" && plans.identity.isValid(target.planId))
-        return await readRetainedExecutionPlan(checkout, target.planId);
-    const selected = await selectedPackage(target);
-    if (checkout && selected.metadata.references.legacyImport) {
-        const planId = selected.metadata.planId;
-        if (!plans.identity.isValid(planId)) throw new Error("Invalid Plan ID.");
-        return await readRetainedExecutionPlan(checkout, planId);
-    }
-    return { selected };
+    return await projectPlanFiles.forOwner(currentPackageProject()!).readController(plan);
 }
 
 export async function loadPackageWorkflowPlan(
-    planName: PackageWorkflowTarget,
+    planName: PackagePlanTarget,
 ): Promise<import("../plan-store.ts").PlanTextLoaded> {
     if (managedPlanStoreActive())
         return await loadManagedWorkflowPlan(typeof planName === "string" ? planName : planName.planId);
-    return await projectPackageWorkflowPlan(await selectPackageWorkflowRead(currentPackageProject()!, planName));
+    return await projectPlanFiles.forOwner(currentPackageProject()!).readWorkflow(planName, currentPackageSelection());
 }
 
-export async function projectPackageWorkflowPlan({
-    selected: plan,
-    retained,
-}: RetainedExecutionRead): Promise<import("../plan-store.ts").PlanTextLoaded> {
-    if (retained) return retained;
-    const identity = currentPackageProject()!;
-    const { parentPlanId, dependencyPlanIds } = plan.metadata;
-    const family = parentPlanId || dependencyPlanIds.length ? (await listPlanPackages(identity, true)).packages : [];
-    const name = (id: string) => family.find((p) => p.metadata.planId === id)?.metadata.name || id;
-    const markdown = new TextDecoder().decode(plan.documents.find((doc) => doc.name === "context.md")!.bytes);
-    const binding = plan.metadata.workflow?.attempt;
-    if (
-        binding &&
-        projects.home.isOwner(identity) &&
-        (binding.personalOwner !== identity.personalOwner.identity ||
-            binding.repositoryId !== identity.repositoryId ||
-            !binding.input.inputs.some(
-                (input) => input.planId === plan.metadata.planId && input.projectId === identity.projectId,
-            ))
-    )
-        throw new Error("Package attempt belongs to a different admitted owner or repository.");
-    if (binding && !projects.home.isOwner(identity)) {
-        const boundOwner = projects.checkout.inspect(binding.repositoryRoot);
-        if (
-            binding.personalOwner !== identity.personalOwner.identity ||
-            boundOwner.kind !== "existing" ||
-            boundOwner.identity.repositoryId !== binding.repositoryId ||
-            boundOwner.identity.projectId !== identity.projectId ||
-            boundOwner.identity.personalOwner.identity !== binding.personalOwner
-        )
-            throw new Error("Package attempt repository or personal owner changed.");
-        if (
-            !binding.input.inputs.some(
-                (input) => input.planId === plan.metadata.planId && input.projectId === identity.projectId,
-            )
-        )
-            throw new Error("Package attempt input belongs to a different Plan.");
-    }
-    const attempt = await observedPackageAttempt(binding);
-    if (attempt && (attempt.planId !== plan.metadata.planId || attempt.id !== binding?.attemptId))
-        throw new Error("Package attempt evidence belongs to a different Plan.");
-    const attrs = {
-        ...plan.metadata.definition,
-        ...(await packageController(plan)),
-        workRecord: plan.metadata.workflow?.workRecord,
-        planId: plan.metadata.planId,
-        createdAt: plan.metadata.createdAt,
-        ...(plan.metadata.archive && !plan.metadata.archive.restoredAt
-            ? {
-                  archivedAt: plan.metadata.archive.archivedAt,
-                  archiveReason: plan.metadata.archive.reason,
-                  archivedFromStatus: plan.metadata.archive.fromStatus,
-              }
-            : {}),
-        ...(plan.metadata.archive?.restoredAt
-            ? { restoredAt: plan.metadata.archive.restoredAt, restoredFromPath: plan.metadata.archive.restoredFromPath }
-            : {}),
-        parentPlan: parentPlanId ? name(parentPlanId) : undefined,
-        dependencies: dependencyPlanIds.map(name),
-        ...(attempt
-            ? {
-                  worktreeId: attempt.id,
-                  worktreePath: attempt.path,
-                  worktreeBranch: attempt.branch,
-                  worktreeBaseBranch: attempt.baseBranch,
-                  worktreeBaseCommit: attempt.baseCommit,
-                  worktreeStatus: attempt.status,
-                  executionBaselineTree: attempt.executionBaselineTree,
-              }
-            : {}),
-    } as PlanFrontMatter;
-    return {
-        kind: "loaded" as const,
-        path: join(plan.path, "context.md"),
-        markdown,
-        body: markdown,
-        attrs,
-        controllerRevision: plan.metadata.revision,
-        revision: packageWorkflowRevision(plan),
-        hasFrontMatter: false,
-        frontMatterRevision: undefined,
-        readAvailability: undefined,
-    };
-}
-
-export async function preparePackageWorkflowUpdate(
+export function preparePackageWorkflowUpdate(
     current: LoadedPlanPackage,
     attrs: PlanFrontMatter,
     updates: Partial<PlanFrontMatter>,
     workflowUpdate?: PackageWorkflowEvidence,
 ) {
-    const scalarFields = [
-        ...packageControllerStrings,
-        ...packageControllerNumbers,
-        ...Object.keys(packageControllerEnums),
-    ];
-    const definitionFields = [
-        "classification",
-        "status",
-        "affectedPaths",
-        "order",
-        "frontend",
-        "devServerHmr",
-        "tickets",
-        "supersedes",
-        "planDeviations",
-        ...packageDefinitionStrings,
-    ];
-    const workflow = { ...current.metadata.workflow, ...workflowUpdate };
-    if (Object.hasOwn(updates, "workRecord")) workflow.workRecord = updates.workRecord;
-    const binding = workflow.attempt;
-    const entry = await observedPackageAttempt(binding);
-    if (entry?.status === "abandoned") workflow.attempt = undefined;
-    const catalog = await listPlanPackages(currentPackageProject()!, true);
-    if (catalog.issues.length) throw new Error(catalog.issues[0].message);
-    const related = (reference: string) => resolvePlanPackageReference(catalog.packages, reference, attrs.parentPlan);
-    const relations = {
-        parentPlanId: Object.hasOwn(updates, "parentPlan")
-            ? updates.parentPlan
-                ? related(updates.parentPlan)
-                : null
-            : current.metadata.parentPlanId,
-        dependencyPlanIds: Object.hasOwn(updates, "dependencies")
-            ? (updates.dependencies || []).map(related)
-            : current.metadata.dependencyPlanIds,
-    };
-    const definition: PackageDefinition = { ...current.metadata.definition };
-    const controller: PackageControllerState = { ...current.metadata.controller };
-    const state = { ...(await packageController(current)), ...pickControllerState(updates) };
-    for (const [key, value] of Object.entries(updates)) {
-        if (definitionFields.includes(key)) Object.assign(definition, { [key]: value ?? undefined });
-        if (scalarFields.includes(key)) Object.assign(controller, { [key]: value });
-    }
-    const evidence: WorkflowControllerState = {};
-    for (const key of CONTROLLER_STATE_FIELDS) {
-        if (!scalarFields.includes(key) && state[key] !== undefined) Object.assign(evidence, { [key]: state[key] });
-    }
-    const ref = await writePackageControllerEvidence(currentPackageProject()!, current.metadata.planId, evidence);
-    return { ...relations, definition, controller, workflow: { ...workflow, controller: ref } };
+    return projectPlanFiles
+        .forOwner(currentPackageProject()!)
+        .prepareWorkflowUpdate(current, attrs, updates, workflowUpdate);
 }
 
 export async function reopenedPackageReview(plan: LoadedPlanPackage) {
@@ -679,7 +443,7 @@ export async function reopenedPackageReview(plan: LoadedPlanPackage) {
 }
 
 export async function updatePackageWorkflowMetadata(
-    planName: PackageWorkflowTarget,
+    planName: PackagePlanTarget,
     updates: Partial<PlanFrontMatter>,
     expectedRevision?: string,
     workflowUpdate?: PackageWorkflowEvidence,
@@ -789,7 +553,13 @@ export async function updatePackageWorkflowMetadata(
                 { inputs, reopened },
             );
         } else {
-            await updatePlanPackageMetadata(identity, current.metadata.planId, current.metadata.revision, update);
+            await updatePlanPackageMetadata(
+                identity,
+                current.metadata.planId,
+                current.metadata.revision,
+                update,
+                expectedRevision,
+            );
         }
         return (await loadPackageWorkflowPlan(planName))!.attrs;
     });
@@ -926,7 +696,7 @@ export async function reservePackageExecution(
             throw new Error("Execution attempt binding changed.");
         const entry = projects.home.isOwner(selection.identity)
             ? null
-            : await findById(existing.repositoryRoot, existing.attemptId);
+            : await projectPlanFiles.forOwner(selection.identity).observeAttempt(plan, existing);
         if (
             (!projects.home.isOwner(selection.identity) &&
                 !entry &&
@@ -1016,8 +786,8 @@ export async function appendGeneratedManualQaSection(epicId: PlanId, childId: Pl
 
 /** Durably record Core's generated checklist separately from the exact reviewed input. */
 export async function saveGeneratedManualQaArtifact(
-    childName: PackageWorkflowTarget,
-    parentName: PackageWorkflowTarget,
+    childName: PackagePlanTarget,
+    parentName: PackagePlanTarget,
     beforeHash: string | null,
     text: string,
 ): Promise<void> {
@@ -1029,7 +799,7 @@ export async function saveGeneratedManualQaArtifact(
             throw new Error("Generated checklist requires the recorded child attempt.");
         await assertPackageWorkflowInput(childName, attempt.input);
         const artifact = child.metadata.workflow?.generatedArtifact;
-        if (artifact && artifact.attemptId !== attempt.attemptId)
+        if (artifact && (artifact.reusedByAttemptId ?? artifact.attemptId) !== attempt.attemptId)
             throw new Error("Generated checklist belongs to another attempt.");
         if (!artifact)
             await updatePackageWorkflowMetadata(childName, {}, undefined, {
@@ -1050,17 +820,21 @@ export async function saveGeneratedManualQaArtifact(
 }
 
 /** Replay only the recorded before/after bytes; ordinary concurrent edits still fail. */
-export async function recoverGeneratedManualQaArtifact(childName: PackageWorkflowTarget): Promise<void> {
+export async function recoverGeneratedManualQaArtifact(childName: PackagePlanTarget): Promise<void> {
     const child = await selectedPackage(childName);
     const artifact = child.metadata.workflow?.generatedArtifact;
     if (!artifact) return;
     const attempt = child.metadata.workflow?.attempt;
-    if (!attempt || artifact.attemptId !== attempt.attemptId || artifact.planId !== child.metadata.parentPlanId)
+    if (
+        !attempt ||
+        (artifact.reusedByAttemptId ?? artifact.attemptId) !== attempt.attemptId ||
+        artifact.planId !== child.metadata.parentPlanId
+    )
         throw new Error("Generated checklist owner changed.");
     const parent = await selectedPackage({ planId: artifact.planId });
     const current = parent.documents.find((doc) => doc.name === artifact.name)?.hash ?? null;
     if (current === artifact.hash) return;
-    if (current !== artifact.beforeHash)
+    if (artifact.reusedByAttemptId || current !== artifact.beforeHash)
         throw new Error("Generated checklist document changed; review the current input.");
     await savePlanPackageDocument(
         currentPackageSelection()!.identity,

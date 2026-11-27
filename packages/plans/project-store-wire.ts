@@ -1,4 +1,103 @@
 import { isProjectId, type ProjectId } from "@runwield/projects";
+import { isNonterminalWorktreeStatus, type WorktreeRegistryEntry } from "@runwield/project-runtime/registry-inspection";
+
+export type ExecutionRecoveryAction =
+    "stop" | "clear" | "detach" | "clear-recovery" | "refresh" | "recreate" | "user-verified";
+
+/** Names the saved host operation that replaces the reserved attempt. */
+export interface ExecutionRecreation {
+    operationId: string;
+    replacementAttemptId: string;
+    expectedRevision: string;
+}
+
+/** Identifies the reserved attempt and the state that the execution host must verify. */
+export interface ExecutionRecoveryRequest {
+    projectId: string;
+    repositoryId: string;
+    personalOwner: string;
+    planId: string;
+    planName: string;
+    attemptId: string;
+    purpose: "active" | "abandoned";
+    recreate?: ExecutionRecreation;
+}
+
+/** Registry evidence available for a live worktree or retained in its removal journal. */
+export type RecoveryExecutionRecord = Pick<
+    WorktreeRegistryEntry,
+    "id" | "planId" | "planName" | "path" | "branch" | "status"
+> &
+    Partial<WorktreeRegistryEntry>;
+
+/** The host’s observation of the requested attempt, with its journal ID when applicable. */
+export interface ExecutionRecoveryEvidence {
+    request: ExecutionRecoveryRequest;
+    entry: RecoveryExecutionRecord;
+    observedAt: string;
+    transitionId?: string;
+}
+
+/** Check the host reply against the original request before its registry fields can be used. */
+export function validateExecutionRecoveryEvidence(
+    request: ExecutionRecoveryRequest,
+    evidence: ExecutionRecoveryEvidence,
+): void {
+    const reply = evidence?.request;
+    const entry = evidence?.entry;
+    const recreate = request.recreate;
+    if (
+        !reply ||
+        reply.projectId !== request.projectId ||
+        reply.repositoryId !== request.repositoryId ||
+        reply.personalOwner !== request.personalOwner ||
+        reply.planId !== request.planId ||
+        reply.planName !== request.planName ||
+        reply.attemptId !== request.attemptId ||
+        reply.purpose !== request.purpose ||
+        (recreate
+            ? request.purpose !== "active" ||
+              !/^[a-f0-9-]{36}$/.test(recreate.operationId) ||
+              !/^[a-f0-9]{64}$/.test(recreate.expectedRevision) ||
+              !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(recreate.replacementAttemptId) ||
+              recreate.replacementAttemptId === request.attemptId ||
+              reply.recreate?.operationId !== recreate.operationId ||
+              reply.recreate?.replacementAttemptId !== recreate.replacementAttemptId ||
+              reply.recreate?.expectedRevision !== recreate.expectedRevision ||
+              evidence.transitionId !== recreate.operationId
+            : reply.recreate !== undefined) ||
+        !entry ||
+        (recreate &&
+            (entry.status !== "active" ||
+                typeof entry.baseBranch !== "string" ||
+                !entry.baseBranch ||
+                [entry.baseCommit, entry.baseTree].some(
+                    (value) => typeof value !== "string" || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(value),
+                ))) ||
+        entry.id !== (recreate?.replacementAttemptId ?? request.attemptId) ||
+        entry.planId !== request.planId ||
+        entry.planName !== request.planName ||
+        (!recreate &&
+            (request.purpose === "abandoned"
+                ? entry.status !== "abandoned"
+                : !isNonterminalWorktreeStatus(entry.status))) ||
+        typeof entry.path !== "string" ||
+        !entry.path.startsWith("/") ||
+        entry.path.includes("\0") ||
+        typeof entry.branch !== "string" ||
+        !entry.branch ||
+        entry.branch.includes("\0") ||
+        [entry.baseBranch, entry.baseCommit, entry.baseTree, entry.executionBaselineTree].some(
+            (value) => value !== undefined && (typeof value !== "string" || value.includes("\0")),
+        ) ||
+        typeof evidence.observedAt !== "string" ||
+        !Number.isFinite(Date.parse(evidence.observedAt)) ||
+        (!recreate &&
+            evidence.transitionId !== undefined &&
+            (request.purpose !== "abandoned" || typeof evidence.transitionId !== "string" || !evidence.transitionId))
+    )
+        throw new Error("Execution recovery proof changed ownership or does not prove the requested state.");
+}
 
 /** Authority returned by the personal Project's Plan store. */
 export interface ProjectStoreBinding {

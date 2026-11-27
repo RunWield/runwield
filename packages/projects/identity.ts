@@ -541,7 +541,14 @@ export function verifyExecutionAccountHome(
 }
 
 function contextFor(options: ProjectIdentityOptions): ProjectLaunchContext {
-    const context = options.context ?? projectLaunchContext();
+    const { personalOwner, executionAccountHome, configuredExecutionAccountHome, accountHomeDirectory } =
+        options.context ?? projectLaunchContext();
+    const context: ProjectLaunchContext = {
+        personalOwner,
+        executionAccountHome,
+        ...(configuredExecutionAccountHome !== undefined && { configuredExecutionAccountHome }),
+        ...(accountHomeDirectory !== undefined && { accountHomeDirectory }),
+    };
     if (
         !isAbsolute(context.executionAccountHome) ||
         !context.personalOwner.identity ||

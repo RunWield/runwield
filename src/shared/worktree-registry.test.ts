@@ -1,4 +1,5 @@
 import {
+    WorktreeRegistryAmbiguityError,
     inspectWorktreeRegistryAtPath,
     type WorktreeRegistryEntry,
 } from "@runwield/project-runtime/registry-inspection";
@@ -40,7 +41,6 @@ import {
     updateEntry,
     withWorktreeRegistryLock,
     withWorktreeRegistryLockAtPath,
-    WorktreeRegistryAmbiguityError,
 } from "./worktree-registry.ts";
 
 type MigrationIssue = Pick<WorktreeRegistryEntry, "id"> &

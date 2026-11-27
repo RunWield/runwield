@@ -184,6 +184,7 @@ export interface LegacyPackageSettlement {
 }
 export interface PackageGeneratedArtifact {
     operationId?: string;
+    reusedByAttemptId?: string;
     attemptId: string;
     planId: string;
     name: "manual-qa.md";
@@ -666,6 +667,7 @@ function metadataFrom(value: PlanPackageMetadata): PlanPackageMetadata {
         if (workflow.generatedArtifact !== undefined) {
             const artifact = fields(workflow.generatedArtifact, [
                 "operationId",
+                "reusedByAttemptId",
                 "attemptId",
                 "planId",
                 "name",
@@ -677,6 +679,10 @@ function metadataFrom(value: PlanPackageMetadata): PlanPackageMetadata {
                 artifact.name !== "manual-qa.md" ||
                 (artifact.operationId !== undefined &&
                     (typeof artifact.operationId !== "string" || !/^[a-f0-9-]{36}$/.test(artifact.operationId))) ||
+                (artifact.reusedByAttemptId !== undefined &&
+                    (typeof artifact.reusedByAttemptId !== "string" ||
+                        !artifact.reusedByAttemptId ||
+                        artifact.reusedByAttemptId === artifact.attemptId)) ||
                 ["attemptId", "planId", "text", "hash"].some(
                     (key) => typeof artifact[key] !== "string" || !artifact[key],
                 ) ||
@@ -1471,10 +1477,15 @@ export async function updatePlanPackageMetadata(
     planId: string,
     revision: number,
     update: PackageMetadataUpdate,
+    expectedWorkflowRevision?: string,
 ): Promise<PlanPackageMetadata> {
     return await mutate(identity, planId, async (paths) => {
         const current = await loaded(paths, planId);
         expectedRevision(current.metadata, revision);
+        if (expectedWorkflowRevision !== undefined) {
+            const actual = packageWorkflowRevision(current);
+            if (actual !== expectedWorkflowRevision) throw new StalePlanWriteError(expectedWorkflowRevision, actual);
+        }
         // Validate update keys before merging: identity, location and archive are dedicated operations.
         fields(JSON.parse(JSON.stringify(update)), [
             "history",

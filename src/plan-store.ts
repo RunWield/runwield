@@ -1,3 +1,4 @@
+import { projectPlanFiles } from "@runwield/plans/project-plan-files";
 import { PlanNotFoundError, StalePlanWriteError } from "@runwield/plans/store";
 import { projects } from "@runwield/projects";
 import { type PlanFrontMatter, type PlanFrontMatterInput, type PlanFrontMatterWithCustomFields } from "@runwield/plans";
@@ -3347,17 +3348,8 @@ export async function findPlanEvidenceById(cwd: string, planId: string): Promise
 
 /** @param {string} cwd @param {string} planId @returns {Promise<PlanResource>} */
 async function findPlanEvidenceByIdInProject(cwd: string, planId: string): Promise<PlanResource> {
-    if (currentPackageProject()) {
-        const plan = await loadPackageWorkflowPlan({ planId });
-        const entry = await selectedPackage({ planId });
-        return {
-            ...plan,
-            name: entry.metadata.name,
-            planName: entry.metadata.name,
-            planId: entry.metadata.planId,
-            relativePath: planArtifactReference(entry.metadata.planId),
-        };
-    }
+    const owner = currentPackageProject();
+    if (owner) return await projectPlanFiles.forOwner(owner).readResource({ planId });
     return await withProjectRuntimeReadScope(async () => {
         const normalized = normalizePlanId(planId);
         if (!normalized) throw new Error("Plan ID cannot be empty");

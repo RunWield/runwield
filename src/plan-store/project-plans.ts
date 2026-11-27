@@ -2,11 +2,7 @@ import { PlanNotFoundError, StalePlanWriteError } from "@runwield/plans/store";
 import { projectPlanDocuments } from "./checkout-documents.ts";
 import { projectPlanArtifacts } from "./artifacts.ts";
 
-import {
-    currentRetainedCheckoutSource,
-    hasRetainedCheckoutSource,
-    readRetainedExecutionPlan,
-} from "@runwield/plans/retained-checkout";
+import { currentRetainedCheckoutSource, hasRetainedCheckoutSource } from "@runwield/plans/retained-checkout";
 import { plans, type PlanEventDetails, type PlanId } from "@runwield/plans";
 import type {
     ProjectPlanCatalogEntry,
@@ -16,14 +12,15 @@ import type {
     ProjectPlanStoreOptions,
     ReviseProjectPlan,
 } from "@runwield/plans/store";
-import { projects, type ProjectId } from "@runwield/projects";
+import type { ProjectId } from "@runwield/projects";
 import { requestWorkspaceSearchRefresh } from "@runwield/resources/workspace-search-refresh";
 import { requireOwnedWorkRecordFiles } from "../shared/work-records/owner.ts";
 import { projectWorkRecordReads } from "./project-work-records.ts";
 import { bindProjectPlanStore, checkoutPlanIdentity } from "./project-binding.ts";
-import { readPlanPackage, readPlanPackagePublicationForCheckout } from "@runwield/plans/package-storage";
+import { readPlanPackagePublicationForCheckout } from "@runwield/plans/package-storage";
+import { projectPlanDocumentFields, projectPlanFiles } from "@runwield/plans/project-plan-files";
 import type { PlanResource } from "../plan-store.ts";
-import { currentPackageProject, projectPackageWorkflowPlan } from "./workflows.ts";
+import { currentPackageProject } from "./workflows.ts";
 import {
     createSavedPlan,
     reviseSavedPlan,
@@ -81,30 +78,8 @@ function safeDiagnostic(message: string, cwd: string, path: string): string {
     return sanitized.replace(/(?:[A-Za-z]:)?[\\/][^\s"'\`<>)]*/g, "[workspace path]");
 }
 
-type PlanDocumentFields = Pick<
-    PlanResource,
-    "name" | "relativePath" | "attrs" | "body" | "revision" | "readAvailability"
->;
-
-function documentFields(resource: PlanDocumentFields): Omit<ProjectPlanDocument, "planId"> {
-    const {
-        worktreePath: _worktree,
-        archivedFromPath: _archived,
-        restoredFromPath: _restored,
-        ...attrs
-    } = resource.attrs;
-    return {
-        name: resource.name,
-        relativePath: resource.relativePath,
-        attrs,
-        body: resource.body,
-        revision: resource.revision,
-        readAvailability: resource.readAvailability,
-    };
-}
-
 function catalogEntry(resource: PlanResource): ProjectPlanCatalogEntry {
-    const document = documentFields(resource);
+    const document = projectPlanDocumentFields(resource);
     return resource.planId ? { ...document, planId: requirePlanId(resource.planId) } : { ...document, planId: "" };
 }
 
@@ -123,7 +98,7 @@ export async function readProjectPlanDisplayCatalog(cwd: string): Promise<Projec
 
 function document(resource: PlanResource, planId: PlanId): ProjectPlanDocument {
     if (resource.planId !== planId) throw new PlanNotFoundError(planId);
-    return { ...documentFields(resource), planId };
+    return { ...projectPlanDocumentFields(resource), planId };
 }
 
 async function readActive(cwd: string, planId: PlanId): Promise<ProjectPlanDocument> {
@@ -133,34 +108,14 @@ async function readActive(cwd: string, planId: PlanId): Promise<ProjectPlanDocum
         return document(resource, planId);
     }
     const identity = currentPackageProject();
-    if (identity) {
-        const observation = projects.home.isOwner(identity)
-            ? undefined
-            : await readRetainedExecutionPlan(identity, planId);
-        const selected = observation?.selected ?? (await readPlanPackage(identity, { planId }));
-        if (
-            selected.kind === "missing" ||
-            (selected.kind === "loaded" && selected.metadata.archive && !selected.metadata.archive.restoredAt)
-        )
-            throw new PlanNotFoundError(planId);
-        if (selected.kind !== "loaded") throw new Error(selected.message);
-        const loaded = await projectPackageWorkflowPlan(observation ?? { selected });
-        return {
-            ...documentFields({
-                ...loaded,
-                name: selected.metadata.name,
-                relativePath: planArtifactReference(planId),
-            }),
-            planId,
-        };
-    }
+    if (identity) return await projectPlanFiles.forOwner(identity).read(planId);
     return document(await findPlanById(cwd, planId), planId);
 }
 
 async function readArchived(cwd: string, planId: PlanId): Promise<ProjectPlanDocument> {
     const resource = await loadArchivedPlan(cwd, planId, true);
     if (!resource || resource.attrs.planId !== planId) throw new PlanNotFoundError(planId);
-    return { ...documentFields({ ...resource, relativePath: planArtifactReference(planId) }), planId };
+    return { ...projectPlanDocumentFields({ ...resource, relativePath: planArtifactReference(planId) }), planId };
 }
 
 function eventDetails(details: PlanEventDetails = {}): PlanEventDetails {

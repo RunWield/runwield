@@ -1,9 +1,12 @@
 import { withManagedProjectConnection } from "@runwield/plans/managed-project-connection";
+import { currentExecutionRecoveryObservation } from "@runwield/plans/project-plan-files";
+import type { ExecutionRecoveryAction } from "@runwield/plans/project-store-wire";
 import { projects } from "@runwield/projects";
 import {
     managedPlanStoreActive,
     reopenManagedPlanReview,
     recoverManagedExecution,
+    recreateManagedExecution,
     settleRetainedExecutionAbandonment,
 } from "./managed.ts";
 import { mkdir } from "node:fs/promises";
@@ -18,8 +21,27 @@ import {
 } from "../plan-store.ts";
 import { buildPlanEventUpdates, type PlanStatus } from "@runwield/plans/lifecycle";
 import { writeControllerState } from "./controllers.ts";
-import { currentPackageProject, readRecoveryExecution } from "./workflows.ts";
+import { currentPackageProject, selectedPackage } from "./workflows.ts";
 import { recoveryPlanSnapshot, runPlanFrontMatterTransition, runReviewReopenTransition } from "./transitions.ts";
+import { findById } from "../shared/worktree-registry.ts";
+
+async function observeRecoveryAttempt(
+    cwd: string,
+    planId: string | undefined,
+    attemptId: string,
+    action: ExecutionRecoveryAction,
+) {
+    const identity = currentPackageProject();
+    if (!identity || !projects.home.isOwner(identity)) return await findById(cwd, attemptId);
+    const plan = planId ? await selectedPackage({ planId }) : null;
+    const binding = plan?.metadata.workflow?.attempt;
+    const observation =
+        plan && binding?.attemptId === attemptId
+            ? currentExecutionRecoveryObservation(identity, plan, binding, action)
+            : null;
+    if (!observation) throw new Error("Recovery requires an observation for this Plan attempt and action.");
+    return observation.entry;
+}
 
 /** Discard execution selection only after its external cleanup has settled. */
 export async function detachPlanExecution(
@@ -87,7 +109,7 @@ export async function refreshPlanExecutionReference(
     const plan = await loadPlan(cwd, name);
     if (!plan) throw new Error(`Plan not found: ${name}`);
     if (plan.attrs.status === "validated" || plan.attrs.worktreeId) return plan.attrs;
-    const entry = await readRecoveryExecution(cwd, attemptId);
+    const entry = await observeRecoveryAttempt(cwd, plan.attrs.planId, attemptId, "refresh");
     if (
         entry
             ? entry.planName !== name || entry.planId !== plan.attrs.planId
@@ -137,16 +159,27 @@ export async function reopenPlanReview(
         throw new Error(result.message || `Review reopen transition failed for ${name}.`);
 }
 
+export interface ManagedExecutionRecreationContext {
+    planId: string;
+    originalAttemptId: string;
+    operationId: string;
+    expectedRevision: string;
+}
+
 /** Restore the owner-captured document into the freshly registered execution attempt. */
-export async function restoreRecreatedPlanExecution(cwd: string, name: string, attemptId: string) {
+export async function restoreRecreatedPlanExecution(
+    cwd: string,
+    name: string,
+    attemptId: string,
+    managed?: ManagedExecutionRecreationContext,
+) {
     if (managedPlanStoreActive()) {
-        const snapshot = recoveryPlanSnapshot(name);
-        if (!snapshot) throw new Error("The recovery transaction has no retained Plan source.");
-        return await recoverManagedExecution(cwd, name, "recreate", snapshot.revision, attemptId);
+        if (!managed) throw new Error("Recreation requires the saved host recovery operation.");
+        return await recreateManagedExecution(cwd, attemptId, managed);
     }
     const source = projects.home.current() ? await loadPlan(cwd, name) : recoveryPlanSnapshot(name);
     if (!source) throw new Error("The recovery transaction has no retained Plan source.");
-    const attempt = await readRecoveryExecution(cwd, attemptId);
+    const attempt = await observeRecoveryAttempt(cwd, source.attrs.planId, attemptId, "recreate");
     if (!attempt || attempt.planName !== name || attempt.planId !== source.attrs.planId)
         throw new Error("Recreated execution identity changed.");
     if (!currentPackageProject()) {
@@ -192,7 +225,7 @@ export async function retainUserVerifiedPlan(
             if (!accepted || accepted.attrs.status !== "user_verified" || accepted.revision !== expectedRevision)
                 throw new Error("The accepted Plan changed. Reload it.");
             if (attemptId) {
-                const attempt = await readRecoveryExecution(cwd, attemptId);
+                const attempt = await findById(cwd, attemptId);
                 if (!attempt || attempt.planName !== name || attempt.planId !== accepted.attrs.planId)
                     throw new Error("Accepted Plan execution identity changed.");
                 await updateEntry(cwd, attemptId, { status: "abandoned" });
@@ -235,7 +268,9 @@ export async function retainUserVerifiedPlan(
         worktreeId: attemptId,
         action: "recover",
         recover: async ({ markEffect }) => {
-            const attempt = attemptId ? await readRecoveryExecution(root, attemptId) : null;
+            const attempt = attemptId
+                ? await observeRecoveryAttempt(root, accepted.attrs.planId, attemptId, "user-verified")
+                : null;
             if (attempt) {
                 if (attempt.planName !== name || attempt.planId !== accepted.attrs.planId)
                     throw new Error("Accepted Plan execution identity changed.");

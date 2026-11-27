@@ -32,5 +32,4 @@ export function withoutRetainedCheckoutSource<T>(run: () => Promise<T>): Promise
 
 export { projectCheckoutControllerView, readControllerRecordAtPath } from "./checkout-controller.ts";
 export type { PendingControllerRepair, WorkflowIdentity } from "./checkout-controller.ts";
-export { readRetainedExecutionPlan, type RetainedExecutionRead } from "./retained-execution.ts";
 export { findMissingExecutionSnapshot, TargetBranchSnapshotUnavailableError } from "./execution-git-snapshot.ts";

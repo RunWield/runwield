@@ -109,6 +109,8 @@ function managedOperationKey(
     const { operationId: _operationId, ...intent } = command;
     // These retries may observe a newer revision after the original command committed.
     const stableIntent = (() => {
+        if (command.kind === "recover-execution" && "action" in command && command.action === "recreate")
+            return command;
         if (command.kind === "restore-history")
             return { kind: command.kind, planId: command.planId, version: command.version };
         if (command.kind === "author-plan" && !authoringRevision(command))

@@ -1,2 +1,1 @@
-/** Installed command name, shared by storage-free messages and CLI orchestration. */
-export const CLI_BIN = "wld";
+export { CLI_BIN } from "@runwield/resources/cli-name";

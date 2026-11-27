@@ -137,6 +137,7 @@ test("clone choices stay pending without input, preserve cancellation, and remem
         );
         equal(linked.projectId, first.projectId);
         notEqual(linked.repositoryId, first.repositoryId);
+        deepEqual(admitted(projects.checkout.inspect(two, { context: first })), linked);
         deepEqual(
             JSON.parse(await readFile(join(home, ".wld", "projects", first.projectId, "project.wld.json"), "utf8"))
                 .repositories,

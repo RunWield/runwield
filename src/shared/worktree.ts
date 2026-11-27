@@ -25,14 +25,7 @@ import {
 import { assertGitRepository, GitRepositoryRequiredError } from "./git.ts";
 import { resolvePublicationUpstream } from "./publication-target.ts";
 import { getWorkflowDiff, listIgnoredUntrackedPaths, REVIEW_DIFF_FORMAT_ARGS } from "./workflow/git-snapshot.ts";
-import {
-    addEntry,
-    findById,
-    updateEntry,
-    listEntries,
-    pruneStaleEntries,
-    removeEntry,
-} from "./worktree-registry.ts";
+import { addEntry, findById, updateEntry, listEntries, pruneStaleEntries, removeEntry } from "./worktree-registry.ts";
 import { enterProjectRuntime } from "./project-runtime-layout.ts";
 import {
     isRunWieldOwnedGitignoreChange,
@@ -135,6 +128,7 @@ interface CreateWorktreeGitArtifactsOptions {
     baseBranch?: string;
     worktreeRoot?: string;
     attemptId?: string;
+    reserveCreationBeforeGit?: true;
 }
 
 interface GetWorktreeStatusOptions {
@@ -950,11 +944,15 @@ export async function createWorktreeGitArtifacts({
     baseBranch,
     worktreeRoot,
     attemptId,
+    reserveCreationBeforeGit,
 }: CreateWorktreeGitArtifactsOptions): Promise<WorktreeRegistryEntry> {
     await assertGitRepository(projectRoot, "Creating an execution worktree");
     if (typeof planId !== "string" || !planId) {
         throw new Error(`Creating an execution worktree for ${planName} requires a stable planId.`);
     }
+    if (reserveCreationBeforeGit && !attemptId)
+        throw new Error("Journaled worktree creation requires its saved attempt ID.");
+    const reserveCreation = reserveCreationBeforeGit || hasCanonicalPlanAccess();
     const id = attemptId || crypto.randomUUID().slice(0, 8);
     const slug = slugify(planName);
     const branch = `${WORKTREE_BRANCH_PREFIX}${slug}-${id}`;
@@ -964,17 +962,25 @@ export async function createWorktreeGitArtifacts({
     const path = join(parent, `${repoName}-${slug}-${id}`);
     const now = new Date().toISOString();
     const resolvedBaseBranch = baseBranch || (await resolveCurrentCheckoutBranch(projectRoot)) || "HEAD";
-    const reserved = hasCanonicalPlanAccess() ? await findById(projectRoot, id) : null;
+    const reserved = reserveCreation ? await findById(projectRoot, id) : null;
     if (
         reserved &&
         (reserved.planId !== planId ||
             reserved.path !== path ||
             reserved.branch !== branch ||
-            !reserved.creationContext)
+            !reserved.creationContext ||
+            (reserveCreationBeforeGit &&
+                (reserved.planName !== planName ||
+                    reserved.status !== "active" ||
+                    reserved.baseRef !== baseRef ||
+                    reserved.baseCommit !== baseRef ||
+                    reserved.baseBranch !== resolvedBaseBranch)))
     )
         throw new Error("Reserved worktree creation belongs to different or completed execution evidence.");
     const baseCommit = reserved?.baseCommit || (await runGit(projectRoot, ["rev-parse", baseRef])).trim();
     const baseTree = (await runGit(projectRoot, ["rev-parse", `${baseCommit}^{tree}`])).trim();
+    if (reserveCreationBeforeGit && reserved && reserved.baseTree !== baseTree)
+        throw new Error("The reserved execution baseline changed.");
 
     const projectContext = reserved?.creationContext || (await captureWorktreeProjectContext(projectRoot, baseCommit));
     const entry = {
@@ -991,8 +997,18 @@ export async function createWorktreeGitArtifacts({
         createdAt: reserved?.createdAt || now,
         updatedAt: now,
     };
-    if (hasCanonicalPlanAccess() && !reserved)
-        await addEntry(projectRoot, { ...entry, creationContext: projectContext });
+    if (reserveCreationBeforeGit) {
+        const checkout = await fsLstat(path).catch((error) => {
+            if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
+            throw error;
+        });
+        if (
+            (checkout && (!reserved || !checkout.isDirectory())) ||
+            (!reserved && (await gitRefExists(projectRoot, `refs/heads/${branch}`)))
+        )
+            throw new Error("The replacement execution path or branch already has other files or Git evidence.");
+    }
+    if (reserveCreation && !reserved) await addEntry(projectRoot, { ...entry, creationContext: projectContext });
     await fsMkdir(parent, { recursive: true });
     if (reserved && (await pathExists(path))) {
         const registeredPath = findWorktreePathForBranch(
@@ -1005,6 +1021,18 @@ export async function createWorktreeGitArtifacts({
             (await runGit(path, ["rev-parse", "HEAD"])).trim() !== baseCommit
         )
             throw new Error("Interrupted worktree creation has changed Git evidence; preserve its files.");
+        if (reserveCreationBeforeGit) {
+            const [rootGitDir, checkoutGitDir, checkoutBranch] = await Promise.all([
+                runGit(projectRoot, ["rev-parse", "--path-format=absolute", "--git-common-dir"]),
+                runGit(path, ["rev-parse", "--path-format=absolute", "--git-common-dir"]),
+                runGit(path, ["symbolic-ref", "HEAD"]),
+            ]);
+            if (
+                checkoutBranch.trim() !== `refs/heads/${branch}` ||
+                (await fsRealpath(rootGitDir.trimEnd())) !== (await fsRealpath(checkoutGitDir.trimEnd()))
+            )
+                throw new Error("Interrupted worktree creation changed its branch or repository.");
+        }
     } else {
         const branchExists = await gitRefExists(projectRoot, `refs/heads/${branch}`);
         if (branchExists) {
@@ -1014,9 +1042,13 @@ export async function createWorktreeGitArtifacts({
         } else await runGit(projectRoot, ["worktree", "add", "-b", branch, path, baseCommit]);
     }
     try {
-        await materializeWorktreeProjectContext(path, projectContext, reserved ? baseCommit : undefined);
+        await materializeWorktreeProjectContext(
+            path,
+            projectContext,
+            reserved || reserveCreationBeforeGit ? baseCommit : undefined,
+        );
     } catch (error) {
-        if (hasCanonicalPlanAccess()) throw error;
+        if (reserveCreation) throw error;
         await runGit(projectRoot, ["worktree", "remove", "--force", path]);
         await runGit(projectRoot, ["branch", "-D", branch]);
         throw error;
@@ -1025,7 +1057,7 @@ export async function createWorktreeGitArtifacts({
         await runGit(path, ["submodule", "update", "--init", "--recursive"]);
     }
 
-    if (hasCanonicalPlanAccess()) {
+    if (reserveCreation) {
         await updateEntry(projectRoot, id, { creationContext: undefined });
         return entry;
     }

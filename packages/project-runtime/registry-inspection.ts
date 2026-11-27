@@ -1,3 +1,4 @@
+import { CLI_BIN } from "@runwield/resources/cli-name";
 import { assertPublicationAttempt, type PublicationAttempt } from "@runwield/workflow-publication-format";
 import { readFile as fsReadFile } from "node:fs/promises";
 
@@ -217,4 +218,108 @@ export async function inspectWorktreeRegistryAtPath(registryPath: string): Promi
         }
     }
     return { version, entries, integrityIssues };
+}
+
+export interface RegistryRecoveryAction {
+    label: string;
+    description: string;
+    command?: string;
+}
+
+interface RegistryAmbiguityDetails {
+    kind: string;
+    entryIds: string[];
+    planName?: string;
+    recoveryActions: RegistryRecoveryAction[];
+}
+
+/**
+ * A registry read could not answer the question that was asked.
+ *
+ * The registry is RunWield's own bookkeeping, so "invariant violated" is not an
+ * explanation the user can act on — it reads as RunWield failing at its paperwork
+ * and handing over the bill. Carry the affected attempt ids and the commands that
+ * resolve them so every surface can say what to do next.
+ */
+export class WorktreeRegistryAmbiguityError extends Error {
+    declare kind: RegistryAmbiguityDetails["kind"];
+    declare entryIds: RegistryAmbiguityDetails["entryIds"];
+    declare planName: RegistryAmbiguityDetails["planName"];
+    declare recoveryActions: RegistryAmbiguityDetails["recoveryActions"];
+
+    constructor(message: string, details: RegistryAmbiguityDetails) {
+        super(message);
+        this.name = "WorktreeRegistryAmbiguityError";
+        this.kind = details.kind;
+        this.entryIds = details.entryIds;
+        this.planName = details.planName;
+        this.recoveryActions = details.recoveryActions;
+    }
+}
+
+export function registryRecoveryActions(planName?: string): RegistryRecoveryAction[] {
+    return [
+        {
+            label: "See every attempt RunWield knows about",
+            description:
+                "Reports the registry as it stands, including which attempts collide, without changing anything.",
+            command: `${CLI_BIN} plans doctor`,
+        },
+        {
+            label: "Let RunWield settle what it can prove",
+            description:
+                "Closes attempts that are provably finished or provably never started. Branches and worktree directories are never deleted.",
+            command: `${CLI_BIN} plans doctor --repair`,
+        },
+        ...(planName
+            ? [
+                  {
+                      label: "Choose which attempt survives",
+                      description:
+                          "Plan Recovery lists the attempts for this Plan so you can continue, retry, merge, or abandon one.",
+                      command: `${CLI_BIN} load-plan ${planName}`,
+                  },
+              ]
+            : []),
+    ];
+}
+
+/** Read the registry at a checked layout path and report ambiguous attempt IDs. */
+export async function readWorktreeRegistryAtPath(registryPath: string): Promise<WorktreeRegistryEntry[]> {
+    try {
+        const inspected = await inspectWorktreeRegistryAtPath(registryPath);
+        if (inspected.readError) throw inspected.readError;
+        if (inspected.version > 2) {
+            throw new Error(`Unsupported worktree registry schema version: ${inspected.version}`);
+        }
+        const malformed = inspected.integrityIssues.find((issue) => issue.kind === "malformed_registry");
+        if (malformed) throw new Error(malformed.message);
+        const duplicateId = inspected.integrityIssues.find((issue) => issue.kind === "duplicate_worktree_id");
+        if (duplicateId) {
+            throw new WorktreeRegistryAmbiguityError(
+                `Worktree id ${
+                    duplicateId.ids[0]
+                } appears more than once in the registry, so RunWield cannot tell which ` +
+                    `attempt any command means. Nothing has been changed or deleted.`,
+                {
+                    kind: "duplicate_worktree_id",
+                    entryIds: duplicateId.ids,
+                    recoveryActions: registryRecoveryActions(),
+                },
+            );
+        }
+        const entries = inspected.entries;
+        // Reading is deliberately permissive. Two unfinished attempts for one Plan
+        // make *that Plan's* lookups ambiguous; they say nothing about any other
+        // Plan, and refusing every read over it made one damaged record disable every
+        // worktree command in the project — including the ones that diagnose it. The
+        // guard that matters is on the write side: `addEntry` and `updateEntry` still
+        // refuse to create a second live attempt, so a permissive read cannot let one
+        // in. Lookups below fail only when the entry they were asked for is the
+        // ambiguous one.
+        return entries;
+    } catch (error) {
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return [];
+        throw error;
+    }
 }

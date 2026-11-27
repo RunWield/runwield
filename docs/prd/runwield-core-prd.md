@@ -453,6 +453,15 @@ host disconnects during a read, the original store handle rejects that read and 
 store after reconnect resolves its canonical laptop owner. A write that committed before its response was lost
 can recover the same outcome under its retained operation ID.
 
+**Acceptance: Recover a Plan whose execution lives on an SSH host.** The laptop reads the saved Plan without
+contacting the execution host. During recovery, the authenticated host reports what happened to the requested
+attempt. Plans checks the personal owner, Project, repository, Plan and attempt against its saved records and checks
+that the observation supports the requested action. A mismatch stops the operation before it changes the Plan.
+The observation applies only to that recovery operation. When Recreate replaces a worktree, the same saved
+recovery operation must identify both the old attempt and its distinct replacement. Plans verifies the old
+reservation and the replacement before switching the Plan to the new attempt. If the reply is lost after the
+switch, retrying the operation returns the same outcome. Incomplete or conflicting evidence preserves the reservation.
+
 **Acceptance: Original attempts survive adoption.** Given an unfinished pre-cutover managed attempt, admission verifies
 staged personal bytes and original owner, repository, checkout, attempt, branch and base before source retirement.
 Saved continuation resumes that original attempt. Its controller, publication and recording remain usable without

@@ -920,6 +920,56 @@ try {
         } else {
             await runPlansCommand(["history", "show", "proposal", input.attemptId!]);
         }
+    } else if (command === "managed-recovery-seed") {
+        const { authorLocalPlan, openProjectPlanStore } = await import("../../plan-store/index.ts");
+        const { plans } = await import("@runwield/plans");
+        const { projects } = await import("@runwield/projects");
+        const planName = "recovery";
+        await authorLocalPlan(input.cwd, { planName, contextMarkdown: "# Canonical recovery\n" });
+        await recordPlanEvent({ cwd: input.cwd, planName, event: "review_approved", currentStatus: "draft" });
+        await recordPlanEvent({ cwd: input.cwd, planName, event: "readiness_passed", currentStatus: "approved" });
+        const { state } = await openWorkflow({ cwd: input.cwd, planName }).startOrResume();
+        const plan = await loadPlan(input.cwd, planName);
+        const checkout = projects.checkout.inspect(input.cwd);
+        ok(plan && plans.identity.isValid(plan.attrs.planId) && state.worktreeId && checkout.kind === "existing");
+        const store = openProjectPlanStore(checkout.identity.projectId);
+        const document = await store.read(plan.attrs.planId);
+        equal(document.body, "# Canonical recovery\n");
+        equal(document.attrs.status, "in_progress");
+        equal(document.attrs.worktreeStatus, undefined);
+        const { resolveProjectRuntimeLayout } = await import("@runwield/project-runtime/layout");
+        const { findById } = await import("../worktree-registry.ts");
+        const layout = resolveProjectRuntimeLayout(input.cwd);
+        const original = await findById(input.cwd, state.worktreeId);
+        ok(original);
+        console.log(
+            JSON.stringify({
+                planId: document.planId,
+                attemptId: state.worktreeId,
+                original,
+                journalDirectory: layout.selected.transitionJournalsDir,
+                registryPath: layout.primary.worktreeRegistryPath,
+            }),
+        );
+    } else if (
+        command === "managed-recovery-recreate" ||
+        command === "managed-recovery-decline-recreate" ||
+        command === "managed-recovery-resume-recreate"
+    ) {
+        const { recreateManagedFixturePlan } = await import("./managed-recreate-fixture.ts");
+        const confirmation =
+            command === "managed-recovery-recreate"
+                ? "confirm"
+                : command === "managed-recovery-decline-recreate"
+                  ? "cancel"
+                  : null;
+        console.log(
+            JSON.stringify(await recreateManagedFixturePlan(input.cwd, "recovery", confirmation, input.connection)),
+        );
+    } else if (command === "managed-recovery-abandon") {
+        const { updateEntry } = await import("../worktree-registry.ts");
+        ok(input.attemptId);
+        await updateEntry(input.cwd, input.attemptId, { status: "abandoned" });
     } else if (command === "managed-route-import") {
         const { resolvePlanWithPrimaryRecovery } = await import("../../plan-store/index.ts");
         const selected = join(input.cwd, "docs/plans/explicit.md");

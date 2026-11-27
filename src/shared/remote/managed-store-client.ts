@@ -1008,13 +1008,8 @@ async function executeManagedFixture() {
             reservePlanExecution("recovery", { targetBranch: "main" }),
         );
         await openWorkflow({ cwd: input.cwd, planName: "recovery" }).startOrResume();
-        const {
-            reconcilePlanExecutionBinding,
-            restoreRecreatedPlanExecution,
-            runPlanRecoveryEffects,
-            resetPlanExecutionMetadata,
-            restoreNonGitPlanExecution,
-        } = await import("../../plan-store/index.ts");
+        const { reconcilePlanExecutionBinding, resetPlanExecutionMetadata, restoreNonGitPlanExecution } =
+            await import("../../plan-store/index.ts");
         if ((await reconcilePlanExecutionBinding(input.cwd, "recovery", recoveryAttempt)).legacyExecutionMode)
             throw new Error("Managed execution repair lost its Git mode.");
         const recreateSource = await loadPlan(input.cwd, "recovery");
@@ -1026,30 +1021,30 @@ async function executeManagedFixture() {
             nonGitRefused = true;
         }
         if (!nonGitRefused) throw new Error("A Git attempt was changed to non-Git execution.");
-        const recreated = await runPlanRecoveryEffects({
-            projectRoot: input.cwd,
-            planName: "recovery",
-            worktreeId: recoveryAttempt,
-            action: "recreate",
-            expectedRevision: recreateSource.revision,
-            recover: async () => {
-                const entry = await (await import("../worktree-registry.ts")).findById(input.cwd, recoveryAttempt);
-                if (!entry) throw new Error("Original recreation attempt is unavailable.");
-                await fixtureGit(input.cwd, ["worktree", "remove", "--force", entry.path]);
-                await fixtureGit(input.cwd, ["worktree", "add", entry.path, entry.branch]);
-                return await restoreRecreatedPlanExecution(input.cwd, "recovery", recoveryAttempt);
-            },
-        });
+        const { recreateManagedFixturePlan } = await import("./managed-recreate-fixture.ts");
+        const { capturePlanExecutionContext } = await import("../../plan-store/index.ts");
+        const { findById } = await import("../worktree-registry.ts");
+        const original = await findById(input.cwd, recoveryAttempt);
+        if (!original) throw new Error("Original recreation attempt is unavailable.");
+        const recreated = await recreateManagedFixturePlan(input.cwd, "recovery", "confirm");
+        const nextAttempt = (
+            await withLocalPlanWorkflow(input.cwd, "recovery", () => capturePlanExecutionContext("recovery"))
+        )?.packageAttemptId;
+        const next = nextAttempt && (await findById(input.cwd, nextAttempt));
         if (
-            recreated.status !== "committed" ||
+            recreated.confirmations !== 1 ||
+            recreated.executions !== 1 ||
+            !next ||
+            next.id === recoveryAttempt ||
+            next.path === original.path ||
+            (await findById(input.cwd, recoveryAttempt))?.status !== "abandoned" ||
             (await loadPlan(input.cwd, "recovery"))?.attrs.status !== "ready_for_work"
         )
             throw new Error(`Managed recreation failed: ${JSON.stringify(recreated)}`);
         await openWorkflow({ cwd: input.cwd, planName: "recovery" }).startOrResume();
         const recoveryBefore = await loadPlan(input.cwd, "recovery");
         if (!recoveryBefore) throw new Error("Recovery Plan is unavailable.");
-        const { reopenPlanReview, capturePlanExecutionContext, detachPlanExecution } =
-            await import("../../plan-store/index.ts");
+        const { reopenPlanReview, detachPlanExecution } = await import("../../plan-store/index.ts");
         let rejectedWrongAttempt = false;
         try {
             await reopenPlanReview(
@@ -1064,20 +1059,14 @@ async function executeManagedFixture() {
         }
         if (!rejectedWrongAttempt || (await loadPlan(input.cwd, "recovery"))?.revision !== recoveryBefore.revision)
             throw new Error("Review reopening accepted another execution attempt.");
-        await reopenPlanReview(
-            input.cwd,
-            "recovery",
-            recoveryAttempt,
-            recoveryBefore.attrs.status,
-            recoveryBefore.revision,
-        );
+        await reopenPlanReview(input.cwd, "recovery", next.id, recoveryBefore.attrs.status, recoveryBefore.revision);
         const recoveredReview = await loadPlan(input.cwd, "recovery");
         if (
             recoveredReview?.attrs.status !== "draft" ||
             (await withLocalPlanWorkflow(input.cwd, "recovery", () => capturePlanExecutionContext("recovery")))
-                ?.packageAttemptId !== recoveryAttempt
+                ?.packageAttemptId !== next.id
         )
-            throw new Error("Review reopening lost the original reserved execution.");
+            throw new Error("Review reopening lost the recreated execution.");
         let refusedActiveDetach = false;
         try {
             await detachPlanExecution(input.cwd, "recovery", recoveredReview.attrs.planId);
@@ -1086,7 +1075,7 @@ async function executeManagedFixture() {
         }
         if (!refusedActiveDetach) throw new Error("Owner released an execution without abandonment evidence.");
         const { updateEntry } = await import("../worktree-registry.ts");
-        await updateEntry(input.cwd, recoveryAttempt, { status: "abandoned" });
+        await updateEntry(input.cwd, next.id, { status: "abandoned" });
         await detachPlanExecution(input.cwd, "recovery", recoveredReview.attrs.planId);
         await recordPlanEvent({
             cwd: input.cwd,
@@ -1103,8 +1092,7 @@ async function executeManagedFixture() {
         let replacement = await withLocalPlanWorkflow(input.cwd, "recovery", () =>
             reservePlanExecution("recovery", { targetBranch: "main" }),
         );
-        if (replacement === recoveryAttempt)
-            throw new Error("Proven abandonment did not release the original attempt.");
+        if (replacement === next.id) throw new Error("Proven abandonment did not release the recreated attempt.");
         await openWorkflow({ cwd: input.cwd, planName: "recovery" }).startOrResume();
         await updateEntry(input.cwd, replacement, { status: "abandoned" });
         const beforeReset = await loadPlan(input.cwd, "recovery");

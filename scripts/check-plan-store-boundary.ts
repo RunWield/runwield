@@ -28,6 +28,9 @@ const privateMembers = new Set([
     "packages/plans/managed-project-connection-state.ts",
     "packages/plans/managed-operation.ts",
     "packages/plans/managed-store-host.ts",
+    "packages/plans/managed-execution-adoption.ts",
+    "packages/plans/project-plan-files.ts",
+    "packages/plans/execution-recovery.ts",
     "packages/plans/retained-checkout.ts",
     "packages/plans/retained-execution.ts",
     "packages/plans/checkout-controller.ts",
@@ -38,6 +41,10 @@ const privateMembers = new Set([
 const managedConnectionDriver = "packages/plans/managed-project-connection.ts";
 const managedConnectionState = "packages/plans/managed-project-connection-state.ts";
 const managedStoreHost = "packages/plans/managed-store-host.ts";
+const managedExecutionAdoption = "packages/plans/managed-execution-adoption.ts";
+const executionRecovery = "packages/plans/execution-recovery.ts";
+const projectPlanFiles = "packages/plans/project-plan-files.ts";
+const projectStoreService = "src/plan-store/project-service.ts";
 const remoteBootstrap = "src/shared/remote/managed-project-owner.ts";
 const remoteBootstrapCallers = new Set([
     "src/shared/remote/entry.ts",
@@ -70,6 +77,76 @@ function isManagedStateFacadeExport(file: string, specifier: ts.Node): boolean {
     const names = statement.exportClause.elements.map((entry) => (entry.propertyName ?? entry.name).text);
     if (file === managedConnectionDriver) return !names.includes("configureManagedPlanStore");
     return file === managedStoreHost && names.length === 1 && names[0] === "configureManagedPlanStore";
+}
+
+function isManagedHostImport(file: string, specifier: ts.Node): boolean {
+    const allowed =
+        file === remoteBootstrap
+            ? ["configureManagedPlanStore"]
+            : file === projectStoreService
+              ? ["withManagedExecutionRecovery", "adoptManagedExecutionReplacement"]
+              : undefined;
+    if (!allowed) return false;
+    const statement = specifier.parent;
+    if (ts.isImportDeclaration(statement) && !statement.importClause?.name) {
+        const bindings = statement.importClause?.namedBindings;
+        return (
+            !!bindings &&
+            ts.isNamedImports(bindings) &&
+            bindings.elements.length > 0 &&
+            bindings.elements.every((member) => allowed.includes((member.propertyName ?? member.name).text))
+        );
+    }
+    if (
+        file !== remoteBootstrap ||
+        !ts.isCallExpression(statement) ||
+        statement.expression.kind !== ts.SyntaxKind.ImportKeyword ||
+        !ts.isAwaitExpression(statement.parent)
+    )
+        return false;
+    const assignment = statement.parent.parent;
+    if (!ts.isVariableDeclaration(assignment) || !ts.isObjectBindingPattern(assignment.name)) return false;
+    const [binding] = assignment.name.elements;
+    return (
+        assignment.name.elements.length === 1 &&
+        !binding.dotDotDotToken &&
+        (binding.propertyName ?? binding.name).getText() === "configureManagedPlanStore"
+    );
+}
+
+function isManagedExecutionAdoptionImport(file: string, specifier: ts.Node): boolean {
+    if (PLAN_STORE_QUALIFICATIONS[file]?.modules.includes(managedExecutionAdoption)) return true;
+    const statement = specifier.parent;
+    if (
+        file !== managedStoreHost ||
+        !ts.isExportDeclaration(statement) ||
+        !statement.exportClause ||
+        !ts.isNamedExports(statement.exportClause)
+    )
+        return false;
+    const names = statement.exportClause.elements.map((entry) => (entry.propertyName ?? entry.name).text);
+    return names.length === 1 && names[0] === "adoptManagedExecutionReplacement";
+}
+
+function isExecutionRecoveryImport(file: string, specifier: ts.Node): boolean {
+    if (PLAN_STORE_QUALIFICATIONS[file]?.modules.includes(executionRecovery)) return true;
+    const statement = specifier.parent;
+    if (ts.isExportDeclaration(statement) && statement.exportClause && ts.isNamedExports(statement.exportClause)) {
+        const names = statement.exportClause.elements.map((entry) => (entry.propertyName ?? entry.name).text);
+        return (
+            names.length === 1 &&
+            ((file === managedStoreHost && names[0] === "withManagedExecutionRecovery") ||
+                (file === projectPlanFiles && names[0] === "currentExecutionRecoveryObservation"))
+        );
+    }
+    if (file !== projectPlanFiles || !ts.isImportDeclaration(statement) || statement.importClause?.name) return false;
+    const bindings = statement.importClause?.namedBindings;
+    return (
+        !!bindings &&
+        ts.isNamedImports(bindings) &&
+        bindings.elements.length === 1 &&
+        (bindings.elements[0].propertyName ?? bindings.elements[0].name).text === "currentExecutionRecoveryObservation"
+    );
 }
 
 /** The existing Git repair and planning paths consume one named operation each. */
@@ -184,11 +261,27 @@ export function inspectPlanStoreImports(file: string, source: string): PlanStore
                 line: parsed.getLineAndCharacterOfPosition(node.getStart(parsed)).line + 1,
                 message: `The Plans package cannot depend on an application module (${specifier}).`,
             });
+        if (target === managedExecutionAdoption && !isManagedExecutionAdoptionImport(file, node)) {
+            violations.push({
+                file,
+                line: parsed.getLineAndCharacterOfPosition(node.getStart(parsed)).line + 1,
+                message: "Managed execution replacement is available only through its private host.",
+            });
+            return;
+        }
+        if (target === executionRecovery && !isExecutionRecoveryImport(file, node)) {
+            violations.push({
+                file,
+                line: parsed.getLineAndCharacterOfPosition(node.getStart(parsed)).line + 1,
+                message: "Execution recovery evidence is available only through its private host and reader.",
+            });
+            return;
+        }
         if (
             ((target === managedConnectionState ||
                 /^@runwield\/plans\/managed-project-connection-state(?:\.[tj]s)?$/.test(specifier)) &&
                 !isManagedStateFacadeExport(file, node)) ||
-            (target === managedStoreHost && file !== remoteBootstrap) ||
+            (target === managedStoreHost && !isManagedHostImport(file, node)) ||
             (target === remoteBootstrap && !remoteBootstrapCallers.has(file))
         ) {
             violations.push({
@@ -209,7 +302,7 @@ export function inspectPlanStoreImports(file: string, source: string): PlanStore
             target !== publicSurface &&
             target !== projectStoreSurface &&
             target !== pureSurface &&
-            !(target === managedStoreHost && file === remoteBootstrap) &&
+            !(target === managedStoreHost && isManagedHostImport(file, node)) &&
             ownerMember(target) &&
             !isWorkflowSnapshotImport(file, target, node) &&
             !PLAN_STORE_QUALIFICATIONS[file]?.modules.includes(target)

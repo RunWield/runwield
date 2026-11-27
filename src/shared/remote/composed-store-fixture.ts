@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, writeFile, chmod, realpath, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { equal } from "node:assert/strict";
@@ -7,9 +7,10 @@ import { startRemoteControlService } from "./control.ts";
 import { getHomeDir } from "../../constants.ts";
 import { captureForegroundProcess } from "@runwield/resources/process";
 import type { RemoteInteractiveConfig } from "./entry.ts";
+import { writeManagedStoreSshFixture } from "./managed-store-ssh-fixture.ts";
 
 const repository = defineCommittedGitFixture({ "README.md": "Composed remote owner\n" });
-export async function composedRemoteFixture() {
+export async function composedRemoteFixture(allowRecoveryFaults = false) {
     const root = await realpath(await repository.checkout());
     const temporary = await realpath(await mkdtemp(join(tmpdir(), "composed-remote-")));
     const remoteHome = join(temporary, "remote-home");
@@ -21,29 +22,37 @@ export async function composedRemoteFixture() {
     await git(root, ["remote", "add", "origin", upstream]);
     await git(root, ["config", "branch.main.remote", "origin"]);
     await git(root, ["config", "branch.main.merge", "refs/heads/main"]);
-    const configuration = { bun: process.execPath, cli: new URL("../../cli.ts", import.meta.url).pathname, remoteHome };
-    await writeFile(
-        join(bin, "ssh"),
-        `#!/usr/bin/env python3
-import json, os, subprocess, sys
-config = json.loads(${JSON.stringify(JSON.stringify(configuration))})
-request = json.loads(sys.stdin.readline())
-env = dict(os.environ, HOME=config['remoteHome'], WLD_TEST_SANDBOX_HOME=config['remoteHome'], MNEMOTECA_DB_PATH=os.path.join(config['remoteHome'], 'mnemoteca.db'))
-key = 'transfer' if 'transfer' in request else 'proof' if 'proof' in request else 'admission'
-flag = '--remote-runtime-transfer' if key == 'transfer' else '--remote-publication-proof' if key == 'proof' else '--remote-project-admission'
-sys.exit(subprocess.run([config['bun'], config['cli'], flag], input=json.dumps(request[key]) + '\\n', text=True, env=env).returncode)
-`,
-    );
-    await chmod(join(bin, "ssh"), 0o700);
+    const recoveryFaultPath = join(temporary, "recovery-fault.json");
+    const disabledSshLogPath = join(temporary, "disabled-ssh.log");
+    await writeManagedStoreSshFixture(bin, remoteHome, {
+        disabledSshLogPath,
+        recoveryFaultPath: allowRecoveryFaults ? recoveryFaultPath : undefined,
+    });
     const previousPath = process.env.PATH;
     process.env.PATH = `${bin}:${previousPath}`;
     const build = { buildId: "a".repeat(64), protocol: 1 };
-    const control = startRemoteControlService(build, undefined, undefined, "", {
-        host: "fixture-host",
-        cwd: root,
-        remoteHome,
-        executable: "/verified/runtime/wld",
-    });
+    const control = startRemoteControlService(
+        build,
+        {
+            baseDir: join(temporary, "laptop-sessions"),
+            targetLabel: `fixture-host:${root}`,
+            target: {
+                host: { hostname: "fixture-host", user: "developer", port: 22, hostKeyFingerprint: "SHA256:verified" },
+                cwd: root,
+                home: remoteHome,
+                os: "Linux",
+                arch: "x86_64",
+                gitRoot: root,
+                gitDir: join(root, ".git"),
+                gitCommonDir: join(root, ".git"),
+                primaryRoot: root,
+                isWorktree: false,
+            },
+        },
+        undefined,
+        "",
+        { host: "fixture-host", cwd: root, remoteHome, executable: "/verified/runtime/wld" },
+    );
     const endpoint = `http://127.0.0.1:${control.port}`;
     const headers = { Authorization: `Bearer ${control.credential}` };
     for (const action of ["handshake", "readiness"])
@@ -94,10 +103,58 @@ sys.exit(subprocess.run([config['bun'], config['cli'], flag], input=json.dumps(r
         root,
         remoteHome,
         upstream,
+        recoveryFaultPath,
         input,
         endpoint,
         headers,
         runRaw,
+        async interruptRecreateAfterGitAdd() {
+            const executable = Bun.which("git");
+            if (!executable) throw new Error("Fixture requires Git.");
+            const wrapper = join(bin, "git");
+            const boundary = join(temporary, "interrupted-git-add.json");
+            const configuration = { executable, boundary };
+            await writeFile(
+                wrapper,
+                `#!/usr/bin/env python3
+import json, os, signal, subprocess, sys
+config = json.loads(${JSON.stringify(JSON.stringify(configuration))})
+args = sys.argv[1:]
+result = subprocess.run([config['executable'], *args])
+if result.returncode == 0 and args[:3] == ['worktree', 'add', '-b']:
+    with open(config['boundary'], 'w') as marker:
+        json.dump({'branch': args[3], 'path': args[4], 'baseCommit': args[5]}, marker)
+    os.kill(os.getppid(), signal.SIGKILL)
+sys.exit(result.returncode)
+`,
+                { mode: 0o700 },
+            );
+            try {
+                const interrupted = await runRaw("managed-recovery-recreate");
+                const marker = await readFile(boundary, "utf8").catch((cause) => {
+                    throw new Error(
+                        `Recovery did not reach Git creation: ${new TextDecoder().decode(interrupted.stderr)}`,
+                        {
+                            cause,
+                        },
+                    );
+                });
+                const worktree: { branch: string; path: string; baseCommit: string } = JSON.parse(marker);
+                return { interrupted, worktree };
+            } finally {
+                await rm(wrapper);
+            }
+        },
+        async withoutSsh<Result>(run: () => Promise<Result>) {
+            await writeFile(disabledSshLogPath, "");
+            try {
+                const result = await run();
+                equal(await readFile(disabledSshLogPath, "utf8"), "", "Ordinary Plan read attempted SSH");
+                return result;
+            } finally {
+                await rm(disabledSshLogPath);
+            }
+        },
         async run(command: string, port?: number, attemptId?: string) {
             const result = await runRaw(command, port, attemptId);
             equal(result.code, 0, new TextDecoder().decode(result.stderr));

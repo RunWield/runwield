@@ -26,6 +26,7 @@ import { healSettledTransitionRecords } from "../../shared/workflow/transition-r
 import { verifyRecordedPublication } from "../../shared/workflow/validation-merge-verification.ts";
 import { isUserVerifiableStatus } from "./plan-hold.ts";
 import {
+    confirmWorktreeAction,
     hasWorktreeContext,
     persistRecoveredWorktreeMetadata,
     reportInvalidRecoveryPolicy,
@@ -44,7 +45,7 @@ import {
     userVerifyRecoveryPlan,
     validateRecoveryPlan,
 } from "./plan-recovery-actions.ts";
-import { resetRecoveryPlan } from "./plan-recovery-reset.ts";
+import { executeRecreatedRecovery, replayManagedWorktreeRecreation, resetRecoveryPlan } from "./plan-recovery-reset.ts";
 
 import type { PlanSessionSurface, RecoveryWorktreeContext } from "./plan-session-types.ts";
 import type { PlanFrontMatter } from "@runwield/plans";
@@ -106,10 +107,54 @@ interface RecoveryMenuOption extends Record<string, string> {
     label: string;
 }
 
+type ResumeManagedRecoveryOptions = Pick<
+    HandlePlanRecoveryOptions,
+    "projectRoot" | "plan" | "agentName" | "uiAPI" | "session" | "ports"
+>;
+
+/** Finish a saved host recreation before the next Plan action is chosen. */
+export async function resumeManagedRecreationFromLoadPlan(opts: ResumeManagedRecoveryOptions): Promise<boolean> {
+    const { projectRoot, plan, uiAPI } = opts;
+    let recreated: Awaited<ReturnType<typeof replayManagedWorktreeRecreation>>;
+    try {
+        recreated = await replayManagedWorktreeRecreation(plan);
+        if (recreated === "confirmation") {
+            if (!(await confirmWorktreeAction(plan.planName, uiAPI, "Delete/recreate"))) return true;
+            recreated = await replayManagedWorktreeRecreation(plan, true);
+            if (!recreated || recreated === "confirmation") return true;
+        }
+    } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        uiAPI.appendSystemMessage(
+            buildPlanRecoveryUserMessage({ kind: "worktree_cleanup_result", failed: true, detail }),
+            true,
+            "RunWield",
+        );
+        return true;
+    }
+    if (!recreated) return false;
+    await executeRecreatedRecovery({
+        ...opts,
+        recordRecoveryResult: async (action, result) => {
+            await opts.ports.recordWorkflowMetric(
+                {
+                    category: "recovery",
+                    event: "recovery_action_result",
+                    planName: plan.planName,
+                    details: { action, result, currentStatus: plan.attrs.status, hasWorktree: true },
+                },
+                projectRoot,
+            );
+        },
+    });
+    return true;
+}
+
 export async function handlePlanRecovery(
     opts: HandlePlanRecoveryOptions,
 ): Promise<"handled" | "review" | "settled" | "verified"> {
     const { projectRoot, plan, uiAPI } = opts;
+    if (await resumeManagedRecreationFromLoadPlan(opts)) return "handled";
     // Recovery preflight is scoped to the selected Plan. It refreshes the
     // authoritative Plan document and gathers only the evidence needed to build
     // the first menu. It deliberately does not run the repository-wide

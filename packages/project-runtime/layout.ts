@@ -232,10 +232,21 @@ export class ProjectRuntimeReadPendingError extends Error {
 export function inspectProjectRuntimeReadAccess(root: string): Promise<ProjectRuntimeReadInspection> {
     const scope = runtimeEntryScope.getStore();
     if (!scope?.active) return inspectProjectRuntimeReadAccessUncached(root);
-    const key = resolve(root);
+    const checkout = resolve(root);
+    const { executionAccountHome, configuredExecutionAccountHome, accountHomeDirectory, personalOwner } =
+        projects.launch.current();
+    const key = JSON.stringify([
+        checkout,
+        executionAccountHome,
+        configuredExecutionAccountHome,
+        accountHomeDirectory?.device,
+        accountHomeDirectory?.inode,
+        personalOwner.kind,
+        personalOwner.identity,
+    ]);
     const previous = scope.inspections.get(key);
     if (previous) return previous;
-    const result = inspectProjectRuntimeReadAccessUncached(key);
+    const result = inspectProjectRuntimeReadAccessUncached(checkout);
     scope.inspections.set(key, result);
     void result.catch(() => scope.inspections.delete(key));
     return result;

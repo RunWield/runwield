@@ -130,9 +130,47 @@ test("only the managed SSH bootstrap can configure the Plan store connection", (
         equal(inspectPlanStoreImports("src/tools/example.ts", source).length, 1, source);
         equal(inspectPlanStoreImports("src/cmd/example.ts", source).length, 1, source);
     }
-    equal(inspectPlanStoreImports("src/shared/remote/managed-project-owner.ts", paths[0]).length, 0);
+    const setup = 'import { configureManagedPlanStore } from "@runwield/plans/managed-store-host";';
+    equal(inspectPlanStoreImports("src/shared/remote/managed-project-owner.ts", setup).length, 0);
+    equal(inspectPlanStoreImports("src/shared/remote/managed-project-owner.ts", paths[0]).length, 1);
     equal(inspectPlanStoreImports("src/plan-store/managed.ts", paths[0]).length, 1);
     equal(inspectPlanStoreImports("src/plan-store/managed.ts", paths[2]).length, 0);
+});
+
+test("only the authenticated Project service can supply recovery evidence for a managed Plan", () => {
+    const host = "@runwield/plans/managed-store-host";
+    const service = "src/plan-store/project-service.ts";
+    const recover = `import { withManagedExecutionRecovery } from "${host}";`;
+    const adopt = `import { adoptManagedExecutionReplacement } from "${host}";`;
+    equal(inspectPlanStoreImports(service, recover).length, 0);
+    equal(inspectPlanStoreImports(service, adopt).length, 0);
+    equal(
+        inspectPlanStoreImports(
+            service,
+            `import { withManagedExecutionRecovery, adoptManagedExecutionReplacement } from "${host}";`,
+        ).length,
+        0,
+    );
+    for (const file of [
+        "src/shared/remote/managed-project-owner.ts",
+        "src/plan-store/managed.ts",
+        "src/tools/example.ts",
+        "packages/plans/index.ts",
+    ]) {
+        equal(inspectPlanStoreImports(file, recover).length, 1, file);
+        equal(inspectPlanStoreImports(file, adopt).length, 1, file);
+    }
+    for (const source of [
+        `import { configureManagedPlanStore as recover } from "${host}";`,
+        `import { withManagedExecutionRecovery, configureManagedPlanStore } from "${host}";`,
+        `import * as managed from "${host}";`,
+        `const managed = await import("${host}");`,
+        `export { withManagedExecutionRecovery } from "${host}";`,
+        'import { withManagedExecutionRecovery } from "../../packages/plans/execution-recovery.ts";',
+        'import { adoptManagedExecutionReplacement } from "../../packages/plans/managed-execution-adoption.ts";',
+    ]) {
+        equal(inspectPlanStoreImports(service, source).length, 1, source);
+    }
 });
 
 test("the managed Plan driver cannot access connection configuration", async () => {
