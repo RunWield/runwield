@@ -1,5 +1,6 @@
 import type { PackageWorkflowInput } from "@runwield/plans/store";
 import { settleSequenceOperationResult } from "./operation-results.ts";
+import { planOperationReceiptDirectory } from "@runwield/plans/operation-receipts";
 import { loadPlan, loadPlanStrict, inspectPlanStrict } from "./queries.ts";
 import { inspectLocalHomeStore, withLocalProjectAction, withLocalPlanWorkflow } from "./access.ts";
 import {
@@ -926,25 +927,7 @@ async function runSemanticTransition<T>({
                         attemptId: worktreeId,
                         outcome: "succeeded",
                     }).catch(() => {});
-                    if (operation.startsWith("sequence_review_")) {
-                        const accepted = completedEffects.find(
-                            (effect) => effect.effect === "sequence_review_accepted",
-                        );
-                        const operationId = accepted?.proof?.toolCallId;
-                        const owner = currentPackageProject();
-                        if (owner && typeof operationId === "string")
-                            settleSequenceOperationResult(
-                                join(
-                                    owner.executionAccountHome,
-                                    ".wld",
-                                    "projects",
-                                    owner.projectId,
-                                    "internal",
-                                    "plan-packages",
-                                ),
-                                operationId,
-                            );
-                    }
+                    if (operation.startsWith("sequence_review_")) settleAcceptedSequenceReceipt(completedEffects);
                     await removeJournal(projectRoot, transitionId);
                     // The recovery just settled the uncertainty these records
                     // described, so retiring them here is what actually returns
@@ -1575,18 +1558,42 @@ export async function writePlanDocumentAndController(opts: PlanDocumentUpdate) {
     }
 }
 
-/** A crashed Sequence review can leave individual member writes ahead of the family decision. */
-export async function settleSequenceHistory(cwd: string, planId: string): Promise<void> {
+type SequenceHistoryPlan = Pick<PlanPackageMetadata, "planId" | "name" | "parentPlanId">;
+
+async function interruptedSequenceApprovals(cwd: string, plan: SequenceHistoryPlan) {
     const records = await listTransitionRecoveryRecords(cwd);
-    for (const record of records) {
+    return records.filter((record) => {
+        if (record.operation !== "sequence_review_approved") return false;
         const writes = record.packageWrites as PackageMetadataWrite[] | undefined;
-        if (record.operation !== "sequence_review_approved" || !writes?.some((write) => write.planId === planId))
-            continue;
-        const name = String(record.planName);
+        const hasWrites = Array.isArray(writes) && writes.length > 0;
+        if (hasWrites && writes.some((write) => write.planId === plan.planId)) return true;
+        if (!hasWrites && record.state !== "prepared" && record.state !== "applying") return false;
+        const source = record.packageSource as PackageTransitionSource | undefined;
+        const resources = record.resources as TransitionResource[] | undefined;
+        return (
+            (source?.planId === plan.planId || source?.planId === plan.parentPlanId) &&
+            Array.isArray(resources) &&
+            resources.some((resource) => resource.kind === "plan" && resource.id === plan.name)
+        );
+    });
+}
+
+export async function hasInterruptedSequenceHistory(cwd: string, plan: SequenceHistoryPlan): Promise<boolean> {
+    return (await interruptedSequenceApprovals(cwd, plan)).length > 0;
+}
+
+/** A crashed Sequence review can leave individual member writes ahead of the family decision. */
+export async function settleSequenceHistory(cwd: string, plan: SequenceHistoryPlan): Promise<void> {
+    const names = new Set((await interruptedSequenceApprovals(cwd, plan)).map((record) => String(record.planName)));
+    for (const name of names) {
         await withLocalPlanWorkflow(cwd, name, () =>
             packageWorkflowLocks([name], async () => {
-                const outcomes = await reconcileTransitionRecoveryRecords(cwd, { planName: name, apply: true });
-                if (outcomes.some((result) => !result.resolved))
+                const outcomes = await reconcileTransitionRecoveryRecords(cwd, {
+                    planName: name,
+                    apply: true,
+                    operations: ["sequence_review_approved"],
+                });
+                if (outcomes.some((result) => !result.resolved) || !outcomes.length)
                     throw new Error("The Sequence decision requires recovery.");
             }),
         );
@@ -1676,6 +1683,13 @@ export interface JournaledEffect {
     effect: string;
     proof?: Record<string, unknown>;
     completedAt?: string;
+}
+
+function settleAcceptedSequenceReceipt(effects: JournaledEffect[]): void {
+    const operationId = effects.find((effect) => effect.effect === "sequence_review_accepted")?.proof?.toolCallId;
+    const owner = currentPackageProject();
+    if (owner && typeof operationId === "string")
+        settleSequenceOperationResult(planOperationReceiptDirectory(owner), operationId);
 }
 
 /**
@@ -1886,6 +1900,7 @@ export async function reconcileTransitionRecoveryRecords(
                         });
                     }
                 }
+                if (settled && accepted && apply) settleAcceptedSequenceReceipt(record.completedEffects);
                 reconciliations.push({
                     ...base,
                     resolvable: settled,
@@ -1930,26 +1945,8 @@ export async function reconcileTransitionRecoveryRecords(
             }
         }
         if (state === "committed") {
-            if (apply && operation?.startsWith("sequence_review_")) {
-                const effects: JournaledEffect[] = Array.isArray(record.completedEffects)
-                    ? record.completedEffects
-                    : [];
-                const operationId = effects.find((effect) => effect.effect === "sequence_review_accepted")?.proof
-                    ?.toolCallId;
-                const owner = currentPackageProject();
-                if (owner && typeof operationId === "string")
-                    settleSequenceOperationResult(
-                        join(
-                            owner.executionAccountHome,
-                            ".wld",
-                            "projects",
-                            owner.projectId,
-                            "internal",
-                            "plan-packages",
-                        ),
-                        operationId,
-                    );
-            }
+            if (apply && operation?.startsWith("sequence_review_"))
+                settleAcceptedSequenceReceipt(Array.isArray(record.completedEffects) ? record.completedEffects : []);
             reconciliations.push({
                 ...base,
                 resolvable: true,

@@ -321,7 +321,7 @@ export function openPlanStoreForCheckout(cwd: string): CoreProjectPlanStore | un
                 (cwd) =>
                     managedPersonalStoreActive()
                         ? resolveManagedHistoryPlan(cwd, reference)
-                        : resolveLocalHistoryPlan(reference),
+                        : resolveLocalHistoryPlan(cwd, reference),
                 "retained",
             ),
         author: (input, id) => authorProjectPlan(store, input, id),

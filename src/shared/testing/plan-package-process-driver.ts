@@ -1,4 +1,3 @@
-import { openWorkflow } from "@runwield/workflow";
 import type { ActiveExecutionWorkflow } from "@runwield/workflow/state";
 /** Subprocess fault injection at actual filesystem boundaries; package machinery remains real. */
 import fs from "node:fs";
@@ -8,7 +7,6 @@ import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import type { DriverRequest } from "./plan-package-fixture.ts";
-import { openNativeFileLock } from "../native-file-lock.ts";
 
 interface ReservedImportMember {
     planId: string;
@@ -58,6 +56,11 @@ const observedRename = (from: fs.PathLike, to: fs.PathLike) => {
     if (path.includes("/plans/") && path.endsWith("plan.wld.json")) {
         exit("metadata");
         const metadata = JSON.parse(fs.readFileSync(path, "utf8"));
+        if (
+            request.command === "sequence" &&
+            metadata.history?.some((entry: { milestone: string }) => entry.milestone === "approved")
+        )
+            exit("sequence-first-milestone");
         if (request.command === "sequence-race" && request.boundary === "review-metadata")
             fs.writeFileSync(request.mutateEvidenceDestination!, "Unreviewed requirements\n");
         if (metadata.workflow?.attempt && metadata.definition.status === "ready_for_work") exit("attempt-reserved");
@@ -76,7 +79,25 @@ const observedRename = (from: fs.PathLike, to: fs.PathLike) => {
 mock.module("node:fs", () => ({ ...fs, renameSync: observedRename, default: fs }));
 Object.defineProperty(promises, "rename", {
     value: async (...args: Parameters<typeof promises.rename>) => {
+        const journal = /(?:\/transitions\/|\/plan-transitions\/).+\.json$/.test(String(args[1]))
+            ? JSON.parse(fs.readFileSync(args[0], "utf8"))
+            : undefined;
+        const sequenceAccepted =
+            journal?.operation === "sequence_review_approved" &&
+            journal.completedEffects?.some(
+                (effect: { effect: string }) => effect.effect === "sequence_review_accepted",
+            );
+        if (sequenceAccepted) exit("sequence-before-acceptance");
         await originalMove(...args);
+        if (journal?.operation === "sequence_review_approved" && journal.state === "prepared")
+            exit("sequence-prepared");
+        if (
+            journal?.operation === "sequence_review_approved" &&
+            journal.state === "applying" &&
+            !journal.packageWrites?.length &&
+            journal.completedEffects?.some((effect: { effect: string }) => effect.effect === "sequence_review_prepared")
+        )
+            exit("sequence-applying");
         if (String(args[1]).includes("/plans/") && String(args[1]).endsWith("context.md")) {
             if (request.command === "review-race" || request.command === "sequence-race")
                 fs.writeFileSync(request.mutateEvidenceDestination!, "Unreviewed requirements\n");
@@ -88,12 +109,12 @@ Object.defineProperty(promises, "rename", {
             if (registry.entries?.some((entry: { creationContext?: { files: string[] } }) => entry.creationContext))
                 exit("registry-reserved");
         }
-        if (/(?:\/transitions\/|\/plan-transitions\/)/.test(String(args[1])) && String(args[1]).endsWith(".json")) {
-            const record = JSON.parse(fs.readFileSync(args[1], "utf8"));
-            if (record.packageWrites?.length) exit("lifecycle-intent");
+        if (journal) {
+            if (journal.packageWrites?.length) exit("lifecycle-intent");
+            if (sequenceAccepted) exit("sequence-accepted");
             if (
-                record.operation === "implementation_checkpoint" &&
-                record.completedEffects?.some(
+                journal.operation === "implementation_checkpoint" &&
+                journal.completedEffects?.some(
                     (effect: { effect: string }) => effect.effect === "implementation_checkpoint_settled",
                 )
             )
@@ -116,10 +137,38 @@ Object.defineProperty(promises, "readFile", {
         return result;
     },
 });
+const observeHistoryRecovery = request.boundary === "history-after-recovery";
+const catalogPath = join(internal, "locks", "catalog.lock");
+const intentPath = join(internal, "intent.json");
+let recoveredIntent = false;
+let releasedRecoveryCatalog = false;
+let recoveredHistoryScans = 0;
+let readHeldExclusiveCatalog = true;
+let readKeptRecoveryCatalog = true;
+if (observeHistoryRecovery) {
+    const originalRemove = promises.rm;
+    Object.defineProperty(promises, "rm", {
+        value: async (...args: Parameters<typeof promises.rm>) => {
+            await originalRemove(...args);
+            if (String(args[0]) === intentPath) recoveredIntent = true;
+        },
+    });
+}
+
 const originalReadDirectory = promises.readdir;
 let interruptedScan = false;
 Object.defineProperty(promises, "readdir", {
     value: async (...args: Parameters<typeof promises.readdir>) => {
+        if (observeHistoryRecovery && recoveredIntent && String(args[0]) === join(project, "plans")) {
+            recoveredHistoryScans++;
+            readKeptRecoveryCatalog &&= !releasedRecoveryCatalog;
+            const catalog = openNativeFileLock(catalogPath, false);
+            try {
+                readHeldExclusiveCatalog &&= !catalog.tryLockSync();
+            } finally {
+                catalog.close();
+            }
+        }
         if (
             request.boundary === "start-rename-during-scan" &&
             !interruptedScan &&
@@ -165,6 +214,29 @@ Object.defineProperty(Bun, "spawn", {
     }),
 });
 if (request.command !== "import") mock.module("node:fs/promises", () => ({ ...promises, default: promises }));
+const resourceFiles = await import("@runwield/resources/fs");
+const { openNativeFileLock } = resourceFiles;
+if (observeHistoryRecovery) {
+    mock.module("@runwield/resources/fs", () => ({
+        ...resourceFiles,
+        openNativeFileLock(path: string, create?: boolean | "exclusive") {
+            const lock = openNativeFileLock(path, create);
+            if (path !== catalogPath) return lock;
+            return {
+                ...lock,
+                close() {
+                    if (recoveredIntent) releasedRecoveryCatalog = true;
+                    lock.close();
+                },
+                unlockSync() {
+                    if (recoveredIntent) releasedRecoveryCatalog = true;
+                    lock.unlockSync();
+                },
+            };
+        },
+    }));
+}
+
 const store = await import("@runwield/plans/package-storage");
 const planId = request.planId ?? "plan-one";
 try {
@@ -176,7 +248,7 @@ try {
         setInterval(() => {}, 1000);
         await new Promise(() => {});
     } else {
-        const current = ["create", "list", "import"].includes(request.command)
+        const current = ["create", "list", "import", "history"].includes(request.command)
             ? null
             : await store.readPlanPackage(
                   request.identity,
@@ -197,6 +269,27 @@ try {
             case "recover-lifecycle":
             case "execution": {
                 if (!current || current.kind !== "loaded") throw new Error("Missing package");
+                if (request.command === "sequence" && request.operationId) {
+                    const { PreparedProjectStore } = await import("../../plan-store/index.ts");
+                    const service = new PreparedProjectStore(request.identity.checkoutRoot);
+                    const { result: snapshot } = await service.execute({ kind: "sequence-snapshot", planId });
+                    if (!("sequenceDocuments" in snapshot)) throw new Error("Missing Sequence snapshot.");
+                    const documents = snapshot.sequenceDocuments;
+                    result = await service.execute({
+                        kind: "sequence-decision",
+                        planId,
+                        operationId: request.operationId,
+                        expectedRevision: documents[0].revision,
+                        documents,
+                        decision: {
+                            approved: true,
+                            approvalAction: "later",
+                            documents: documents.map((doc) => ({ planId: doc.planId, plan: doc.plan })),
+                        },
+                    });
+                    break;
+                }
+                const { openWorkflow } = await import("@runwield/workflow");
                 const { withPackageWorkflow, loadPackageWorkflowPlan } = await import("../../plan-store/workflows.ts");
                 const { recordPlanEvent } = await import("../../plan-store/index.ts");
                 const { preparePlanWorkflow } = await import("../../plan-store/index.ts");
@@ -318,6 +411,22 @@ try {
             case "read":
                 result = current;
                 break;
+            case "history": {
+                const { openProjectPlanStore } = await import("../../plan-store/index.ts");
+                const { plans } = await import("@runwield/plans");
+                const { history } = openProjectPlanStore(request.identity.projectId, { admitted: request.identity });
+                const selectedId = plans.identity.parse(planId);
+                if (!selectedId) throw new Error("Invalid Plan ID.");
+                const snapshot = await history.list(selectedId);
+                result = {
+                    history: snapshot,
+                    recoveredHistoryScans,
+                    readHeldExclusiveCatalog,
+                    readKeptRecoveryCatalog,
+                    releasedRecoveryCatalog,
+                };
+                break;
+            }
             case "input":
                 result = await store.readPlanPackageInput(request.identity, {
                     projectId: request.identity.projectId,

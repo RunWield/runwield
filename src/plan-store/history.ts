@@ -1,86 +1,87 @@
-import { StalePlanWriteError } from "@runwield/plans/store";
-import { packageDocumentText } from "@runwield/plans/file-snapshots";
-import { plans, type PlanId } from "@runwield/plans";
+import type { PlanId } from "@runwield/plans";
 import type { ProjectStoreIdentity } from "@runwield/projects";
 import type { PackageDocuments, PlanHistory } from "@runwield/plans/history";
-import { planHistoryFiles } from "@runwield/plans/history-files";
-import { buildPlanEventUpdates } from "@runwield/plans/lifecycle";
-import { sameReviewedMarkdown } from "./review.ts";
-import { settleSequenceHistory } from "./transitions.ts";
-
-import { assertSharedPlanWriteAllowed } from "../shared/collaboration/lock.ts";
+import { localPlanHistory } from "@runwield/plans/local-history";
 import {
-    packageWorkflowRevision,
-    commitPlanPackageBatch,
-    listPlanPackages,
     withPlanPackageCatalogDiscovery,
+    withPlanPackageCatalogRead,
     withPlanPackageLocks,
     type LoadedPlanPackage,
-    type PackageMetadataUpdate,
 } from "@runwield/plans/package-storage";
-import {
-    currentPackageProject,
-    packageController,
-    loadPackageWorkflowPlan,
-    preparePackageWorkflowUpdate,
-    selectedPackage,
-} from "./workflows.ts";
+import { PlanPackageError } from "@runwield/plans/file-snapshots";
+import { assertSharedPlanWriteAllowed } from "../shared/collaboration/lock.ts";
+import { hasInterruptedSequenceHistory, settleSequenceHistory } from "./transitions.ts";
+import { currentPackageProject, packageController, reopenedPackageReview } from "./workflows.ts";
 
 function missingPlan(): never {
     throw new Error("Plan history requires an admitted Plan.");
 }
 
-/** Resolve a CLI reference against the complete canonical catalog, including archives. */
-export async function resolveLocalHistoryPlan(reference: string): Promise<PlanId> {
+type LocalHistoryRead<Result> =
+    | { kind: "reference"; read: (owner: ProjectStoreIdentity) => Promise<Result> }
+    | {
+          kind: "plan";
+          planId: PlanId;
+          read: (owner: ProjectStoreIdentity, plan: LoadedPlanPackage) => Result | Promise<Result>;
+      };
+
+/** Keep the recovered catalog locked through the history snapshot. */
+async function readLocalHistory<Result>(cwd: string, operation: LocalHistoryRead<Result>): Promise<Result> {
     const owner = currentPackageProject() ?? missingPlan();
+    const snapshot = await withPlanPackageCatalogRead(owner, async () => {
+        try {
+            if (operation.kind === "reference") return { kind: "read", value: await operation.read(owner) } as const;
+            const plan = await localPlanHistory.select(owner, operation.planId);
+            if (await hasInterruptedSequenceHistory(cwd, plan.metadata)) return { kind: "interrupted" } as const;
+            return { kind: "read", value: await operation.read(owner, plan) } as const;
+        } catch (error) {
+            if (error instanceof PlanPackageError && error.kind === "pending_recovery")
+                return { kind: "interrupted" } as const;
+            throw error;
+        }
+    });
+    if (snapshot.kind === "read") return snapshot.value;
+
     return await withPlanPackageCatalogDiscovery(
         owner,
         async () => {
-            const catalog = await listPlanPackages(owner, true);
-            if (catalog.issues.length) throw new Error(catalog.issues[0].message);
-            const plan =
-                catalog.packages.find(({ metadata }) => metadata.planId === reference) ??
-                catalog.packages.find(({ metadata }) => metadata.name === reference);
-            const planId = plan?.metadata.planId;
-            return plans.identity.isValid(planId) ? planId : missingPlan();
+            if (operation.kind === "reference") return await operation.read(owner);
+            const plan = await localPlanHistory.select(owner, operation.planId);
+            await settleSequenceHistory(cwd, plan.metadata);
+            return await operation.read(owner, await localPlanHistory.select(owner, operation.planId));
         },
         missingPlan,
     );
 }
 
-async function withHistoryPlan<T>(
-    cwd: string,
-    planId: PlanId,
-    run: (plan: LoadedPlanPackage, owner: ProjectStoreIdentity) => T | Promise<T>,
-) {
-    const owner = currentPackageProject() ?? missingPlan();
-    return await withPlanPackageCatalogDiscovery(
-        owner,
-        async () => {
-            const catalog = await listPlanPackages(owner, true);
-            if (catalog.issues.length) throw new Error(catalog.issues[0].message);
-            if (!catalog.packages.some(({ metadata }) => metadata.planId === planId)) missingPlan();
-            await settleSequenceHistory(cwd, planId);
-            return await withPlanPackageLocks(owner, [planId], async () =>
-                run(await selectedPackage({ planId }), owner),
-            );
-        },
-        missingPlan,
-    );
+/** Resolve a CLI reference against the complete canonical catalog, including archives. */
+export async function resolveLocalHistoryPlan(cwd: string, reference: string): Promise<PlanId> {
+    return await readLocalHistory(cwd, {
+        kind: "reference",
+        read: (owner) => localPlanHistory.resolve(owner, reference),
+    });
 }
 
 export async function listLocalPlanHistory(cwd: string, planId: PlanId): Promise<PlanHistory> {
-    return await withHistoryPlan(cwd, planId, (plan) => ({
+    return await readLocalHistory(cwd, {
+        kind: "plan",
         planId,
-        revision: packageWorkflowRevision(plan),
-        milestones: plan.metadata.history ?? [],
-    }));
+        read: (_owner, plan) => localPlanHistory.list(planId, plan),
+    });
 }
 
 export async function readLocalPlanMilestone(cwd: string, planId: PlanId, version: string): Promise<PackageDocuments> {
-    return await withHistoryPlan(cwd, planId, (plan, owner) =>
-        planHistoryFiles.forOwner(owner).read(plan.metadata, version),
-    );
+    return await readLocalHistory(cwd, {
+        kind: "plan",
+        planId,
+        read: (owner, plan) => localPlanHistory.read(owner, plan, version),
+    });
+}
+
+async function assertHistoryRestoreAllowed(plan: LoadedPlanPackage): Promise<void> {
+    if (plan.metadata.archive && !plan.metadata.archive.restoredAt)
+        throw new Error("Restore the archived Plan before editing its documents.");
+    assertSharedPlanWriteAllowed(await packageController(plan));
 }
 
 export async function restoreLocalPlanMilestone(
@@ -89,46 +90,20 @@ export async function restoreLocalPlanMilestone(
     version: string,
     expectedRevision: string,
 ): Promise<string> {
-    return await withHistoryPlan(cwd, planId, async (plan, owner) => {
-        const { metadata } = plan;
-        if (metadata.archive && !metadata.archive.restoredAt)
-            throw new Error("Restore the archived Plan before editing its documents.");
-        assertSharedPlanWriteAllowed(await packageController(plan));
-        const revision = packageWorkflowRevision(plan);
-        if (expectedRevision !== revision) throw new StalePlanWriteError(expectedRevision, revision);
-        const documents = await planHistoryFiles.forOwner(owner).read(metadata, version);
-        const before = packageDocumentText(plan.documents);
-        const changed =
-            Object.keys(before).length !== Object.keys(documents).length ||
-            plan.documents.some(
-                ({ name }) => documents[name] === undefined || !sameReviewedMarkdown(before[name]!, documents[name]!),
-            );
-        const reopen =
-            changed && ["approved", "ready_for_work", "ready_for_decomposition"].includes(metadata.definition.status);
-        let update: PackageMetadataUpdate = {};
-        if (reopen) {
-            const { attrs } = await loadPackageWorkflowPlan({ planId: metadata.planId });
-            update = await preparePackageWorkflowUpdate(
-                plan,
-                attrs,
-                buildPlanEventUpdates("review_reopened", attrs.status, { triageMeta: attrs }),
-                {
-                    review: undefined,
-                    readiness: undefined,
-                },
-            );
-        }
-        await commitPlanPackageBatch(owner, [
-            {
-                before: { metadata, documents: before },
-                documents,
-                metadata: {
-                    ...metadata,
-                    revision: metadata.revision + 1,
-                    ...update,
-                },
-            },
-        ]);
-        return packageWorkflowRevision(await selectedPackage({ planId: metadata.planId }));
-    });
+    const owner = currentPackageProject() ?? missingPlan();
+    return await withPlanPackageCatalogDiscovery(
+        owner,
+        async () => {
+            const { metadata } = await localPlanHistory.select(owner, planId);
+            await settleSequenceHistory(cwd, metadata);
+            return await withPlanPackageLocks(owner, [planId], async () => {
+                const plan = await localPlanHistory.select(owner, planId);
+                await assertHistoryRestoreAllowed(plan);
+                const restore = await localPlanHistory.prepareRestore(owner, plan, version, expectedRevision);
+                const review = restore.changed ? await reopenedPackageReview(plan) : undefined;
+                return await localPlanHistory.commitRestore(owner, restore, review);
+            });
+        },
+        missingPlan,
+    );
 }

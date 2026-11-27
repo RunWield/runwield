@@ -1179,6 +1179,43 @@ export async function withPlanPackageCatalogDiscovery<T>(
     return await mutate(identity, null, () => action(), true);
 }
 
+/** Read one catalog snapshot without creating lock files or recovering pending writes. */
+export async function withPlanPackageCatalogRead<T>(identity: ProjectIdentity, action: () => Promise<T>): Promise<T> {
+    const paths = layout(identity);
+    const catalogPath = join(paths.locks, "catalog.lock");
+    const read = async () => {
+        projects.launch.verifyAccountHome(identity);
+        const result = await action();
+        projects.launch.verifyAccountHome(identity);
+        return result;
+    };
+    if (packageLocks.getStore()?.internal === paths.internal) return await read();
+
+    for (;;) {
+        await safe(paths.home, catalogPath);
+        let catalog: NativeFileLock;
+        try {
+            catalog = openNativeFileLock(catalogPath, false);
+        } catch (error) {
+            if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+            // An empty or copied store can be read before it has its first local writer.
+            try {
+                const result = await read();
+                if (!(await stat(catalogPath))) return result;
+            } catch (readError) {
+                if (!(await stat(catalogPath))) throw readError;
+            }
+            continue;
+        }
+        try {
+            await catalog.lock();
+            return await read();
+        } finally {
+            catalog.close();
+        }
+    }
+}
+
 export function planPackageControllerDirectory(identity: ProjectIdentity): string {
     return join(layout(identity).internal, "controller-evidence");
 }

@@ -111,6 +111,11 @@ The package owner stages the event's Markdown in the home Project and publishes 
 corresponding metadata write. Approval and delivery use their retained inputs. Archive and closure capture the
 current package. A version's digest covers document names and bytes. Renaming the Plan preserves its history.
 
+Plans reads committed milestone references and frozen documents under the catalog lock. If the host finds an
+interrupted write, it holds the exclusive catalog lock through recovery and the final history read. An accepted
+Sequence decision retains the frozen versions and settles the existing managed receipt. Before acceptance, recovery
+uses the journal to clear preparations or roll back approval metadata while preserving editor documents.
+
 Restore uses the package batch journal to compare the whole observed generation, replace its Markdown membership
 and advance the current metadata revision. The journal lets managed operation receipts retain the original outcome.
 Historical documents and private execution inputs have separate lifetimes. Automatic history pruning remains proposed.
