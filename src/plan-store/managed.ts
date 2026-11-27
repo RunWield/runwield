@@ -15,6 +15,7 @@ import {
     managedExecutionRoot,
     managedPersonalStoreActive,
     managedProjectStoreAccess,
+    withCurrentManagedProjectConnection,
     withManagedProjectConnection,
 } from "@runwield/plans/managed-project-connection";
 import {
@@ -28,7 +29,7 @@ import { projects, type ProjectIdentity } from "@runwield/projects";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { join, relative, isAbsolute } from "node:path";
-import { personalGlobalRoot } from "../shared/remote/personal-resources.ts";
+import { mountedPersonalGlobalRoot, personalGlobalRoot } from "../shared/remote/personal-resources.ts";
 import { readFile } from "node:fs/promises";
 import { ProjectStoreClient } from "../shared/remote/project-store-client.ts";
 import {
@@ -106,7 +107,7 @@ function managedLocator(cwd: string, path: string, toOwner = false): string {
 export function managedDocumentRoot(cwd: string): string {
     const inspected = projects.checkout.inspect(cwd);
     if (inspected.kind !== "existing") throw new Error("Managed document requires admitted identity.");
-    return join(personalGlobalRoot(), "projects", inspected.identity.projectId, "plans");
+    return join(mountedPersonalGlobalRoot() ?? personalGlobalRoot(), "projects", inspected.identity.projectId, "plans");
 }
 export async function readManagedPlan(cwd: string, reference: string) {
     const owner = await client(cwd);
@@ -212,12 +213,15 @@ async function executeManagedMutation<Result>(
     artifactRevisionSource: EpicArtifactRevisionSource = "explicit",
 ): Promise<Result> {
     if (!("operationId" in command)) throw new Error("Managed mutation requires an operation identity.");
-    return await withManagedProjectConnection(async () => {
+    // A completed document batch can settle local source files after its authenticated reply.
+    const withConnection =
+        command.kind === "edit-documents" ? withCurrentManagedProjectConnection : withManagedProjectConnection;
+    return await withConnection(async () => {
         const { owner, checkout } = await clientAccess(cwd, true);
         return await executeRetainedManagedMutation(
             { cwd, binding: owner.binding, checkout, command, artifactRevisionSource },
             (binding, retained) => validateProjectStoreRequest({ binding, command: retained }),
-            (retained) => withManagedProjectConnection(async () => readResult((await owner.execute(retained)).result)),
+            (retained) => withConnection(async () => readResult((await owner.execute(retained)).result)),
         );
     });
 }

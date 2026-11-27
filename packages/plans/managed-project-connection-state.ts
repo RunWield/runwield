@@ -62,6 +62,12 @@ export async function withManagedProjectConnection<Result>(operation: () => Prom
     return result;
 }
 
+/** Preserve the selected connection while an operation handles its own local effects. */
+export function withCurrentManagedProjectConnection<Result>(operation: () => Promise<Result>): Promise<Result> {
+    const configured = projectConnections.getStore() ?? active;
+    return configured && !projects.home.current() ? projectConnections.run(configured, operation) : operation();
+}
+
 /** Bind a Project store handle to its configured connection and verified checkout for its lifetime. */
 export function captureManagedProjectPlanAccess(projectId: ProjectId, admitted?: ProjectStoreIdentity) {
     if (!managedPersonalStoreActive()) return undefined;

@@ -1,4 +1,4 @@
-import { operatePlanFile, resolvePlanFileTarget } from "../plan-store/index.ts";
+import { operatePlanFile, resolvePlanFileTarget, withPlanFileOperation } from "../plan-store/index.ts";
 export { isCanonicalPlanMarkdownPath } from "../plan-store/index.ts";
 
 /** Result shape the wrapper returns for both its own guards and the wrapped tool. */
@@ -52,37 +52,41 @@ export function wrapPlanSafeFileTool<T extends { execute: unknown }>(
             onUpdate?: unknown,
             ctx?: unknown,
         ) {
-            const requested = stringValue(params?.path ?? params?.file_path);
-            let path = requested;
-            try {
-                if (requested) path = await resolvePlanFileTarget(cwd, requested);
-                const result = await operatePlanFile(cwd, {
-                    path,
-                    mode,
-                    content:
-                        typeof params.content === "string"
-                            ? params.content
-                            : typeof params.text === "string"
-                              ? params.text
-                              : undefined,
-                    oldText: typeof params.oldText === "string" ? params.oldText : undefined,
-                    newText: typeof params.newText === "string" ? params.newText : undefined,
-                });
-                if (result) return { content: [{ type: "text", text: result.message }], details: null };
-            } catch (error) {
-                return {
-                    content: [{ type: "text", text: error instanceof Error ? error.message : String(error) }],
-                    isError: true,
-                };
-            }
-            return await originalExecute.call(
-                tool,
-                toolCallId,
-                requested ? { ...params, path, ...(params.file_path !== undefined && { file_path: path }) } : params,
-                signal,
-                onUpdate,
-                ctx,
-            );
+            return await withPlanFileOperation(async () => {
+                const requested = stringValue(params?.path ?? params?.file_path);
+                let path = requested;
+                try {
+                    if (requested) path = await resolvePlanFileTarget(cwd, requested);
+                    const result = await operatePlanFile(cwd, {
+                        path,
+                        mode,
+                        content:
+                            typeof params.content === "string"
+                                ? params.content
+                                : typeof params.text === "string"
+                                  ? params.text
+                                  : undefined,
+                        oldText: typeof params.oldText === "string" ? params.oldText : undefined,
+                        newText: typeof params.newText === "string" ? params.newText : undefined,
+                    });
+                    if (result) return { content: [{ type: "text", text: result.message }], details: null };
+                } catch (error) {
+                    return {
+                        content: [{ type: "text", text: error instanceof Error ? error.message : String(error) }],
+                        isError: true,
+                    };
+                }
+                return await originalExecute.call(
+                    tool,
+                    toolCallId,
+                    requested
+                        ? { ...params, path, ...(params.file_path !== undefined && { file_path: path }) }
+                        : params,
+                    signal,
+                    onUpdate,
+                    ctx,
+                );
+            });
         },
     };
     // The wrapper adds guard results (`isError`) that the wrapped tool's own

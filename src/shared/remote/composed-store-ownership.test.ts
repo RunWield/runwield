@@ -81,6 +81,114 @@ test("a managed store handle rejects an in-flight read after the host reconnects
         }
     }));
 
+interface MixedEditSnapshot {
+    body: string;
+    revision: string;
+    source: string;
+}
+
+interface MixedEditResult {
+    isError?: boolean;
+    content: { text: string }[];
+}
+
+for (const phase of [
+    "single",
+    "prepare",
+    "lost",
+    "validated-reply",
+    "confirmed",
+    "redirected",
+    "added-link",
+    "retargeted",
+    "interrupted",
+    "short-write",
+]) {
+    test(`managed file edit preserves its original connection and local save rules at ${phase}`, () =>
+        withProcessGlobalTestLock(async () => {
+            const fixture = await composedRemoteFixture();
+            try {
+                await fixture.run("managed-mixed-seed");
+                const before: MixedEditSnapshot = JSON.parse(await fixture.run("managed-mixed-inspect"));
+                await fixture.run("managed-file-edit-reconnect", undefined, phase);
+                const after: MixedEditSnapshot = JSON.parse(await fixture.run("managed-mixed-inspect"));
+                if (phase === "single" || phase === "prepare") {
+                    equal(after.body, before.body);
+                    equal(after.revision, before.revision);
+                    equal(after.source, before.source);
+                    return;
+                }
+                equal(after.body, "Updated Plan");
+                if (phase === "confirmed" || phase === "validated-reply") {
+                    equal(after.source, "Updated source");
+                    return;
+                }
+                const partialSource = phase === "interrupted" ? "Updated sourcee" : "Updginal source";
+                equal(after.source, phase === "interrupted" || phase === "short-write" ? partialSource : before.source);
+                if (phase === "lost") {
+                    await fixture.run("managed-mixed-legacy-journal");
+                    await fixture.run("managed-file-edit-reconnect", undefined, "interrupted");
+                }
+                const recovery: MixedEditResult = JSON.parse(await fixture.run("managed-mixed-edit", undefined, phase));
+                equal(recovery.isError, undefined, JSON.stringify(recovery));
+                const recovered: MixedEditSnapshot = JSON.parse(await fixture.run("managed-mixed-inspect"));
+                equal(recovered.body, after.body);
+                equal(recovered.revision, after.revision);
+                equal(recovered.source, "Updated source");
+            } finally {
+                await fixture.cleanup();
+            }
+        }));
+}
+
+for (const phase of ["interrupted", "short-write"]) {
+    test(`managed file edit preserves a new partial-write pattern after ${phase}`, () =>
+        withProcessGlobalTestLock(async () => {
+            const fixture = await composedRemoteFixture();
+            try {
+                await fixture.run("managed-mixed-seed");
+                await fixture.run("managed-file-edit-reconnect", undefined, phase);
+                const source = join(fixture.root, "source.txt");
+                const retained = await readFile(source, "utf8");
+                const independent = "Updainal source";
+                // Four replacement bytes and the untouched suffix also resemble an interrupted write.
+                await writeFile(source, independent);
+                const blocked: MixedEditResult = JSON.parse(await fixture.run("managed-mixed-edit"));
+                equal(blocked.isError, true);
+                equal(await readFile(source, "utf8"), independent);
+
+                await writeFile(source, retained);
+                const restored: MixedEditResult = JSON.parse(await fixture.run("managed-mixed-edit"));
+                equal(restored.isError, true);
+                equal(await readFile(source, "utf8"), retained);
+            } finally {
+                await fixture.cleanup();
+            }
+        }));
+}
+
+test("a managed file edit refuses an invalid partial-write checkpoint", () =>
+    withProcessGlobalTestLock(async () => {
+        const fixture = await composedRemoteFixture();
+        const source = join(fixture.root, "source.txt");
+        try {
+            await fixture.run("managed-mixed-seed");
+            await fixture.run("managed-file-edit-reconnect", undefined, "short-write");
+            const { mtimeNs } = await stat(source, { bigint: true });
+            // Keep the original digest and generation while changing the checkpoint offset.
+            for (const offset of ["4", "20", "null"]) {
+                await fixture.run("managed-mixed-checkpoint-offset", undefined, offset);
+                const result: MixedEditResult = JSON.parse(await fixture.run("managed-mixed-edit"));
+                equal(result.isError, true);
+                equal(result.content[0].text, "File changed before edit: " + source);
+                equal(await readFile(source, "utf8"), "Updginal source");
+                equal((await stat(source, { bigint: true })).mtimeNs, mtimeNs);
+            }
+        } finally {
+            await fixture.cleanup();
+        }
+    }));
+
 test("a managed import retains its operation when the host reconnects before returning its result", () =>
     withProcessGlobalTestLock(async () => {
         const fixture = await composedRemoteFixture();

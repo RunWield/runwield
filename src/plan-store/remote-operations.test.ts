@@ -2,13 +2,13 @@ import { authenticatedProjectStoreRequest } from "../shared/remote/project-store
 import { workRecords } from "@runwield/plans/work-records";
 import { workRecordFiles } from "@runwield/plans/work-record-files";
 import { parseProjectId, projects, type HomeProjectOwner } from "@runwield/projects";
-import { tmpdir } from "node:os";
+import { constants, tmpdir } from "node:os";
 import { parseHistoryList, parseMilestoneDocuments } from "../shared/remote/project-store-protocol.ts";
 import { test } from "node:test";
 import { equal, deepEqual, rejects } from "node:assert/strict";
 import { randomUUID, createHash } from "node:crypto";
 import { dirname, join } from "node:path";
-import { readFile, writeFile, unlink, mkdtemp, rm, rename } from "node:fs/promises";
+import { readFile, writeFile, unlink, mkdtemp, rm, rename, symlink, stat, utimes } from "node:fs/promises";
 import { PreparedProjectStore, authorLocalPlan, savePlanProse } from "./index.ts";
 import { loadPlan } from "../shared/testing/plan-query-fixture.ts";
 import { packageFixture, startDriver } from "../shared/testing/plan-package-fixture.ts";
@@ -887,6 +887,17 @@ test("managed multi-file edit resumes a dropped successful response and preserve
             equal(after.body, "Updated Plan");
             equal(after.source, "Original source");
             const source = join(f.root, "source.txt");
+            const retainedSource = join(f.root, "retained-source.txt");
+            await rename(source, retainedSource);
+            await writeFile(source, "Original source");
+            equal((await edit()).isError, true);
+            equal(await readFile(source, "utf8"), "Original source");
+            await unlink(source);
+            await symlink(retainedSource, source, "file");
+            equal((await edit()).isError, true);
+            equal(await readFile(retainedSource, "utf8"), "Original source");
+            await unlink(source);
+            await rename(retainedSource, source);
             await writeFile(source, "Independent edit");
             equal((await edit()).isError, true);
             equal(await readFile(source, "utf8"), "Independent edit");
@@ -899,6 +910,158 @@ test("managed multi-file edit resumes a dropped successful response and preserve
             });
         } finally {
             proxy.stop(true);
+            await f.cleanup();
+        }
+    });
+});
+
+async function markEarlierSourceMtime(path: string) {
+    const before = await stat(path, { bigint: true });
+    // macOS can move the birth time when utimes predates it.
+    const historicTime = new Date(Number(before.birthtimeMs) + 1);
+    await utimes(path, historicTime, historicTime);
+    const marked = await stat(path, { bigint: true });
+    equal(marked.birthtimeNs, before.birthtimeNs);
+    return marked.mtimeNs;
+}
+
+test("a managed multi-file retry preserves independent changes to already settled source files", async () => {
+    const { withProcessGlobalTestLock } = await import("../testing/process-global-lock.ts");
+    const { composedRemoteFixture } = await import("../shared/remote/composed-store-fixture.ts");
+    await withProcessGlobalTestLock(async () => {
+        const f = await composedRemoteFixture();
+        const source = join(f.root, "source.txt");
+        const cleared = join(f.root, "clear.txt");
+        const conflict = join(f.root, "conflict.txt");
+        let interfere = true;
+        const proxy = observeOwnerResponse(f.endpoint, async (kind, response) => {
+            if (kind === "edit-documents" && response.ok && interfere) {
+                interfere = false;
+                await writeFile(conflict, "Independent edit");
+            }
+            return response;
+        });
+        try {
+            await f.run("managed-mixed-seed");
+            await writeFile(cleared, "Remove me");
+            await writeFile(conflict, "Before");
+            const edit = async () => JSON.parse(await f.run("managed-mixed-batch-edit", proxy.port));
+            equal((await edit()).isError, true);
+            equal(interfere, false);
+            const first = JSON.parse(await f.run("managed-mixed-inspect"));
+            equal(first.body, "Updated Plan");
+            equal(first.source, "Updated source");
+            equal(await readFile(cleared, "utf8"), "");
+            equal(await readFile(conflict, "utf8"), "Independent edit");
+
+            // The bytes look like a completed prefix whose original suffix was never truncated.
+            await writeFile(source, "Updated sourcee");
+            await writeFile(conflict, "Before");
+            equal((await edit()).isError, true);
+            equal(await readFile(source, "utf8"), "Updated sourcee");
+            equal(await readFile(conflict, "utf8"), "Before");
+
+            await writeFile(source, "Updated source");
+            await writeFile(cleared, "Remove me");
+            equal((await edit()).isError, true);
+            equal(await readFile(cleared, "utf8"), "Remove me");
+
+            await writeFile(cleared, "");
+            const sourceTime = await markEarlierSourceMtime(source);
+            const clearedTime = await markEarlierSourceMtime(cleared);
+            const settled = await edit();
+            equal(settled.isError, undefined, JSON.stringify(settled));
+            equal((await stat(source, { bigint: true })).mtimeNs, sourceTime);
+            equal((await stat(cleared, { bigint: true })).mtimeNs, clearedTime);
+            equal(await readFile(conflict, "utf8"), "After");
+            deepEqual(JSON.parse(await f.run("managed-mixed-inspect")), first);
+        } finally {
+            proxy.stop(true);
+            await f.cleanup();
+        }
+    });
+});
+
+test("a managed multi-file retry preserves a partial source after a crash before its checkpoint", async () => {
+    const { withProcessGlobalTestLock } = await import("../testing/process-global-lock.ts");
+    const { composedRemoteFixture } = await import("../shared/remote/composed-store-fixture.ts");
+    await withProcessGlobalTestLock(async () => {
+        const f = await composedRemoteFixture();
+        const source = join(f.root, "source.txt");
+        const cleared = join(f.root, "clear.txt");
+        const later = join(f.root, "conflict.txt");
+        try {
+            await f.run("managed-mixed-seed");
+            await writeFile(cleared, "Remove me");
+            await writeFile(later, "Before");
+            const before = JSON.parse(await f.run("managed-mixed-inspect"));
+            const crash = await f.runRaw("managed-mixed-batch-edit", undefined, "before-checkpoint");
+            equal(crash.code, 128 + constants.signals.SIGKILL, new TextDecoder().decode(crash.stderr));
+            const interrupted = JSON.parse(await f.run("managed-mixed-inspect"));
+            equal(interrupted.body, "Updated Plan");
+            equal(interrupted.revision === before.revision, false);
+            equal(interrupted.source, "Updginal source");
+            const { mtimeNs } = await stat(source, { bigint: true });
+
+            const retry = JSON.parse(await f.run("managed-mixed-batch-edit"));
+            equal(retry.isError, true);
+            equal(retry.content[0].text, "File changed before edit: " + source);
+            equal((await stat(source, { bigint: true })).mtimeNs, mtimeNs);
+            equal(await readFile(cleared, "utf8"), "Remove me");
+            equal(await readFile(later, "utf8"), "Before");
+            deepEqual(JSON.parse(await f.run("managed-mixed-inspect")), interrupted);
+
+            await writeFile(source, before.source);
+            const restored = JSON.parse(await f.run("managed-mixed-batch-edit"));
+            equal(restored.isError, undefined, JSON.stringify(restored));
+            deepEqual(JSON.parse(await f.run("managed-mixed-inspect")), { ...interrupted, source: "Updated source" });
+            equal(await readFile(cleared, "utf8"), "");
+            equal(await readFile(later, "utf8"), "After");
+        } finally {
+            await f.cleanup();
+        }
+    });
+});
+
+test("a managed multi-file retry syncs a truncated source and settles later edits", async () => {
+    const { withProcessGlobalTestLock } = await import("../testing/process-global-lock.ts");
+    const { composedRemoteFixture } = await import("../shared/remote/composed-store-fixture.ts");
+    await withProcessGlobalTestLock(async () => {
+        const f = await composedRemoteFixture();
+        const source = join(f.root, "source.txt");
+        const cleared = join(f.root, "clear.txt");
+        const later = join(f.root, "conflict.txt");
+        try {
+            await f.run("managed-mixed-seed");
+            await writeFile(cleared, "Remove me");
+            await writeFile(later, "Before");
+            const failed = JSON.parse(await f.run("managed-mixed-batch-edit", undefined, "after-truncate"));
+            equal(failed.isError, true);
+            equal(failed.content[0].text, "Interrupted while syncing the truncated source file.");
+            const first = JSON.parse(await f.run("managed-mixed-inspect"));
+            equal(first.body, "Updated Plan");
+            equal(first.source, "Updated source");
+            equal(await readFile(cleared, "utf8"), "Remove me");
+            equal(await readFile(later, "utf8"), "Before");
+
+            const sourceTime = await markEarlierSourceMtime(source);
+            // A failed sync must leave this file pending on the next attempt too.
+            for (let attempt = 0; attempt < 2; attempt++) {
+                const retryFailed = JSON.parse(await f.run("managed-mixed-batch-edit", undefined, "retry-sync"));
+                equal(retryFailed.isError, true);
+                equal(retryFailed.content[0].text, "Interrupted while syncing the settled source on retry.");
+                equal((await stat(source, { bigint: true })).mtimeNs, sourceTime);
+                equal(await readFile(cleared, "utf8"), "Remove me");
+                equal(await readFile(later, "utf8"), "Before");
+            }
+
+            const settled = JSON.parse(await f.run("managed-mixed-batch-edit"));
+            equal(settled.isError, undefined, JSON.stringify(settled));
+            equal((await stat(source, { bigint: true })).mtimeNs, sourceTime);
+            equal(await readFile(cleared, "utf8"), "");
+            equal(await readFile(later, "utf8"), "After");
+            deepEqual(JSON.parse(await f.run("managed-mixed-inspect")), first);
+        } finally {
             await f.cleanup();
         }
     });

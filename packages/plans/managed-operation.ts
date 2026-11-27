@@ -195,7 +195,8 @@ export async function executeRetainedManagedMutation<Command extends ManagedMuta
             }
             throw error;
         });
-        assertManagedProjectConnection();
+        // The document batch's validated receipt is enough to settle its prepared source files.
+        if (command.kind !== "edit-documents") assertManagedProjectConnection();
         if ((command.kind === "restore-history" || repeatableCreation || artifactMutation) && !retained.acknowledged)
             writeJsonAtomically(path, { ...retained, acknowledged: true });
         return result;

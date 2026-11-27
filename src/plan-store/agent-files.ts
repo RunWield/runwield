@@ -1,7 +1,12 @@
 import { packageWorkflowRevision } from "@runwield/plans/package-storage";
 import { plans } from "@runwield/plans";
+import {
+    withCurrentManagedProjectConnection,
+    withManagedProjectConnection,
+} from "@runwield/plans/managed-project-connection";
 import { fileURLToPath } from "node:url";
 import { getHomeDir } from "../constants.ts";
+import { mountedPersonalGlobalRoot, personalGlobalRoot } from "../shared/remote/personal-resources.ts";
 import {
     managedPlanStoreActive,
     managedDocumentRoot,
@@ -91,18 +96,38 @@ export async function resolvePlanFileTarget(cwd: string, requested: string): Pro
         const expected = join(await canonicalFileTarget(homeProjects), protectedPath);
         if (target !== expected) throw new Error("A protected Project path was redirected.");
     }
+    const mount = mountedPersonalGlobalRoot();
+    if (mount) {
+        const mountedProjects = join(mount, "projects");
+        const mountedPath = relative(join(personalGlobalRoot(), "projects"), absolute);
+        const canonicalPath = relative(mountedProjects, absolute);
+        const selected = insideProjectStorage(mountedPath) ? mountedPath : canonicalPath;
+        if (insideProjectStorage(selected) && target !== join(mountedProjects, selected))
+            throw new Error("A protected Project path was redirected.");
+    }
     return target;
 }
 
-export async function savePlanFileBatch(cwd: string, edits: PreparedPlanDocumentEdit[]) {
-    if (managedPlanStoreActive()) return await (await import("./managed.ts")).saveManagedDocumentBatch(cwd, edits);
-    const store = inspectLocalHomeStore(cwd);
-    if (store.kind !== "local") throw new Error("Plan document owner changed.");
-    await withPackageProject(cwd, store.identity, () => savePlanDocumentBatch(edits));
+/** Keep all Plan requests in one file tool call on the same connection. */
+export function withPlanFileOperation<Result>(run: () => Promise<Result>): Promise<Result> {
+    return withCurrentManagedProjectConnection(run);
+}
+
+export function savePlanFileBatch(cwd: string, edits: PreparedPlanDocumentEdit[]): Promise<void> {
+    return withPlanFileOperation(async () => {
+        if (managedPlanStoreActive()) return await (await import("./managed.ts")).saveManagedDocumentBatch(cwd, edits);
+        const store = inspectLocalHomeStore(cwd);
+        if (store.kind !== "local") throw new Error("Plan document owner changed.");
+        await withPackageProject(cwd, store.identity, () => savePlanDocumentBatch(edits));
+    });
 }
 
 /** Intercept owned Plan files; undefined means the caller's ordinary file tool owns this path. */
-export async function operatePlanFile(cwd: string, command: PlanFileCommand): Promise<PlanFileResult | undefined> {
+export function operatePlanFile(cwd: string, command: PlanFileCommand): Promise<PlanFileResult | undefined> {
+    return withPlanFileOperation(() => operatePlanFileInScope(cwd, command));
+}
+
+async function operatePlanFileInScope(cwd: string, command: PlanFileCommand): Promise<PlanFileResult | undefined> {
     const { mode } = command;
     if (!command.path) return;
     const path = await resolvePlanFileTarget(cwd, command.path);
@@ -115,32 +140,38 @@ export async function operatePlanFile(cwd: string, command: PlanFileCommand): Pr
             throw new Error("Project metadata can only be changed through its owning operation.");
     }
     if (managedPlanStoreActive()) {
-        const absolute = isAbsolute(path) ? path : join(cwd, path);
-        const rel = relative(managedDocumentRoot(cwd), absolute).replaceAll("\\", "/");
-        if (rel && rel !== ".." && !rel.startsWith("../") && !isAbsolute(rel)) {
-            const resource = rel.split("/").at(-1)!;
-            if (!["context.md", "validation.md", "manual-qa.md", "integration-report.md"].includes(resource))
-                throw new Error("Core owns Plan metadata. Edit an exposed Markdown document instead.");
-            const name = rel.slice(0, -(resource.length + 1));
-            const plan = await readManagedPlan(cwd, name);
-            if (!plan?.attrs.planId) throw new Error("Create the Plan with plan_written contextMarkdown first.");
-            if (mode === "write")
-                throw new Error("Re-read the Plan and use exact-text edit to preserve concurrent changes.");
-            const document = await readManagedDocument(plan.attrs.planId, resource, cwd);
-            if (mode === "prepare-edit" && !document.writable) throw new Error("This Plan document cannot be edited.");
-            if (mode === "read" || mode === "prepare-edit")
-                return {
-                    message: "Read Plan document.",
-                    content: document.body,
-                    document: { planId: document.planId, resource, expectedRevision: document.revision },
-                };
-            if (command.oldText === undefined || command.newText === undefined)
-                throw new Error("Plan edit requires path, oldText, and newText.");
-            const edited = exactEdit(document.body, command.oldText, command.newText, path);
-            if (/^\ufeff?---\s*\r?\n/.test(edited))
-                throw new Error("Live Plan documents must not contain YAML front matter.");
-            await saveManagedDocument(plan.attrs.planId, resource, document.revision, edited);
-            return { message: `Updated ${resource}.` };
+        const mountedProjects = join(mountedPersonalGlobalRoot() ?? personalGlobalRoot(), "projects");
+        if (insideProjectStorage(relative(mountedProjects, path))) {
+            const root = managedDocumentRoot(cwd);
+            const rel = relative(root, path).replaceAll("\\", "/");
+            if (!rel || !insideProjectStorage(relative(root, path)))
+                throw new Error("Project metadata can only be changed through its owning operation.");
+            return await withManagedProjectConnection(async () => {
+                const resource = rel.split("/").at(-1)!;
+                if (!["context.md", "validation.md", "manual-qa.md", "integration-report.md"].includes(resource))
+                    throw new Error("Core owns Plan metadata. Edit an exposed Markdown document instead.");
+                const name = rel.slice(0, -(resource.length + 1));
+                const plan = await readManagedPlan(cwd, name);
+                if (!plan?.attrs.planId) throw new Error("Create the Plan with plan_written contextMarkdown first.");
+                if (mode === "write")
+                    throw new Error("Re-read the Plan and use exact-text edit to preserve concurrent changes.");
+                const document = await readManagedDocument(plan.attrs.planId, resource, cwd);
+                if (mode === "prepare-edit" && !document.writable)
+                    throw new Error("This Plan document cannot be edited.");
+                if (mode === "read" || mode === "prepare-edit")
+                    return {
+                        message: "Read Plan document.",
+                        content: document.body,
+                        document: { planId: document.planId, resource, expectedRevision: document.revision },
+                    };
+                if (command.oldText === undefined || command.newText === undefined)
+                    throw new Error("Plan edit requires path, oldText, and newText.");
+                const edited = exactEdit(document.body, command.oldText, command.newText, path);
+                if (/^\ufeff?---\s*\r?\n/.test(edited))
+                    throw new Error("Live Plan documents must not contain YAML front matter.");
+                await saveManagedDocument(plan.attrs.planId, resource, document.revision, edited);
+                return { message: `Updated ${resource}.` };
+            });
         }
         if (isCanonicalPlanMarkdownPath(cwd, path))
             throw new Error(

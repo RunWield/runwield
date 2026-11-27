@@ -1,7 +1,7 @@
 import { openWorkflow } from "@runwield/workflow";
 import { deepEqual, equal, ok, rejects } from "node:assert/strict";
-import { mkdir, stat, writeFile, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, stat, writeFile, readFile, mkdtemp, rename, symlink, unlink, link, readdir } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { activateRemoteProjectOwner, connectRemotePlanOwner } from "./managed-project-owner.ts";
 import type { RemoteInteractiveConfig } from "./entry.ts";
 import type { ProjectStoreRequest } from "./project-store-protocol.ts";
@@ -10,6 +10,48 @@ const [command, json] = process.argv.slice(2);
 type ComposedRemoteInput = Pick<RemoteInteractiveConfig, "cwd" | "resources" | "connection"> & { attemptId?: string };
 const input: ComposedRemoteInput = JSON.parse(json);
 const managed = command.startsWith("managed");
+
+type ManagedSourceInterruption = "before-checkpoint" | "after-truncate" | "retry-sync";
+
+async function interruptManagedSource(pathname: string, phase: ManagedSourceInterruption) {
+    const { mock } = await import("bun:test");
+    const { open } = await import("node:fs/promises");
+    mock.module("node:fs/promises", () => ({
+        async open(
+            path: Parameters<typeof open>[0],
+            flags?: Parameters<typeof open>[1],
+            mode?: Parameters<typeof open>[2],
+        ) {
+            const file = await open(path, flags, mode);
+            if (path !== pathname) return file;
+            if (phase === "before-checkpoint") {
+                const write = file.write.bind(file);
+                Object.defineProperty(file, "write", {
+                    async value(buffer: Buffer, offset: number, length: number, position: number) {
+                        equal(offset, 0);
+                        equal(position, 0);
+                        const prefixLength = 3;
+                        ok(length > prefixLength);
+                        const result = await write(buffer, offset, prefixLength, position);
+                        equal(result.bytesWritten, prefixLength);
+                        process.kill(process.pid, "SIGKILL");
+                        return result;
+                    },
+                });
+            } else if (phase === "retry-sync") {
+                file.sync = () => Promise.reject(new Error("Interrupted while syncing the settled source on retry."));
+            } else {
+                const truncate = file.truncate.bind(file);
+                file.truncate = async (length) => {
+                    await truncate(length);
+                    file.sync = () => Promise.reject(new Error("Interrupted while syncing the truncated source file."));
+                };
+            }
+            return file;
+        },
+    }));
+}
+
 async function waitForHeldRequestRejection(rejection: Promise<void>): Promise<void> {
     const deadline = Promise.withResolvers<never>();
     const timeout = setTimeout(() => {
@@ -19,6 +61,280 @@ async function waitForHeldRequestRejection(rejection: Promise<void>): Promise<vo
         await Promise.race([rejection, deadline.promise]);
     } finally {
         clearTimeout(timeout);
+    }
+}
+
+const managedEditDisconnectPhases = [
+    "single",
+    "prepare",
+    "lost",
+    "validated-reply",
+    "confirmed",
+    "redirected",
+    "added-link",
+    "retargeted",
+    "interrupted",
+    "short-write",
+] as const;
+type ManagedEditDisconnectPhase = (typeof managedEditDisconnectPhases)[number];
+
+interface ManagedEditRequests {
+    first: string[];
+    replacement: string[];
+}
+
+interface SourceJournalFixtureRecord {
+    sourceIdentity?: string;
+    sourceRequest?: string;
+    sourceWriteCheckpoint?: { bytesWritten: number } | null;
+}
+
+async function qualifyManagedFileEdit(phase: ManagedEditDisconnectPhase): Promise<void> {
+    const { mock } = await import("bun:test");
+    const transport = await import("./project-store-request.ts");
+    const request = transport.authenticatedProjectStoreRequest;
+    const requests: ManagedEditRequests = { first: [], replacement: [] };
+    let arm = false;
+    let activeRoutes = requests.first;
+    let replacement: Promise<() => void> | undefined;
+    const disconnectAtSource =
+        phase === "confirmed" ||
+        phase === "redirected" ||
+        phase === "added-link" ||
+        phase === "retargeted" ||
+        phase === "interrupted" ||
+        phase === "short-write";
+    const cutConnection = () => {
+        closeFirst();
+        activeRoutes = requests.replacement;
+        replacement = connectRemotePlanOwner(input);
+        return replacement;
+    };
+    mock.module("./project-store-request.ts", () => ({
+        authenticatedProjectStoreRequest(...args: Parameters<typeof request>): ReturnType<typeof request> {
+            const routes = activeRoutes;
+            const send = request(...args);
+            return async (message, signal) => {
+                const kind =
+                    message.route === "/project-store"
+                        ? (JSON.parse(message.body) as ProjectStoreRequest).command.kind
+                        : message.route;
+                routes.push(kind);
+                const response = await send(message, signal);
+                const at =
+                    phase === "single" ? "resolve-plan" : phase === "prepare" ? "read-documents" : "edit-documents";
+                if (!arm || kind !== at || disconnectAtSource || phase === "validated-reply") return response;
+                ok(response.ok);
+                arm = false;
+                const bytes = new Uint8Array(await response.arrayBuffer());
+                const received = new Response(null, { status: response.status });
+                // Cut the real connection after the request returned but as the caller receives the reply.
+                Object.defineProperty(received, "body", {
+                    get() {
+                        return new ReadableStream<Uint8Array>({
+                            async pull(controller) {
+                                await cutConnection();
+                                if (phase === "lost") controller.error(new Error("Plan edit reply was lost."));
+                                else {
+                                    controller.enqueue(bytes);
+                                    controller.close();
+                                }
+                            },
+                        });
+                    },
+                });
+                return received;
+            };
+        },
+    }));
+    if (phase === "validated-reply") {
+        const { ProjectStoreClient } = await import("./project-store-client.ts");
+        const execute = ProjectStoreClient.prototype.execute;
+        ProjectStoreClient.prototype.execute = async function (command, signal) {
+            const reply = await execute.call(this, command, signal);
+            if (arm && command.kind === "edit-documents") {
+                // The client validated the reply. The caller has yet to receive it.
+                arm = false;
+                await cutConnection();
+            }
+            return reply;
+        };
+    }
+    const source = join(input.cwd, "source.txt");
+    const renamedSource = join(input.cwd, "original-source.txt");
+    const linkedSource = join(input.cwd, "linked-source.txt");
+    const requestedSource = phase === "retargeted" ? "source-alias.txt" : "source.txt";
+    const alias = join(input.cwd, requestedSource);
+    if (phase === "confirmed") await link(source, linkedSource);
+    if (phase === "retargeted") {
+        await writeFile(renamedSource, "Original source");
+        await symlink(source, alias, "file");
+    }
+    let shortWriteInterrupted = false;
+    if (phase === "interrupted" || phase === "short-write") {
+        const files = await import("node:fs/promises");
+        const open = files.open;
+        const { O_RDWR } = await import("node:fs").then(({ constants }) => constants);
+        mock.module("node:fs/promises", () => ({
+            async open(
+                path: Parameters<typeof open>[0],
+                flags?: Parameters<typeof open>[1],
+                mode?: Parameters<typeof open>[2],
+            ) {
+                const file = await open(path, flags, mode);
+                if (path === source && typeof flags === "number" && (flags & O_RDWR) !== 0) {
+                    if (phase === "interrupted") {
+                        file.truncate = () =>
+                            Promise.reject(new Error("Interrupted before truncating the source file."));
+                    } else {
+                        const prefixLength = 3;
+                        const write = file.write.bind(file);
+                        Object.defineProperty(file, "write", {
+                            async value(buffer: Buffer, offset: number, length: number, position: number) {
+                                equal(length, buffer.length - offset);
+                                equal(position, offset);
+                                if (offset === 0) {
+                                    ok(length > prefixLength);
+                                    const result = await write(buffer, offset, prefixLength, position);
+                                    equal(result.bytesWritten, prefixLength);
+                                    return result;
+                                }
+                                equal(offset, prefixLength);
+                                shortWriteInterrupted = true;
+                                throw new Error("Interrupted after writing the source file prefix.");
+                            },
+                        });
+                    }
+                }
+                return file;
+            },
+        }));
+    }
+    const pi = await import("@earendil-works/pi-coding-agent");
+    const queue = pi.withFileMutationQueue;
+    if (disconnectAtSource) {
+        mock.module("@earendil-works/pi-coding-agent", () => ({
+            withFileMutationQueue<Result>(path: string, mutate: () => Promise<Result>): Promise<Result> {
+                return queue(path, async () => {
+                    // The source queue is only entered after the Plan reply has been validated.
+                    if (arm && path === source) {
+                        arm = false;
+                        await cutConnection();
+                        if (phase === "redirected") {
+                            await rename(source, renamedSource);
+                            await symlink(renamedSource, source, "file");
+                        }
+                        if (phase === "added-link") await link(source, linkedSource);
+                        if (phase === "retargeted") {
+                            await unlink(alias);
+                            await symlink(renamedSource, alias, "file");
+                        }
+                    }
+                    return await mutate();
+                });
+            },
+        }));
+    }
+    const closeFirst = await activateRemoteProjectOwner(input);
+    try {
+        const { loadPlan } = await import("../testing/plan-query-fixture.ts");
+        const { createMultiFileEditTool } = await import("../../tools/multi_file_edit.ts");
+        const tool = createMultiFileEditTool(input.cwd);
+        const plan = await loadPlan(input.cwd, "mixed");
+        ok(plan);
+        const independentDir = await mkdtemp(join(dirname(input.resources.globalRoot), "source-only-"));
+        const independent = join(independentDir, "source.txt");
+        await writeFile(independent, "Before");
+        const sourceOnly = createMultiFileEditTool(independentDir);
+        const useSourceOnly = (oldText: string, newText: string) =>
+            sourceOnly.execute(
+                "source-only",
+                {
+                    edits: [{ path: "source.txt", oldText, newText }],
+                },
+                undefined,
+                undefined,
+                {} as Parameters<typeof sourceOnly.execute>[4],
+            );
+        const firstCount = requests.first.length;
+        equal((await useSourceOnly("Before", "During")).isError, undefined);
+        equal(requests.first.length, firstCount);
+        arm = true;
+        const planEdit = { path: plan.path, oldText: "Original Plan", newText: "Updated Plan" };
+        if (phase === "single") {
+            const { wrapPlanSafeFileTool } = await import("../../tools/plan-safe-file-tools.ts");
+            const { createSingleEditToolDefinition } = await import("../../tools/edit.ts");
+            const single = wrapPlanSafeFileTool(createSingleEditToolDefinition(input.cwd), {
+                cwd: input.cwd,
+                mode: "edit",
+            });
+            const result = await single.execute(
+                "single",
+                planEdit,
+                undefined,
+                undefined,
+                {} as Parameters<typeof single.execute>[4],
+            );
+            ok("isError" in result && result.isError);
+        } else {
+            const result = await tool.execute(
+                "mixed",
+                {
+                    edits: [{ path: requestedSource, oldText: "Original source", newText: "Updated source" }, planEdit],
+                },
+                undefined,
+                undefined,
+                {} as Parameters<typeof tool.execute>[4],
+            );
+            const succeeds = phase === "confirmed" || phase === "validated-reply";
+            equal(Boolean(result.isError), !succeeds, JSON.stringify(result));
+        }
+        ok(!arm && replacement);
+        const closeReplacement = await replacement;
+        try {
+            deepEqual(requests.replacement, []);
+            const expectedSources: Partial<Record<ManagedEditDisconnectPhase, string>> = {
+                confirmed: "Updated source",
+                "validated-reply": "Updated source",
+                interrupted: "Updated sourcee",
+                "short-write": "Updginal source",
+            };
+            const expectedSource = expectedSources[phase] ?? "Original source";
+            equal(await readFile(source, "utf8"), expectedSource);
+            if (phase === "short-write") ok(shortWriteInterrupted);
+            if (phase === "confirmed") equal(await readFile(linkedSource, "utf8"), "Updated source");
+            if (phase === "redirected") {
+                await unlink(source);
+                await rename(renamedSource, source);
+            }
+            if (phase === "added-link") {
+                equal(await readFile(linkedSource, "utf8"), "Original source");
+                await unlink(linkedSource);
+            }
+            if (phase === "retargeted") {
+                equal(await readFile(renamedSource, "utf8"), "Original source");
+                await unlink(alias);
+                await symlink(source, alias, "file");
+            }
+            closeReplacement();
+            const mount = input.resources.globalRoot;
+            const detached = `${mount}-detached`;
+            await rename(mount, detached);
+            try {
+                await symlink(mount, mount, "dir");
+                equal((await useSourceOnly("During", "After")).isError, undefined);
+            } finally {
+                await unlink(mount);
+                await rename(detached, mount);
+            }
+            equal(await readFile(independent, "utf8"), "After");
+            deepEqual(requests.replacement, []);
+        } finally {
+            closeReplacement();
+        }
+    } finally {
+        closeFirst();
+        if (replacement) (await replacement)();
     }
 }
 
@@ -330,6 +646,12 @@ if (command === "managed-connection-reopen") {
     await qualifyManagedReconnect();
     process.exit(0);
 }
+if (command === "managed-file-edit-reconnect") {
+    const phase = managedEditDisconnectPhases.find((phase) => phase === input.attemptId);
+    ok(phase);
+    await qualifyManagedFileEdit(phase);
+    process.exit(0);
+}
 const importDisconnectPoint = {
     "managed-import-reconnect": "result",
     "managed-import-reconnect-after-commit": "commit",
@@ -421,6 +743,34 @@ try {
         if (command === "managed-mixed-seed") {
             await authorLocalPlan(input.cwd, { planName: "mixed", contextMarkdown: "Original Plan" });
             await writeFile(join(input.cwd, "source.txt"), "Original source");
+        } else if (command === "managed-mixed-legacy-journal" || command === "managed-mixed-checkpoint-offset") {
+            const { enterProjectRuntime } = await import("../project-runtime-layout.ts");
+            const directory = join(
+                (await enterProjectRuntime(input.cwd)).selected.transitionJournalsDir,
+                "managed-file-edits",
+            );
+            const [name] = (await readdir(directory)).filter((file) => file.endsWith(".json"));
+            ok(name);
+            const path = join(directory, name);
+            const records: SourceJournalFixtureRecord[] = JSON.parse(await readFile(path, "utf8"));
+            if (command === "managed-mixed-checkpoint-offset") {
+                const source = records.find((record) => record.sourceWriteCheckpoint);
+                ok(source?.sourceWriteCheckpoint);
+                if (input.attemptId === "null") {
+                    source.sourceWriteCheckpoint = null;
+                } else {
+                    const offset = Number(input.attemptId);
+                    ok(Number.isSafeInteger(offset));
+                    source.sourceWriteCheckpoint.bytesWritten = offset;
+                }
+            } else {
+                ok(records.some(({ sourceIdentity }) => sourceIdentity));
+                for (const record of records) {
+                    delete record.sourceIdentity;
+                    delete record.sourceRequest;
+                }
+            }
+            await writeFile(path, JSON.stringify(records));
         } else {
             const plan = await loadPlan(input.cwd, "mixed");
             ok(plan);
@@ -433,13 +783,32 @@ try {
                     }),
                 );
             else {
+                const extraSources =
+                    command === "managed-mixed-batch-edit"
+                        ? [
+                              { path: "clear.txt", oldText: "Remove me", newText: "" },
+                              { path: "conflict.txt", oldText: "Before", newText: "After" },
+                          ]
+                        : [];
+                if (
+                    command === "managed-mixed-batch-edit" &&
+                    (input.attemptId === "before-checkpoint" ||
+                        input.attemptId === "after-truncate" ||
+                        input.attemptId === "retry-sync")
+                )
+                    await interruptManagedSource(join(input.cwd, "source.txt"), input.attemptId);
                 const { createMultiFileEditTool } = await import("../../tools/multi_file_edit.ts");
                 const tool = createMultiFileEditTool(input.cwd);
                 const result = await tool.execute(
                     "edit-mixed",
                     {
                         edits: [
-                            { path: "source.txt", oldText: "Original source", newText: "Updated source" },
+                            {
+                                path: input.attemptId === "retargeted" ? "source-alias.txt" : "source.txt",
+                                oldText: "Original source",
+                                newText: "Updated source",
+                            },
+                            ...extraSources,
                             { path: plan.path, oldText: "Original Plan", newText: "Updated Plan" },
                         ],
                     },

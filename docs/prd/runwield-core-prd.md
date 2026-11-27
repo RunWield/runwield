@@ -487,6 +487,24 @@ identity, revisions, lock ordering and durable writes. Callers do not arrange a 
 maintain those invariants. Lifecycle policy defines allowed events; the store persists their results. Retained legacy
 execution sources and optional delivery copies remain distinct from live canonical Plans.
 
+**Requirement: Keep managed file edits with their original Plan owner.** A single-file or multi-file edit sends its
+Plan requests through the connection it started with. For a mixed Plan and source edit, a confirmed Plan save lets the
+prepared source edits finish locally after disconnect. If the Plan reply is missing or uncertain, source files stay
+unchanged until a deliberate retry in the same Project confirms the retained Plan operation. Source-only edits work
+without a live Plan connection or personal mount.
+
+**Acceptance: Reconnect during a mixed edit.** Given a dropped successful Plan reply, a retry preserves the original
+Plan revision and finishes the source edit once. A retry can start from the original bytes or finish a partial source
+write that matches its recorded progress. If a crash leaves partial bytes without a verified checkpoint, the retry
+preserves those bytes, reports a conflict, and stops before changing any later source file. The confirmed Plan revision
+stays the same. The retry also preserves a replaced file or an independent change, even if the bytes resemble an
+interrupted write.
+If one source file finishes and a later file conflicts, the retry also preserves independent changes to the finished file.
+If a source file already contains its full replacement after an interruption, a retry settles it without rewriting it
+and continues with the remaining source files.
+Given a validated Plan reply before disconnect, the source edit can finish and the tool reports success without a
+request on the replacement connection.
+
 **Acceptance: Concurrent operations preserve one generation.** When two authors save from the same revision, one
 complete context/validation generation succeeds and the other receives a stale-input result. Protected lifecycle fields
 cannot be changed by a prose or definition save. Resolving an execution target and reserving the reviewed input happen
