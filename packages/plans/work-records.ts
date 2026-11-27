@@ -2,6 +2,7 @@ import { documents } from "./work-records/documents.ts";
 
 export type {
     GeneratedWorkRecordSections,
+    ProjectWorkRecord,
     WorkRecordCompletionMode,
     WorkRecordFrontMatter,
     WorkRecordResource,

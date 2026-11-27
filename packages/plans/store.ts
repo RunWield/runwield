@@ -5,7 +5,8 @@ import type { PackageDocuments, PlanHistory } from "./history.ts";
 import type { PlanId } from "@runwield/plan-storage-format";
 import type { ProjectPublicationCopies } from "./publication-copies.ts";
 import type { PlanEvent, PlanEventDetails } from "./lifecycle.ts";
-import type { WorkRecordFrontMatter, WorkRecordResource } from "./work-records.ts";
+import type { ProjectWorkRecord, WorkRecordFrontMatter } from "./work-records.ts";
+export type { ProjectWorkRecord } from "./work-records.ts";
 
 export type ProjectPlanStoreOptions = RegisteredProjectPlanOptions | AdmittedProjectPlanOptions;
 
@@ -20,8 +21,6 @@ interface AdmittedProjectPlanOptions {
     admitted: ProjectStoreIdentity;
     registry?: never;
 }
-
-export type ProjectWorkRecord = Omit<WorkRecordResource, "path">;
 
 export interface CreateProjectWorkRecord extends Pick<
     WorkRecordFrontMatter,
@@ -39,10 +38,13 @@ export interface CreateProjectWorkRecord extends Pick<
     createdAt?: string;
 }
 
+/** Work Records bound to the same Project and owner as the Plan Store. */
 export interface ProjectWorkRecords {
+    /** List all stored documents without creating storage. */
     list(): Promise<ProjectWorkRecord[]>;
-    /** Return null for a missing ID. Duplicate IDs are ambiguous across all statuses. */
+    /** Read a case-insensitive ID, return null if missing, and reject duplicate IDs across all statuses. */
     read(recordId: string): Promise<ProjectWorkRecord | null>;
+    /** Assign an ID and filename and return the persisted document. */
     create(input: CreateProjectWorkRecord): Promise<ProjectWorkRecord>;
 }
 

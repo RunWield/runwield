@@ -2,7 +2,7 @@ import type { HostRecorderState } from "./validation-checkpoint.ts";
 import { projects, type ProjectStoreIdentity } from "@runwield/projects";
 import { randomUUID } from "node:crypto";
 import { basename, join } from "node:path";
-import type { CreateProjectWorkRecord } from "./store.ts";
+import type { CreateProjectWorkRecord, ProjectWorkRecords } from "./store.ts";
 import {
     canonicalFiles,
     canonicalFileName,
@@ -11,7 +11,13 @@ import {
     CHECKOUT_RECORD_DIRECTORY,
 } from "./work-records/canonical-files.ts";
 import { creationReceipts, type WorkRecordCreationOperation } from "./work-records/creation-receipts.ts";
-import { isWorkRecordId, type WorkRecordFrontMatter, type WorkRecordResource } from "./work-records/documents.ts";
+import {
+    documents,
+    isWorkRecordId,
+    type ProjectWorkRecord,
+    type WorkRecordFrontMatter,
+    type WorkRecordResource,
+} from "./work-records/documents.ts";
 import { retainedFiles } from "./work-records/retained-files.ts";
 
 export { WorkRecordReadError } from "./work-records/canonical-files.ts";
@@ -34,6 +40,17 @@ export interface WorkRecordCreation {
         body: string,
         options?: WorkRecordCreationOptions,
     ): Promise<RecordingPublication>;
+}
+
+/** Filesystem Work Record collection for an admitted personal owner. */
+export interface OwnedProjectWorkRecords extends ProjectWorkRecords {
+    /** Create once for a retained request and return its saved document on retry. */
+    createOperationRecord(
+        input: CreateProjectWorkRecord,
+        operation: WorkRecordCreationOperation,
+    ): Promise<ProjectWorkRecord>;
+    /** Read the original creation result from its completed receipt, even after changes to the record. */
+    readOperationRecord(operation: WorkRecordCreationOperation): Promise<ProjectWorkRecord | null>;
 }
 
 const creationFields = new Set<keyof CreateProjectWorkRecord>([
@@ -115,6 +132,11 @@ function authoredRecord(input: CreateProjectWorkRecord) {
     return { attrs, body, fileName: canonicalFileName(title, date) };
 }
 
+async function listDocuments(canonical: ReturnType<typeof canonicalFiles>): Promise<ProjectWorkRecord[]> {
+    return (await canonical.list({ createDir: false })).map(documents.toProjectDocument);
+}
+
+/** Open the filesystem driver for an admitted personal Project owner. */
 function forOwner(owner: ProjectStoreIdentity) {
     if (owner.personalOwner.kind !== "execution-account")
         throw new Error("Work Records require a locally admitted personal owner.");
@@ -174,13 +196,46 @@ function forOwner(owner: ProjectStoreIdentity) {
         });
     }
 
-    async function readOperationRecord(operation: WorkRecordCreationOperation) {
+    async function readOperationRecord(operation: WorkRecordCreationOperation): Promise<ProjectWorkRecord | null> {
         projects.home.assertStoreIdentity(identity);
         const receipt = await receipts.readCompleted(operation);
-        return receipt && (await canonical.decode(receipt.fileName, receipt.markdown));
+        return receipt && documents.toProjectDocument(await canonical.decode(receipt.fileName, receipt.markdown));
     }
 
+    async function listProjectDocuments(): Promise<ProjectWorkRecord[]> {
+        projects.home.assertStoreIdentity(identity);
+        return await listDocuments(canonical);
+    }
+
+    const workRecords: OwnedProjectWorkRecords = {
+        list: listProjectDocuments,
+        async read(recordId) {
+            return documents.findById(await listProjectDocuments(), recordId);
+        },
+        async create(input) {
+            const { attrs, body, fileName } = authoredRecord(input);
+            const record = await mutateCanonical(() => publishRestored(attrs, body, { fileName }));
+            return documents.toProjectDocument(record);
+        },
+        async createOperationRecord(input, operation) {
+            return await mutateCanonical(async () => {
+                const prior = await readOperationRecord(operation);
+                if (prior) return prior;
+                const { attrs, body, fileName } = authoredRecord(input);
+                const pending = await canonical.prepareCreation(attrs, body, { fileName });
+                const receipt = await receipts.retainPending(operation, fileName, pending.record.markdown);
+                await retained.forgetLocations(pending.recordId);
+                const record = await pending.publish();
+                await receipts.settle(receipt, basename(record.path));
+                await receipts.clearPending();
+                return documents.toProjectDocument(record);
+            });
+        },
+        readOperationRecord,
+    };
+
     return {
+        workRecords,
         get layout() {
             projects.home.assertStoreIdentity(identity);
             return { root, records, internal };
@@ -193,25 +248,6 @@ function forOwner(owner: ProjectStoreIdentity) {
             projects.home.assertStoreIdentity(identity);
             return await canonical.list(options);
         },
-        async createRecord(input: CreateProjectWorkRecord) {
-            const { attrs, body, fileName } = authoredRecord(input);
-            return await mutateCanonical(() => publishRestored(attrs, body, { fileName }));
-        },
-        async createOperationRecord(input: CreateProjectWorkRecord, operation: WorkRecordCreationOperation) {
-            return await mutateCanonical(async () => {
-                const prior = await readOperationRecord(operation);
-                if (prior) return prior;
-                const { attrs, body, fileName } = authoredRecord(input);
-                const pending = await canonical.prepareCreation(attrs, body, { fileName });
-                const receipt = await receipts.retainPending(operation, fileName, pending.record.markdown);
-                await retained.forgetLocations(pending.recordId);
-                const record = await pending.publish();
-                await receipts.settle(receipt, basename(record.path));
-                await receipts.clearPending();
-                return record;
-            });
-        },
-        readOperationRecord,
         async readRecordingCreation(attemptId: string) {
             return (await retained.readRecordingCreation(attemptId))?.recordId ?? null;
         },
@@ -250,6 +286,7 @@ function forOwner(owner: ProjectStoreIdentity) {
     };
 }
 
+/** Open checkout files for the host's retained checkout routes. */
 function forCheckout(cwd: string) {
     const directory = join(cwd, CHECKOUT_RECORD_DIRECTORY);
     const canonical = canonicalFiles(cwd, directory);
@@ -271,7 +308,15 @@ function forCheckout(cwd: string) {
         return retainedFiles(identity, internal);
     }
 
+    const workRecords: Pick<ProjectWorkRecords, "list" | "read"> = {
+        list: () => listDocuments(canonical),
+        async read(recordId) {
+            return documents.findById(await listDocuments(canonical), recordId);
+        },
+    };
+
     return {
+        workRecords,
         read: canonical.read,
         list: canonical.list,
         async readRecordingCreation(attemptId: string) {
@@ -298,4 +343,5 @@ function forCheckout(cwd: string) {
     };
 }
 
+/** Open Work Record storage or derive a canonical Markdown filename. */
 export const workRecordFiles = { forOwner, forCheckout, fileName: canonicalFileName };

@@ -51,12 +51,8 @@ import {
 } from "../shared/work-records/package-recording.ts";
 import { findWorkRecordById } from "../shared/work-records/store.ts";
 import { searchWorkRecordDocumentsInOwner, searchWorkRecords } from "../shared/work-records/search.ts";
-import {
-    createLocalProjectWorkRecord,
-    listProjectWorkRecords,
-    readLocalProjectWorkRecordCreation,
-    selectProjectWorkRecord,
-} from "./project-work-records.ts";
+import { workRecordFiles } from "@runwield/plans/work-record-files";
+import { requestWorkspaceSearchRefresh } from "@runwield/resources/workspace-search-refresh";
 import { syncWorkRecordToIndex } from "../shared/work-records/index-adapter.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../shared/work-records/mnemoteca-port.ts";
 import {
@@ -1142,6 +1138,7 @@ export class PreparedProjectStore {
                 }
                 if (command.kind === "create-project-work-record")
                     return await withPlanPackageCatalogDiscovery(owner, async () => {
+                        const records = workRecordFiles.forOwner(owner).workRecords;
                         const operation = {
                             operationId: command.operationId,
                             digest: operationDigest(JSON.stringify({ binding: this.binding, command })),
@@ -1152,18 +1149,18 @@ export class PreparedProjectStore {
                             operation.digest,
                             owner.projectId,
                             async () => {
-                                const { attrs, markdown, relativePath } = await createLocalProjectWorkRecord(
-                                    this.cwd,
+                                const { attrs, markdown, relativePath } = await records.createOperationRecord(
                                     command.input,
                                     operation,
                                 );
+                                await requestWorkspaceSearchRefresh(this.cwd);
                                 return {
                                     recordId: attrs.recordId,
                                     revision: operationDigest(JSON.stringify({ markdown, relativePath })),
                                 };
                             },
                         );
-                        const record = await readLocalProjectWorkRecordCreation(operation);
+                        const record = await records.readOperationRecord(operation);
                         if (!record || receipt.status !== "completed")
                             throw new Error("Completed Work Record creation evidence is unavailable.");
                         const createdRecord = { markdown: record.markdown, relativePath: record.relativePath };
@@ -1174,10 +1171,8 @@ export class PreparedProjectStore {
                             throw new Error("Completed Work Record creation evidence changed.");
                         return { operationId: operation.operationId, createdRecord };
                     });
-                if (command.kind === "record-catalog") {
-                    const { listLocalWorkRecords } = await import("../shared/work-records/store.ts");
-                    return { recordResources: await listLocalWorkRecords(this.cwd, { createDir: false }) };
-                }
+                if (command.kind === "record-catalog")
+                    return { recordResources: await workRecordFiles.forOwner(owner).list({ createDir: false }) };
                 if (command.kind === "record-query")
                     return {
                         recordSearch: await searchWorkRecords(this.cwd, command.query, {
@@ -1312,7 +1307,7 @@ export class PreparedProjectStore {
                     };
                 }
                 if (command.kind === "read-record") {
-                    const record = selectProjectWorkRecord(await listProjectWorkRecords(this.cwd), command.recordId);
+                    const record = await workRecordFiles.forOwner(owner).workRecords.read(command.recordId);
                     return { records: record ? [{ recordId: record.attrs.recordId, markdown: record.markdown }] : [] };
                 }
                 if (command.kind === "search-records") {

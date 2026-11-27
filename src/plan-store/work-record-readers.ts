@@ -6,7 +6,7 @@ import { openPlanStoreForCheckout, openProjectPlanStore } from "./project-plans.
 import { managedDocumentRoot, managedPlanStoreActive } from "./managed.ts";
 import { workRecordOwnerLayout } from "../shared/work-records/owner.ts";
 import { validatedRetainedCheckoutSource } from "@runwield/plans/retained-checkout";
-import { listProjectWorkRecords, selectProjectWorkRecord } from "./project-work-records.ts";
+import { projectWorkRecordReads } from "./project-work-records.ts";
 
 /** Resolve passive Work Record evidence at a checkout entry point. */
 export function workRecordsForCheckout(root: string): Pick<ProjectWorkRecords, "list" | "read"> {
@@ -16,12 +16,12 @@ export function workRecordsForCheckout(root: string): Pick<ProjectWorkRecords, "
         if (store) return store.workRecords;
         return { list: () => Promise.resolve([]), read: () => Promise.resolve(null) };
     }
-    const list = () => {
+    const access = () => {
         if (validatedRetainedCheckoutSource(root) !== retained)
             throw new Error("Work Record authority changed. Reopen the Project.");
-        return listProjectWorkRecords(root);
+        return projectWorkRecordReads(root);
     };
-    return { list, read: async (id) => selectProjectWorkRecord(await list(), id) };
+    return { list: () => access().list(), read: async (id) => await access().read(id) };
 }
 
 /** Resolve Workspace Work Records through the active Project registration. */

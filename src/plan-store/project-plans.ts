@@ -13,11 +13,9 @@ import type {
     ReviseProjectPlan,
 } from "@runwield/plans/store";
 import { type ProjectId } from "@runwield/projects";
-import {
-    createLocalProjectWorkRecord,
-    listProjectWorkRecords,
-    selectProjectWorkRecord,
-} from "./project-work-records.ts";
+import { requestWorkspaceSearchRefresh } from "@runwield/resources/workspace-search-refresh";
+import { requireOwnedWorkRecordFiles } from "../shared/work-records/owner.ts";
+import { projectWorkRecordReads } from "./project-work-records.ts";
 import { bindProjectPlanStore, checkoutPlanIdentity } from "./project-binding.ts";
 import { packagePublicationInput } from "./publication.ts";
 import { PlanNotFoundError, type PlanResource } from "../plan-store.ts";
@@ -189,7 +187,6 @@ export function openProjectPlanStore(projectId: ProjectId, options: ProjectPlanS
 }
 
 function projectPlanStore(projectId: ProjectId, run: ReturnType<typeof bindProjectPlanStore>): ProjectPlanStore {
-    const listRecords = () => run(listProjectWorkRecords, "read");
     return {
         projectId,
         artifacts: projectPlanArtifacts(run),
@@ -227,13 +224,14 @@ function projectPlanStore(projectId: ProjectId, run: ReturnType<typeof bindProje
         },
         workRecords: {
             create: (input) =>
-                run((cwd) =>
-                    managedPlanStoreActive()
-                        ? createManagedProjectWorkRecord(cwd, input)
-                        : createLocalProjectWorkRecord(cwd, input),
-                ),
-            list: listRecords,
-            read: async (id) => selectProjectWorkRecord(await listRecords(), id),
+                run(async (cwd) => {
+                    if (managedPlanStoreActive()) return await createManagedProjectWorkRecord(cwd, input);
+                    const record = await requireOwnedWorkRecordFiles().workRecords.create(input);
+                    await requestWorkspaceSearchRefresh(cwd);
+                    return record;
+                }),
+            list: () => run((cwd) => projectWorkRecordReads(cwd).list(), "read"),
+            read: (id) => run((cwd) => projectWorkRecordReads(cwd).read(id), "read"),
         },
         list: () => run(readProjectPlanDisplayCatalog, "read"),
         read: (planId) => run((cwd) => readActive(cwd, requirePlanId(planId)), "read"),

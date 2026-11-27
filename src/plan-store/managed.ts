@@ -805,8 +805,7 @@ export async function createManagedProjectWorkRecord(
         (result) => {
             if (!("createdRecord" in result)) throw new Error("Managed owner returned another Work Record result.");
             const { markdown, relativePath } = result.createdRecord;
-            const { path: _ownerPath, ...record } = workRecords.documents.parse(markdown, { relativePath });
-            return record;
+            return workRecords.documents.toProjectDocument(workRecords.documents.parse(markdown, { relativePath }));
         },
     );
 }

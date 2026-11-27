@@ -1,5 +1,5 @@
 import { openWorkflow } from "@runwield/workflow";
-import { equal, ok, rejects } from "node:assert/strict";
+import { deepEqual, equal, ok, rejects } from "node:assert/strict";
 import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { activateRemoteProjectOwner, type RemoteInteractiveConfig } from "./entry.ts";
@@ -132,7 +132,15 @@ try {
         });
         ok(!("path" in created));
         equal(created.attrs.status, "draft");
-        equal((await store.workRecords.read(created.attrs.recordId))?.markdown, created.markdown);
+        const read = await store.workRecords.read(created.attrs.recordId.toUpperCase());
+        ok(read && !("path" in read));
+        deepEqual(read, created);
+        const listed = await store.workRecords.list();
+        ok(listed.every((record) => !("path" in record)));
+        deepEqual(
+            listed.find((record) => record.attrs.recordId === created.attrs.recordId),
+            created,
+        );
         console.log(created.attrs.recordId);
     } else if (command === "managed-edit-documents") {
         const { authorLocalPlan, operatePlanFile, savePlanFileBatch, savePlanProse } =
