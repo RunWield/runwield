@@ -1,15 +1,18 @@
 import { StalePlanWriteError } from "@runwield/plans/store";
 import { projects, type ProjectLaunchContext } from "@runwield/projects";
 import { tmpdir } from "node:os";
-import { seedPlan } from "./shared/testing/plan-state-fixture.ts";
+import { planFixtureEvidenceDirectory, seedPlan } from "./shared/testing/plan-state-fixture.ts";
 import { withRetainedPlanFixture } from "./shared/testing/retained-plan-fixture.ts";
 import { test } from "node:test";
 import { deepEqual, equal, ok, rejects, throws } from "node:assert/strict";
 import fs from "node:fs/promises";
 import { join } from "node:path";
+import { platform, umask } from "node:process";
 import { create, read, driver, packageFixture, tree, documents } from "./shared/testing/plan-package-fixture.ts";
 import { getPlansDir } from "./plan-store.ts";
 import {
+    readPackageControllerEvidence,
+    writePackageControllerEvidence,
     readPlanPackage,
     listPlanPackages,
     updatePlanPackageMetadata,
@@ -36,6 +39,41 @@ test("packages persist plain documents and separate versioned metadata across pr
         ok(restarted.output.includes('"humanReviewDecision":"approved"'));
         ok(restarted.output.includes('"session-a"'));
         equal((await read(f.identity)).documents.length, 2);
+    } finally {
+        await f.cleanup();
+    }
+});
+
+test("package controller evidence keeps its wire format and rejects a redirected revision", async () => {
+    const f = await packageFixture();
+    try {
+        const planId = "plan-one";
+        const state = { executionReport: "Evidence — 世界" };
+        const first = await writePackageControllerEvidence(f.identity, planId, state);
+        const second = await writePackageControllerEvidence(f.identity, planId, { executionReport: "New report" });
+        const directory = planFixtureEvidenceDirectory(f.identity);
+        const firstFile = `${first.revisionId}.json`;
+        const secondFile = `${second.revisionId}.json`;
+        const path = join(directory, firstFile);
+
+        deepEqual((await fs.readdir(directory)).sort(), [firstFile, secondFile].sort());
+        equal(
+            await fs.readFile(path, "utf8"),
+            JSON.stringify({ version: 1, revision: 1, planId, planName: planId, state }, null, 2) + "\n",
+        );
+        if (platform !== "win32") {
+            equal((await fs.stat(directory)).mode & 0o077, 0);
+            equal((await fs.stat(path)).mode & 0o777, 0o666 & ~umask());
+        }
+        deepEqual(await readPackageControllerEvidence(f.identity, first), state);
+        await rejects(
+            () => readPackageControllerEvidence(f.identity, { ...first, planId: "other-plan" }),
+            /does not match its reference/,
+        );
+
+        await fs.unlink(path);
+        await fs.symlink(join(directory, secondFile), path);
+        await rejects(() => readPackageControllerEvidence(f.identity, first), /not a regular file/);
     } finally {
         await f.cleanup();
     }

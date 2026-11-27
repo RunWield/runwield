@@ -35,6 +35,8 @@ import {
     readPlanPackage,
     readPlanPackageInput,
     readPlanPackagePublication,
+    readPackageControllerEvidence,
+    writePackageControllerEvidence,
     updatePlanPackageMetadata,
     withPlanPackageLocks,
     planPackageFamilyIds,
@@ -47,7 +49,6 @@ import {
     type PackageControllerState,
     type PackageWorkflowEvidence,
 } from "@runwield/plans/package-storage";
-import { readPackageControllerEvidence, writePackageControllerEvidence } from "./controllers.ts";
 import {
     CONTROLLER_STATE_FIELDS,
     pickControllerState,

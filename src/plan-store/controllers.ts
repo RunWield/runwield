@@ -2,7 +2,7 @@ import {
     inspectWorktreeRegistryAtPath,
     type WorktreeRegistryEntry,
 } from "@runwield/project-runtime/registry-inspection";
-import { projects, type ProjectStoreIdentity as ProjectIdentity } from "@runwield/projects";
+import { projects } from "@runwield/projects";
 import { managedPersonalStoreActive } from "@runwield/plans/managed-project-connection";
 import {
     currentManagedRetainedExecution,
@@ -11,7 +11,6 @@ import {
     readManagedRelatedController,
     writeManagedRelatedController,
 } from "./managed.ts";
-import { isValidationCheckpoint } from "@runwield/plans/controller-state";
 import {
     currentPackageSelection,
     packageWorkflowLocks,
@@ -19,10 +18,6 @@ import {
     packageController,
     updatePackageWorkflowMetadata,
 } from "./workflows.ts";
-import {
-    checkedPlanPackageControllerDirectory,
-    type PackageControllerReference,
-} from "@runwield/plans/package-storage";
 import { recoverWindowsRename } from "../shared/native-file-replace-windows.ts";
 import { platform } from "node:process";
 import { open as fsOpen } from "node:fs/promises";
@@ -619,42 +614,4 @@ export async function prepareControllerView(
         }
         return await inspectControllerView(cwd, identity, legacy);
     });
-}
-
-/** Immutable complex controller evidence; package metadata is the sole live pointer. */
-export async function writePackageControllerEvidence(
-    identity: ProjectIdentity,
-    planId: string,
-    state: WorkflowControllerState,
-): Promise<PackageControllerReference> {
-    const revisionId = crypto.randomUUID();
-    const directory = await checkedPlanPackageControllerDirectory(identity, true);
-    await atomicWrite(join(directory, `${revisionId}.json`), {
-        version: 1,
-        revision: 1,
-        planId,
-        planName: planId,
-        state,
-    });
-    return { revisionId, planId };
-}
-export async function readPackageControllerEvidence(
-    identity: ProjectIdentity,
-    reference: PackageControllerReference,
-): Promise<WorkflowControllerState> {
-    if (!/^[0-9a-f-]{36}$/.test(reference.revisionId)) throw new Error("Invalid package controller reference.");
-    const directory = await checkedPlanPackageControllerDirectory(identity);
-    const path = join(directory, `${reference.revisionId}.json`);
-    const stat = await fsLstat(path);
-    if (!stat.isFile() || stat.isSymbolicLink()) throw new Error("Package controller evidence is not a regular file.");
-    const record: ControllerRecord = JSON.parse(await fsReadFile(path, "utf8"));
-    if (record.version !== 1 || record.planId !== reference.planId || record.revision !== 1 || !record.state)
-        throw new Error("Package controller evidence does not match its reference.");
-    if (
-        Object.keys(record.state).some((key) => !CONTROLLER_STATE_FIELDS.includes(key as keyof WorkflowControllerState))
-    )
-        throw new Error("Unsupported package controller evidence.");
-    if (record.state.validationCheckpoint && !isValidationCheckpoint(record.state.validationCheckpoint))
-        throw new Error("Invalid package validation checkpoint.");
-    return record.state;
 }
