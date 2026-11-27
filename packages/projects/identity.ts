@@ -151,6 +151,7 @@ interface IdentityEvidence {
     root: string;
     common?: string;
     admin?: string;
+    uncommittedPrimaryCheckoutId?: string;
     marker: IdentityMarker | null;
     projectId: ProjectId | null;
     repositoryId: string | null;
@@ -249,9 +250,8 @@ function identityConfig(cwd: string, file: string): GitIdentityConfig {
     parsedIdentityConfigs.set(key, parsed);
     return parsed;
 }
-function markerAt(path: string): IdentityMarker | null {
-    if (!regularFile(path)) return null;
-    const marker: Omit<IdentityMarker, "projectId"> & { projectId: string } = JSON.parse(readFileSync(path, "utf8"));
+function parseMarker(contents: string, path: string): IdentityMarker {
+    const marker: Omit<IdentityMarker, "projectId"> & { projectId: string } = JSON.parse(contents);
     if (
         !marker ||
         marker.format !== "runwield-project" ||
@@ -264,6 +264,117 @@ function markerAt(path: string): IdentityMarker | null {
     requireId(marker.repositoryId, `repository ID in ${path}`);
     requireId(marker.checkoutId, `checkout ID in ${path}`);
     return { ...marker, projectId };
+}
+function markerAt(path: string): IdentityMarker | null {
+    return regularFile(path) ? parseMarker(readFileSync(path, "utf8"), path) : null;
+}
+function checkoutIdAt(admin: string): string | null {
+    const path = join(admin, "runwield-checkout-id");
+    return regularFile(path) ? requireId(readFileSync(path, "utf8").trim(), "checkout ID") : null;
+}
+function gitWorktreeRoots(cwd: string): string[] {
+    // Git lists the main worktree first. Use NUL separators so paths can contain newlines.
+    return git(cwd, ["worktree", "list", "--porcelain", "-z"])!
+        .split("\0")
+        .filter((record) => record.startsWith("worktree "))
+        .map((record) => record.slice(9));
+}
+function linkedCheckoutIds(common: string): string[] {
+    const directory = checkIdentityDirectories(common, "worktrees");
+    let entries;
+    try {
+        entries = readdirSync(directory, { withFileTypes: true });
+    } catch (error) {
+        if (error instanceof Error && missing(error)) return [];
+        throw error;
+    }
+    return entries.flatMap((entry) => {
+        if (!entry.isDirectory()) return [];
+        const checkoutId = checkoutIdAt(join(directory, entry.name));
+        return checkoutId ? [checkoutId] : [];
+    });
+}
+function registeredRepository(
+    context: ProjectLaunchContext,
+    projectId: ProjectId,
+    repositoryId: string,
+): RepositoryBinding | undefined {
+    if (context.personalOwner.kind !== "execution-account") return undefined;
+    const record = readRecord(recordPath(context.executionAccountHome, projectId), projectId);
+    if (
+        record?.personalOwner.kind !== context.personalOwner.kind ||
+        record.personalOwner.identity !== context.personalOwner.identity
+    )
+        return undefined;
+    return record.repositories.find((entry) => entry.repositoryId === repositoryId);
+}
+function committedWorktreeMarker(root: string, common: string): IdentityMarker | null {
+    const markerPath = join(root, ".wld-project.json");
+    const gitPath = join(root, ".git");
+    if (
+        !lstatSync(markerPath, { throwIfNoEntry: false })?.isFile() ||
+        !lstatSync(gitPath, { throwIfNoEntry: false })?.isFile()
+    )
+        return null;
+    const admin = realpathSync(git(root, ["rev-parse", "--resolve-git-dir", gitPath])!);
+    if (dirname(admin) !== join(common, "worktrees")) return null;
+    const gitDir = ["--git-dir", admin];
+    const gitCommon = git(root, [...gitDir, "rev-parse", "--git-common-dir"])!;
+    if (realpathSync(resolve(root, gitCommon)) !== common) return null;
+    const head = git(root, [...gitDir, "rev-parse", "--verify", "-q", "HEAD"], true);
+    if (!head) return null;
+    const tree = git(root, [...gitDir, "ls-tree", head, "--", ".wld-project.json"]);
+    const blob = tree?.match(/^100(644|755) blob ([a-f0-9]+)\t\.wld-project\.json$/)?.[2];
+    if (!blob) return null;
+    const contents = readFileSync(markerPath);
+    const hashArgs = [...gitDir, "hash-object", "--no-filters", "--stdin"];
+    if (git(root, hashArgs, false, contents) !== blob) {
+        // Git can check out an LF blob as CRLF. Verify that exact conversion without running filters.
+        const checkout = contents.toString("latin1");
+        const normalized = checkout.replaceAll("\r\n", "\n");
+        if (
+            normalized === checkout ||
+            normalized.includes("\r") ||
+            normalized.replaceAll("\n", "\r\n") !== checkout ||
+            git(root, hashArgs, false, Buffer.from(normalized, "latin1")) !== blob
+        )
+            return null;
+    }
+    try {
+        return parseMarker(contents.toString("utf8"), markerPath);
+    } catch {
+        // An unrelated worktree may track its own file at this name.
+        return null;
+    }
+}
+function recoverPrimaryMarker(
+    roots: string[],
+    common: string,
+    primaryRoot: string,
+    context: ProjectLaunchContext,
+): IdentityMarker | null {
+    if (context.personalOwner.kind !== "execution-account") return null;
+    let recovered: IdentityMarker | null = null;
+    for (const root of roots) {
+        const marker = committedWorktreeMarker(root, common);
+        if (!marker) continue;
+        const repository = registeredRepository(context, marker.projectId, marker.repositoryId);
+        if (
+            !repository?.checkouts.some((entry) => entry.root === primaryRoot && entry.checkoutId === marker.checkoutId)
+        )
+            continue;
+        if (
+            recovered &&
+            (marker.projectId !== recovered.projectId ||
+                marker.repositoryId !== recovered.repositoryId ||
+                marker.checkoutId !== recovered.checkoutId)
+        )
+            throw new Error(
+                "Linked worktree markers match different registered primary identities; all were preserved",
+            );
+        recovered = marker;
+    }
+    return recovered;
 }
 function hasGitDirectory(path: string): boolean {
     if (process.env.GIT_DIR || process.env.GIT_COMMON_DIR || process.env.GIT_WORK_TREE) return true;
@@ -280,7 +391,7 @@ function hasGitDirectory(path: string): boolean {
         if (dirname(ancestor) === ancestor) return false;
     }
 }
-function evidence(path: string): IdentityEvidence {
+function evidence(path: string, context: ProjectLaunchContext): IdentityEvidence {
     const cwd = realpathSync(path);
     if (!lstatSync(cwd).isDirectory()) throw new Error("Project root must be a directory");
     // A non-repository exit is distinguished from other Git failures by filesystem evidence.
@@ -324,28 +435,72 @@ function evidence(path: string): IdentityEvidence {
     const admin = realpathSync(resolve(cwd, combined ? directories[2] : git(cwd, ["rev-parse", "--git-dir"])!));
     const file = join(common, "config");
     const { projectId, repositoryId, remote } = identityConfig(cwd, file);
-    const checkoutPath = join(admin, "runwield-checkout-id");
-    const checkoutId = regularFile(checkoutPath)
-        ? requireId(readFileSync(checkoutPath, "utf8").trim(), "checkout ID")
-        : null;
+    const checkoutId = checkoutIdAt(admin);
     if (repositoryId !== null) requireId(repositoryId, "Git repository ID");
+    if (!projectId && repositoryId) throw new Error("Git repository binding has no Project ID");
+    const linked = admin !== common;
+    const primaryCheckoutId = linked ? checkoutIdAt(common) : checkoutId;
+    // A Git worktree can contain a committed copy of the marker from before Git adoption.
+    // Its Project and repository IDs are shared. The marker's checkout ID belongs to the primary.
+    const needsPrimaryRoot = linked && (marker || !primaryCheckoutId || !projectId || !repositoryId);
+    const needsSiblingMarkers =
+        !linked &&
+        !primaryCheckoutId &&
+        !marker &&
+        lstatSync(join(common, "worktrees"), { throwIfNoEntry: false })?.isDirectory();
+    const [listedPrimary, ...siblings] = needsPrimaryRoot || needsSiblingMarkers ? gitWorktreeRoots(cwd) : [];
+    if (needsPrimaryRoot && !listedPrimary) throw new Error("Cannot find the primary Git worktree");
+    const primaryRoot = needsPrimaryRoot ? realpathSync(listedPrimary) : root;
+    const localPrimaryMarker = !linked
+        ? marker
+        : needsPrimaryRoot
+          ? markerAt(join(primaryRoot, ".wld-project.json"))
+          : null;
+    const primaryMarker =
+        localPrimaryMarker ??
+        (!primaryCheckoutId ? recoverPrimaryMarker(siblings, common, primaryRoot, context) : null);
     if (
-        marker &&
-        ((projectId && projectId !== marker.projectId) ||
-            (repositoryId && repositoryId !== marker.repositoryId) ||
-            (checkoutId && checkoutId !== marker.checkoutId))
+        primaryMarker &&
+        ((projectId && projectId !== primaryMarker.projectId) ||
+            (repositoryId && repositoryId !== primaryMarker.repositoryId) ||
+            (primaryCheckoutId && primaryCheckoutId !== primaryMarker.checkoutId))
     )
         throw new Error("Project marker conflicts with Git identity; both were preserved");
-    if (!projectId && repositoryId) throw new Error("Git repository binding has no Project ID");
+    const knownPrimaryCheckoutId = primaryCheckoutId ?? primaryMarker?.checkoutId;
+    const linkedIds = linkedCheckoutIds(common);
+    // An older admission could remove the linked marker and claim the primary ID in the registry.
+    // A saved primary root can identify that conflict, but cannot authorize a Git binding.
+    const savedRepository =
+        !knownPrimaryCheckoutId && projectId && repositoryId
+            ? registeredRepository(context, projectId, repositoryId)
+            : undefined;
+    const possiblePrimaryIds = knownPrimaryCheckoutId
+        ? [knownPrimaryCheckoutId]
+        : (savedRepository?.checkouts
+              .filter((entry) => entry.root === primaryRoot || entry.historicalRoots?.includes(primaryRoot))
+              .map((entry) => entry.checkoutId) ?? []);
+    if (possiblePrimaryIds.some((id) => linkedIds.includes(id)))
+        throw new Error("Linked checkout shares the primary Git checkout ID; both bindings were preserved");
+    if (new Set(linkedIds).size !== linkedIds.length)
+        throw new Error("Linked checkouts share a Git checkout ID; both bindings were preserved");
+    if (
+        linked &&
+        marker &&
+        (marker.projectId !== (projectId ?? primaryMarker?.projectId) ||
+            marker.repositoryId !== (repositoryId ?? primaryMarker?.repositoryId) ||
+            marker.checkoutId !== (primaryCheckoutId ?? primaryMarker?.checkoutId))
+    )
+        throw new Error("Linked checkout marker conflicts with the primary Project identity; both were preserved");
     return {
         cwd,
         root,
         common,
         admin,
         marker,
-        projectId: projectId ?? marker?.projectId ?? null,
-        repositoryId: repositoryId ?? marker?.repositoryId ?? null,
-        checkoutId: checkoutId ?? marker?.checkoutId ?? null,
+        uncommittedPrimaryCheckoutId: !primaryCheckoutId ? primaryMarker?.checkoutId : undefined,
+        projectId: projectId ?? primaryMarker?.projectId ?? null,
+        repositoryId: repositoryId ?? primaryMarker?.repositoryId ?? null,
+        checkoutId: checkoutId ?? (linked ? null : (primaryMarker?.checkoutId ?? null)),
         remote,
     };
 }
@@ -530,7 +685,7 @@ export function inspectProjectStorage(
     if (context.personalOwner.kind !== "execution-account") return [];
     let e: IdentityEvidence;
     try {
-        e = evidence(path);
+        e = evidence(path, context);
     } catch (error) {
         if (error instanceof Error && missing(error)) return [];
         throw error;
@@ -681,7 +836,7 @@ export function establishProjectSessionStorage(root: string, sessionProjectId: s
     const context = contextFor({});
     if (context.personalOwner.kind !== "execution-account") return;
     directory = executionAccountStoragePath(directory, context);
-    const e = evidence(root);
+    const e = evidence(root, context);
     if (!e.projectId) return;
     const path = recordPath(context.executionAccountHome, e.projectId);
     const before = readRecord(path, e.projectId);
@@ -727,7 +882,7 @@ export function isProjectStorageRootClaimed(root: string, options: ProjectIdenti
         if (error instanceof Error && missing(error)) return false;
         throw error;
     }
-    const current = evidence(root);
+    const current = evidence(root, context);
     for (const id of names.filter(isProjectId)) {
         const record = readRecord(recordPath(context.executionAccountHome, id), id);
         // Git worktrees share repository authority before every checkout has been admitted.
@@ -860,7 +1015,7 @@ function identity(e: IdentityEvidence, context: ProjectLaunchContext): ProjectId
 export function inspectProjectIdentity(path: string, options: ProjectIdentityOptions = {}): ProjectIdentityInspection {
     try {
         const context = contextFor(options);
-        const e = evidence(path);
+        const e = evidence(path, context);
         if (e.projectId) {
             if (context.personalOwner.kind === "execution-account")
                 readRecord(recordPath(context.executionAccountHome, e.projectId), e.projectId);
@@ -901,7 +1056,7 @@ function* projectAdmission(
 ): Generator<NativeFileLock, ProjectIdentityAdmission, void> {
     try {
         const context = contextFor(options);
-        let e = evidence(path);
+        let e = evidence(path, context);
         const candidates = e.projectId ? [] : candidatesFor(e, context);
         if (options.choice?.kind === "cancel") return { kind: "canceled" };
         if (candidates.length && !options.choice) return { kind: "pending", candidates };
@@ -916,7 +1071,7 @@ function* projectAdmission(
         const lock = openNativeFileLock(lockPath);
         try {
             yield lock;
-            e = evidence(path);
+            e = evidence(path, context);
             if (
                 e.projectId &&
                 ((options.choice?.kind === "link" && options.choice.projectId !== e.projectId) ||
@@ -952,7 +1107,12 @@ function* projectAdmission(
                     kind: "invalid",
                     message: "The destination has no evidence of the registered Project identity",
                 };
-            const needsBinding = !e.projectId || !e.repositoryId || !e.checkoutId || e.marker !== null;
+            const needsBinding =
+                !e.projectId ||
+                !e.repositoryId ||
+                !e.checkoutId ||
+                e.marker !== null ||
+                e.uncommittedPrimaryCheckoutId !== undefined;
             e.projectId ??=
                 selected?.projectId ??
                 binding?.projectId ??
@@ -963,8 +1123,15 @@ function* projectAdmission(
             e.checkoutId ??= randomUUID();
             // Validate home evidence before committing repository authority. Managed remote context is only a binding,
             // never permission to write a laptop-owned record through a mount or into the remote account's registry.
-            if (context.personalOwner.kind === "execution-account")
-                readRecord(recordPath(context.executionAccountHome, e.projectId), e.projectId);
+            if (context.personalOwner.kind === "execution-account") {
+                const record = readRecord(recordPath(context.executionAccountHome, e.projectId), e.projectId);
+                if (
+                    record &&
+                    (record.personalOwner.kind !== context.personalOwner.kind ||
+                        record.personalOwner.identity !== context.personalOwner.identity)
+                )
+                    throw new Error("Project record belongs to a different personal owner");
+            }
             if (e.common && needsBinding) {
                 putConfig(e, "runwield.projectId", e.projectId);
                 putConfig(e, "runwield.repositoryId", e.repositoryId);
@@ -976,11 +1143,13 @@ function* projectAdmission(
                     closeSync(configFd);
                 }
                 syncParentDirectory(configPath);
+                if (e.uncommittedPrimaryCheckoutId)
+                    writeLocalIdentity(join(e.common, "runwield-checkout-id"), `${e.uncommittedPrimaryCheckoutId}\n`);
                 const checkoutPath = join(e.admin!, "runwield-checkout-id");
                 if (!regularFile(checkoutPath)) {
                     writeLocalIdentity(checkoutPath, `${e.checkoutId}\n`);
                 }
-                const committed = evidence(path);
+                const committed = evidence(path, context);
                 if (
                     committed.projectId !== e.projectId ||
                     committed.repositoryId !== e.repositoryId ||
@@ -1036,7 +1205,7 @@ function* projectAdmission(
                 const recordLock = openNativeFileLock(join(dirname(file), "identity.lock"));
                 try {
                     yield recordLock;
-                    const verified = evidence(path);
+                    const verified = evidence(path, context);
                     if (
                         verified.projectId !== e.projectId ||
                         verified.repositoryId !== e.repositoryId ||

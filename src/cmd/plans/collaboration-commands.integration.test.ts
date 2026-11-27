@@ -18,6 +18,7 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
 import { hashPlanBody, injectFrontMatter } from "@runwield/plans/format";
+import { projects } from "@runwield/projects";
 import { updatePlanCollaborationMetadata } from "../../plan-store/index.ts";
 import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
@@ -255,6 +256,8 @@ test("named pull and push use a linked checkout's migrated 0.10 capability", asy
                             summary: "Migrated capability",
                         });
                         await createLinkedCheckout(projectRoot, alternateRoot);
+                        const linked = await projects.checkout.admit(alternateRoot);
+                        assert(linked.kind === "existing");
                         const existingPlan = await loadPlan(alternateRoot, planName);
                         assert(existingPlan);
                         const storedBody = existingPlan.body;
