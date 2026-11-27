@@ -1,3 +1,5 @@
+import type { ProjectStoreBinding } from "@runwield/plans/project-store-wire";
+import { authenticatedProjectStoreRequest } from "./project-store-request.ts";
 import { parseProjectId, projects, type HomeProjectOwner } from "@runwield/projects";
 import { createServer } from "node:http";
 import { test } from "node:test";
@@ -9,12 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { packageFixture } from "../testing/plan-package-fixture.ts";
-import {
-    authorLocalPlan,
-    PreparedProjectStore,
-    type ProjectStoreBinding,
-    type ProjectStoreCommand,
-} from "../../plan-store/index.ts";
+import { authorLocalPlan, PreparedProjectStore, type ProjectStoreCommand } from "../../plan-store/index.ts";
 import { loadPlan } from "../testing/plan-query-fixture.ts";
 import { startRemoteControlService } from "./control.ts";
 import { ProjectStoreClient } from "./project-store-client.ts";
@@ -159,16 +156,19 @@ test("registration, handshake, owner binding and revocation gate the real transp
         const headers = { Authorization: `Bearer ${service.credential}` };
         equal((await fetch(`${endpoint}/project-store`, { method: "POST", headers })).status, 403);
         const binding = service.registerProjectStore(fixture.root);
-        const client = new ProjectStoreClient(endpoint, service.credential, binding);
+        const client = new ProjectStoreClient(authenticatedProjectStoreRequest(endpoint, service.credential), binding);
         const command = { kind: "read" as const, planId: plan.attrs.planId!, resource: "context.md" };
         await rejects(client.execute(command), /403/);
         await admit(endpoint, service.credential);
         const result = await client.execute(command);
         ok("body" in result.result);
         equal(result.result.body, "# Before\n");
-        await rejects(new ProjectStoreClient(endpoint, "wrong", binding).execute(command), /401/);
         await rejects(
-            new ProjectStoreClient(endpoint, service.credential, {
+            new ProjectStoreClient(authenticatedProjectStoreRequest(endpoint, "wrong"), binding).execute(command),
+            /401/,
+        );
+        await rejects(
+            new ProjectStoreClient(authenticatedProjectStoreRequest(endpoint, service.credential), {
                 ...binding,
                 projectId: parseProjectId(randomUUID())!,
             }).execute(command),

@@ -2,8 +2,10 @@ import type { PackagePublicationReference } from "@runwield/plans/publication-co
 import { projects } from "@runwield/projects";
 import {
     managedPersonalStoreActive as managedPlanStoreActive,
-    readManagedRecordingContext,
     managedExecutionRoot,
+} from "@runwield/plans/managed-project-connection";
+import {
+    readManagedRecordingContext,
     selectManagedPlan,
     withManagedPlan,
     generateManagedPreparedRecord,

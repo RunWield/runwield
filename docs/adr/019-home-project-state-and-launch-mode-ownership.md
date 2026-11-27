@@ -244,7 +244,11 @@ separate product behavior. No permanent migration marker or fallback runtime tre
 
 Manual SSH and managed remote execution can address the same repository while using different personal stores.
 Matching Project IDs do not authorize automatic Plan synchronization or unfinished-attempt takeover. Losing the laptop
-connection cannot switch managed remote execution to the remote user's Plan store.
+connection cannot switch managed remote execution to the remote user's Plan store. The SSH host owns the endpoint,
+credential, and revocation. It supplies an authenticated function for the three existing Plan store routes. Plans
+checks the binding, chooses passive inspection or deliberate admission, and retains the exact operation identity.
+A revoked connection invalidates its in-flight requests and open handles. A newly opened handle rechecks the
+Project on the new connection.
 
 Editors and external hosts need authorized access to a home path or supported document operations. A strict sandbox
 may require its normal access grant. Losing home storage loses unpublished personal artifacts; same-disk milestone

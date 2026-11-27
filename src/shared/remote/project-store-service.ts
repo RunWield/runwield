@@ -1,14 +1,13 @@
+import {
+    PROJECT_STORE_MAX_BYTES,
+    readProjectStoreBody,
+    sameProjectStoreBinding,
+} from "@runwield/plans/project-store-wire";
 import { StalePlanWriteError } from "@runwield/plans/store";
 import { type HomeProjectOwner } from "@runwield/projects";
 import type { ManagedProjectStoreLaunch } from "./project-store-launch.ts";
 import { PreparedProjectStore, type PlanExecutionHost } from "../../plan-store/index.ts";
-import {
-    readProjectStoreBody,
-    sameProjectStoreBinding,
-    validateProjectStoreRequest,
-    PROJECT_STORE_MAX_BYTES,
-    type ProjectStoreRequest,
-} from "./project-store-protocol.ts";
+import { validateProjectStoreRequest, type ProjectStoreRequest } from "./project-store-protocol.ts";
 
 export class LaptopProjectStoreService {
     private readonly owner: PreparedProjectStore;

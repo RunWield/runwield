@@ -20,6 +20,11 @@ the canonical owner to author prose. Core workflows read richer execution docume
 Other hosts can open the same store with an identity admitted by Projects.
 The runtime selects the owner and the `@runwield/plans/file-snapshots` driver stores retained workflow inputs.
 
+Managed SSH supplies an authenticated Plan store request function at bootstrap. `@runwield/plans` checks the
+Project and checkout, selects passive inspection or deliberate admission, and persists mutation identities for
+retry. The host owns credentials and revokes the connection. Open handles keep their original connection, so a
+consumer opens the Project store again after reconnect.
+
 ### Work Records
 
 Use `store.workRecords.create(input)` to persist content and receive its store-assigned ID. The Recorder uses the ID reserved by the store when preparing a record for publication.

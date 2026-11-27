@@ -35,11 +35,11 @@ import {
     resolveLocalHistoryPlan,
     restoreLocalPlanMilestone,
 } from "./history.ts";
+import { managedPersonalStoreActive } from "@runwield/plans/managed-project-connection";
 import {
     admitManagedPlanCheckout,
     currentManagedRetainedExecution,
     createManagedProjectWorkRecord,
-    managedPersonalStoreActive,
     managedPlanStoreActive,
     readManagedActivePlanById,
     readManagedPlanHistory,

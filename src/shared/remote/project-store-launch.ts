@@ -1,3 +1,4 @@
+import { sameProjectStoreBinding, type ProjectStoreBinding } from "@runwield/plans/project-store-wire";
 import type { PreparedPlanImport } from "@runwield/plans/store";
 import type { PublicationAttempt } from "@runwield/workflow/publication";
 import { projects, type HomeProjectOwner, type ProjectIdentity } from "@runwield/projects";
@@ -388,7 +389,7 @@ export async function proveManagedNonGitExecution(
 
 export async function readManagedRetentionContext(
     launch: ManagedProjectStoreLaunch,
-    binding: import("../../plan-store/index.ts").ProjectStoreBinding,
+    binding: ProjectStoreBinding,
     signal?: AbortSignal,
 ) {
     const result = await captureForegroundProcess("ssh", {
@@ -405,10 +406,7 @@ export async function readManagedRetentionContext(
         throw new Error("Cannot verify retention policy and unfinished publication in the bound execution repository.");
     const response: { binding: typeof binding; context: import("../../plan-store/index.ts").RetentionContext } =
         JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(result.stdout));
-    if (
-        !(await import("./project-store-protocol.ts")).sameProjectStoreBinding(binding, response.binding) ||
-        !Array.isArray(response.context?.pending)
-    )
+    if (!sameProjectStoreBinding(binding, response.binding) || !Array.isArray(response.context?.pending))
         throw new Error("Retention proof changed its repository binding.");
     for (const policy of [response.context.policy?.records, response.context.policy?.plans])
         if (!policy || ![policy.keepLast, policy.retentionDays].every((n) => Number.isSafeInteger(n) && n >= 0))

@@ -221,7 +221,9 @@ export async function removeContainedCopy(
     path: string,
     digest: string,
     journalPath: string,
+    signal?: AbortSignal,
 ): Promise<void> {
+    signal?.throwIfAborted();
     if (!isPathInside(path, root) || path.includes("\0") || !/^[a-f0-9]{64}$/.test(digest)) throw denied();
     if (platform === "win32") {
         readWindowsText(root, path, digest);
@@ -256,8 +258,12 @@ export async function removeContainedCopy(
             writeJsonAtomically(journalPath, { ...journal, settled: true });
         }
     }
-    if (!parent) return preserveMovedDirectory();
+    if (!parent) {
+        signal?.throwIfAborted();
+        return preserveMovedDirectory();
+    }
     try {
+        signal?.throwIfAborted();
         const parentId = fileIdentity(fstatSync(parent.fd, { bigint: true }));
         if (descriptorPath(parent.fd) !== dirname(path) || (journal && journal.parent !== parentId))
             return preserveMovedDirectory();

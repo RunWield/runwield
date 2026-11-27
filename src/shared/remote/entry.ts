@@ -107,19 +107,10 @@ export async function parseRemoteInteractiveConfig(header: string): Promise<Remo
     return config;
 }
 
-/** Activate the verified connection before loading ordinary Plan consumers. */
-export async function activateRemoteProjectOwner(
-    config: Pick<RemoteInteractiveConfig, "cwd" | "resources" | "connection">,
-): Promise<() => void> {
-    const { configureRemotePersonalResources } = await import("./personal-resources.ts");
-    configureRemotePersonalResources(config.resources);
-    const { configureManagedPlanStore } = await import("../../plan-store/index.ts");
-    return configureManagedPlanStore(config.cwd, config.connection);
-}
-
 /** Start the normal remote TUI, then stay alive until its process lifetime ends. */
 export async function runRemoteView(): Promise<void> {
     const config = await parseRemoteInteractiveConfig(await readPrivateHeader());
+    const { activateRemoteProjectOwner } = await import("./managed-project-owner.ts");
     const clearPlanStore = await activateRemoteProjectOwner(config);
     const { configureRemoteSettingsConnection } = await import("./settings-bridge.ts");
     configureRemoteSettingsConnection(config.connection);
@@ -135,8 +126,11 @@ export async function runRemoteView(): Promise<void> {
     let clearModels: (() => void) | undefined;
     let stopTUI: (() => void) | undefined;
     let lifecycle: import("../../ui/tui/chat-session.ts").InteractiveLifecycleHandle | undefined;
-    let end = () => {};
-    const lifetime = new Promise<void>((resolve) => (end = resolve));
+    const lifetime = Promise.withResolvers<void>();
+    function end() {
+        clearPlanStore();
+        lifetime.resolve();
+    }
     const signals = ["SIGTERM", "SIGHUP"] as const;
     try {
         const { configureRemoteModelConnection } = await import("@runwield/pi-ai/models");
@@ -162,8 +156,9 @@ export async function runRemoteView(): Promise<void> {
             onLifecycleReady: (handle) => (lifecycle = handle),
         });
         // entry dispatch exits after return. Startup completion is not TUI exit.
-        await lifetime;
+        await lifetime.promise;
     } finally {
+        clearPlanStore();
         for (const signal of signals) process.off(signal, end);
         try {
             await lifecycle?.dispose();
@@ -174,7 +169,6 @@ export async function runRemoteView(): Promise<void> {
                 clearGuideRunner?.();
                 clearReviewHost();
                 clearMemory();
-                clearPlanStore();
                 clearModels?.();
                 stopTUI?.();
             } finally {
@@ -261,7 +255,7 @@ export async function runRemotePublicationProof(): Promise<void> {
         recovery?: import("../workflow/execution-recovery-proof.ts").ExecutionRecoveryRequest;
         importSource?: import("../../plan-store/index.ts").ManagedImportPreparationRequest;
         nonGit?: import("../workflow/execution-recovery-proof.ts").ManagedExecutionIdentity;
-        retention?: import("../../plan-store/index.ts").ProjectStoreBinding;
+        retention?: import("@runwield/plans/project-store-wire").ProjectStoreBinding;
         candidateOnly?: boolean;
         requireCleanup?: boolean;
         recordingSource?: boolean;

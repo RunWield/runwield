@@ -24,6 +24,12 @@ For entity relationships, durable identities, transient workflow objects, adapte
 see the companion [RunWield Entity Model](entity-model.md). This architecture map stays focused on control flow,
 dependency direction, runtime boundaries, and source guides.
 
+The managed SSH bootstrap authenticates and revokes requests to the initiating laptop. It supplies Plans with a
+request function limited to Plan store inspection, admission, and operations. Plans checks the owner and checkout,
+keeps the connection bound to each open Project store, and retains mutation identities across reconnects. Ordinary
+consumers open the Project Plan store by Project ID. Existing application workflows still dispatch the laptop's
+higher-level Plan operations.
+
 ## System at a glance
 
 ```mermaid

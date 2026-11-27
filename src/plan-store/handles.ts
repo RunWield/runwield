@@ -1,8 +1,8 @@
 import { projects, type ProjectId } from "@runwield/projects";
 import { checkoutPlanIdentity } from "./project-binding.ts";
+import { managedPersonalStoreActive, withManagedProjectConnection } from "@runwield/plans/managed-project-connection";
 import {
     managedPlanStoreActive,
-    managedPersonalStoreActive,
     currentManagedPlanSelection,
     currentManagedRetainedExecution,
     selectManagedPlan,
@@ -87,51 +87,58 @@ export async function resumePlanAttempt<T>(
 ): Promise<T> {
     const managed = decodeManagedPlanAccess(access);
     if (managed) {
-        if (managed.retainedAttemptId) {
-            const retained = await readManagedRetainedExecution(cwd, managed.planId, managed.retainedAttemptId);
-            if (
-                managed.retainedAttemptId !== attemptId ||
-                !retained ||
-                retained.cleanupComplete ||
-                retained.abandonmentComplete
-            )
-                throw new Error("Retained execution attempt changed.");
+        return await withManagedProjectConnection(async () => {
+            if (managed.retainedAttemptId) {
+                const retained = await readManagedRetainedExecution(cwd, managed.planId, managed.retainedAttemptId);
+                if (
+                    managed.retainedAttemptId !== attemptId ||
+                    !retained ||
+                    retained.cleanupComplete ||
+                    retained.abandonmentComplete
+                )
+                    throw new Error("Retained execution attempt changed.");
+                const current = await selectManagedPlan(cwd, managed.planId);
+                if (current.retainedAttemptId !== attemptId) throw new Error("Retained execution attempt changed.");
+                if (planName && current.planName !== planName)
+                    throw new Error("Retained continuation names another Plan.");
+                return await withManagedPlan(cwd, current, run);
+            }
+            const execution = await readManagedExecution(cwd, managed.planId);
+            if (!execution || execution.attemptId !== attemptId) throw new Error("Managed execution attempt changed.");
             const current = await selectManagedPlan(cwd, managed.planId);
-            if (current.retainedAttemptId !== attemptId) throw new Error("Retained execution attempt changed.");
-            if (planName && current.planName !== planName) throw new Error("Retained continuation names another Plan.");
+            if (planName && current.planName !== planName) throw new Error("Managed continuation names another Plan.");
             return await withManagedPlan(cwd, current, run);
-        }
-        const execution = await readManagedExecution(cwd, managed.planId);
-        if (!execution || execution.attemptId !== attemptId) throw new Error("Managed execution attempt changed.");
-        const current = await selectManagedPlan(cwd, managed.planId);
-        if (planName && current.planName !== planName) throw new Error("Managed continuation names another Plan.");
-        return await withManagedPlan(cwd, current, run);
+        });
     }
     if (managedPersonalStoreActive()) {
-        const historical = decodePlanAccess(access);
-        const inspected = projects.checkout.inspect(cwd);
-        const selected = await selectManagedPlan(cwd, historical.planId);
-        const retained = attemptId ? await readManagedRetainedExecution(cwd, historical.planId, attemptId) : undefined;
-        if (
-            inspected.kind !== "existing" ||
-            !retained ||
-            retained.cleanupComplete ||
-            retained.abandonmentComplete ||
-            historical.identity.projectId !== inspected.identity.projectId ||
-            historical.identity.repositoryId !== inspected.identity.repositoryId ||
-            historical.identity.executionAccountHome !== inspected.identity.executionAccountHome ||
-            !("checkoutId" in historical.identity) ||
-            historical.identity.checkoutId !== retained.checkoutId ||
-            !(
-                historical.identity.personalOwner.identity === inspected.identity.personalOwner.identity ||
-                (historical.identity.personalOwner.kind === "execution-account" &&
-                    historical.identity.personalOwner.identity === inspected.identity.executionAccountHome)
+        return await withManagedProjectConnection(async () => {
+            const historical = decodePlanAccess(access);
+            const inspected = projects.checkout.inspect(cwd);
+            const selected = await selectManagedPlan(cwd, historical.planId);
+            const retained = attemptId
+                ? await readManagedRetainedExecution(cwd, historical.planId, attemptId)
+                : undefined;
+            if (
+                inspected.kind !== "existing" ||
+                !retained ||
+                retained.cleanupComplete ||
+                retained.abandonmentComplete ||
+                historical.identity.projectId !== inspected.identity.projectId ||
+                historical.identity.repositoryId !== inspected.identity.repositoryId ||
+                historical.identity.executionAccountHome !== inspected.identity.executionAccountHome ||
+                !("checkoutId" in historical.identity) ||
+                historical.identity.checkoutId !== retained.checkoutId ||
+                !(
+                    historical.identity.personalOwner.identity === inspected.identity.personalOwner.identity ||
+                    (historical.identity.personalOwner.kind === "execution-account" &&
+                        historical.identity.personalOwner.identity === inspected.identity.executionAccountHome)
+                )
             )
-        )
-            throw new Error("Saved execution continuation does not match its adopted original owner.");
-        if (planName && planName !== retained.planName)
-            throw new Error("Saved execution continuation names another Plan.");
-        return await withManagedPlan(cwd, selected, run);
+                throw new Error("Saved execution continuation does not match its adopted original owner.");
+            if (planName && planName !== retained.planName)
+                throw new Error("Saved execution continuation names another Plan.");
+            return await withManagedPlan(cwd, selected, run);
+        });
     }
     return await withRecordedPlanAttempt(cwd, decodePlanAccess(access), attemptId, run, planName);
 }

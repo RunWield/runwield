@@ -34,7 +34,12 @@ import {
     prunePackageFamily,
     type LoadedPlanPackage,
 } from "@runwield/plans/package-storage";
-import { managedPersonalStoreActive, requestManagedRetention } from "./managed.ts";
+import {
+    managedPersonalStoreActive,
+    managedProjectConnectionLifetime,
+    withManagedProjectConnection,
+} from "@runwield/plans/managed-project-connection";
+import { requestManagedRetention } from "./managed.ts";
 
 export type RetentionKind = "plans" | "records";
 export interface PruneCopy {
@@ -340,7 +345,7 @@ export async function localConfirmRetention(
         () => skipped,
     );
 }
-async function cleanCopy(root: string, copy: PruneCopy, journal: string) {
+async function cleanCopy(root: string, copy: PruneCopy, journal: string, signal?: AbortSignal) {
     if (
         typeof copy.path !== "string" ||
         isAbsolute(copy.path) ||
@@ -360,7 +365,7 @@ async function cleanCopy(root: string, copy: PruneCopy, journal: string) {
             if (cursor === root) break;
         }
     }
-    await removeContainedCopy(root, path, copy.digest, journal);
+    await removeContainedCopy(root, path, copy.digest, journal, signal);
 }
 export async function settlePruneCopies(cwd: string, kind: RetentionKind, token: string): Promise<PruneResult> {
     return await readLocalHomeStore<PruneResult>(
@@ -382,7 +387,19 @@ export async function confirmRetention(
     token: string,
     mnemotecaPort?: WorkRecordMnemotecaPort,
 ) {
-    const result = managedPersonalStoreActive()
+    const run = () => confirmRetentionInOwner(cwd, kind, token, mnemotecaPort);
+    return await (managedPersonalStoreActive() ? withManagedProjectConnection(run) : run());
+}
+
+async function confirmRetentionInOwner(
+    cwd: string,
+    kind: RetentionKind,
+    token: string,
+    mnemotecaPort?: WorkRecordMnemotecaPort,
+) {
+    const managed = managedPersonalStoreActive();
+    const signal = managed ? managedProjectConnectionLifetime() : undefined;
+    const result = managed
         ? await requestManagedRetention(cwd, { kind: "confirm-retention", target: kind, token })
         : await localConfirmRetention(cwd, kind, token, undefined, mnemotecaPort);
     if (result.indexWarning) console.warn(result.indexWarning);
@@ -393,10 +410,12 @@ export async function confirmRetention(
             const directory = join(runtime.selected.internalRoot, "prune-copies");
             const lockPath = join(directory, "cleanup.lock");
             await assertManagedRuntimePath(lockPath, binding.identity.executionAccountHome);
+            signal?.throwIfAborted();
             ensurePrivateDir(directory);
             const lock = openNativeFileLock(lockPath);
             try {
                 await lock.lock(true);
+                signal?.throwIfAborted();
                 for (const copy of result.copies) {
                     if (copy.repositoryId !== binding.identity.repositoryId) continue;
                     const key = digest(
@@ -405,8 +424,9 @@ export async function confirmRetention(
                     const journal = join(directory, key + ".json");
                     await assertManagedRuntimePath(journal, binding.identity.executionAccountHome);
                     try {
-                        await cleanCopy(binding.identity.checkoutRoot, copy, journal);
+                        await cleanCopy(binding.identity.checkoutRoot, copy, journal, signal);
                     } catch (error) {
+                        signal?.throwIfAborted();
                         // A journal can own a detached editor save. Keep that cleanup pending.
                         const entry = await lstat(journal).catch((cause: NodeJS.ErrnoException) => {
                             if (cause.code !== "ENOENT") throw cause;
@@ -414,8 +434,7 @@ export async function confirmRetention(
                         if (entry) throw error;
                     }
                 }
-                if (managedPersonalStoreActive())
-                    await requestManagedRetention(cwd, { kind: "settle-prune-copies", target: kind, token });
+                if (managed) await requestManagedRetention(cwd, { kind: "settle-prune-copies", target: kind, token });
                 else await settlePruneCopies(cwd, kind, token);
             } finally {
                 lock.close();

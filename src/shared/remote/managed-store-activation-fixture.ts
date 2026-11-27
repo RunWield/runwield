@@ -1,3 +1,4 @@
+import { authenticatedProjectStoreRequest } from "./project-store-request.ts";
 import { workRecords } from "@runwield/plans/work-records";
 import { createRemoteWorkspaceApp } from "../../ui/workspace/server.ts";
 import { serveHttp } from "../http-server.ts";
@@ -13,7 +14,7 @@ import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { startRemoteControlService } from "./control.ts";
 import { writeManagedStoreSshFixture } from "./managed-store-ssh-fixture.ts";
 import { ProjectStoreClient } from "./project-store-client.ts";
-import type { ProjectStoreBinding } from "../../plan-store/index.ts";
+import type { ProjectStoreBinding } from "@runwield/plans/project-store-wire";
 
 const gitFixture = defineCommittedGitFixture({ "README.md": "Remote source\n" });
 
@@ -132,7 +133,10 @@ export async function qualifyManagedStoreActivation(
             const response = await fetch(`${endpoint}/project-store/admit`, { method: "POST", headers });
             equal(response.status, 200);
             const binding: ProjectStoreBinding = await response.json();
-            const client = new ProjectStoreClient(endpoint, control.credential, binding);
+            const client = new ProjectStoreClient(
+                authenticatedProjectStoreRequest(endpoint, control.credential),
+                binding,
+            );
             await rejects(stat(publicResult.retainedExecutionCwd), { code: "ENOENT" });
             equal(
                 await git(remoteTarget ? join(temporary, "upstream.git") : root, ["show", "main:resumed-sentinel.txt"]),

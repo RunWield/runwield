@@ -4,7 +4,7 @@ import { remoteProjectOwner } from "../shared/remote/personal-resources.ts";
 import { enterProjectRuntime } from "../shared/project-runtime-layout.ts";
 import { ensurePrivateDir, writeJsonAtomically, syncParentDirectory } from "../shared/private-json-file.ts";
 import { openNativeFileLock } from "../shared/native-file-lock.ts";
-import { ProjectStorePreconditionError } from "../shared/remote/project-store-client.ts";
+import { ProjectStorePreconditionError } from "@runwield/plans/project-store-wire";
 import { readFile as fsReadFile, unlink, writeFile as fsWriteFile } from "node:fs/promises";
 /**
  * @module tools/multi_file_edit

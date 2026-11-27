@@ -1,24 +1,28 @@
 import { plans } from "@runwield/plans";
 import { isEpicArtifactName } from "@runwield/plans/format";
 import { validateWorkRecordCreation } from "@runwield/plans/work-record-files";
-import { isProjectId } from "@runwield/projects";
+import {
+    PROJECT_STORE_MAX_BYTES,
+    sameProjectStoreBinding,
+    validateProjectStoreBinding,
+    type ProjectStoreBinding,
+} from "@runwield/plans/project-store-wire";
 import {
     isPlanMilestone,
     isPlanMilestoneVersion,
     type PackageDocuments,
     type PlanHistory,
 } from "@runwield/plans/history";
-import type { ProjectStoreBinding, ProjectStoreCommand, ProjectStoreReply } from "../../plan-store/index.ts";
+import type { ProjectStoreCommand, ProjectStoreReply } from "../../plan-store/index.ts";
 // Six bytes per UTF-16 code unit covers JSON escaping in the response envelope.
 export const HISTORY_PAGE_CHARS = 128 * 1024;
-export const PROJECT_STORE_MAX_BYTES = 1024 * 1024;
 export interface ProjectStoreRequest {
     binding: ProjectStoreBinding;
     command: ProjectStoreCommand;
 }
 const identity = (value: string | undefined) =>
     typeof value === "string" && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(value);
-function fields(value: ProjectStoreBinding | ProjectStoreRequest, allowed: string[]) {
+function fields(value: ProjectStoreRequest, allowed: string[]) {
     if (
         !value ||
         typeof value !== "object" ||
@@ -26,11 +30,6 @@ function fields(value: ProjectStoreBinding | ProjectStoreRequest, allowed: strin
         Object.keys(value).sort().join(",") !== [...allowed].sort().join(",")
     )
         throw new Error("Unsupported request fields.");
-}
-export function validateProjectStoreBinding(binding: ProjectStoreBinding): void {
-    fields(binding, ["projectId", "repositoryId", "ownerId"]);
-    if (!isProjectId(binding.projectId) || !identity(binding.repositoryId) || !/^[a-f0-9]{64}$/.test(binding.ownerId))
-        throw new Error("Invalid Project owner binding.");
 }
 export function validateProjectStoreRequest(request: ProjectStoreRequest): void {
     fields(request, ["binding", "command"]);
@@ -450,38 +449,6 @@ export function validateProjectStoreRequest(request: ProjectStoreRequest): void 
         throw new Error("Invalid definition.");
     if (new TextEncoder().encode(JSON.stringify(request)).length > PROJECT_STORE_MAX_BYTES)
         throw new Error("Store request too large.");
-}
-export async function readProjectStoreBody(source: Request | Response): Promise<string> {
-    const reader = source.body?.getReader();
-    if (!reader) throw new Error("Missing store body.");
-    const parts: Uint8Array[] = [];
-    let size = 0;
-    try {
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            size += value.length;
-            if (size > PROJECT_STORE_MAX_BYTES) {
-                await reader.cancel();
-                throw new Error("Store body too large.");
-            }
-            parts.push(value);
-        }
-    } finally {
-        reader.releaseLock();
-    }
-    const bytes = new Uint8Array(size);
-    let offset = 0;
-    for (const part of parts) {
-        bytes.set(part, offset);
-        offset += part.length;
-    }
-    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-}
-export function sameProjectStoreBinding(left: ProjectStoreBinding, right: ProjectStoreBinding): boolean {
-    return (
-        left.projectId === right.projectId && left.repositoryId === right.repositoryId && left.ownerId === right.ownerId
-    );
 }
 export function validateProjectStoreReply(reply: ProjectStoreReply, request: ProjectStoreRequest): void {
     validateProjectStoreBinding(reply.binding);

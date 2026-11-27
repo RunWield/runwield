@@ -1,6 +1,5 @@
 import { parseProjectId, projects, type ProjectId, type ProjectStoreIdentity } from "@runwield/projects";
 import type { ProjectPlanStoreOptions } from "./store.ts";
-export { captureManagedCheckoutBinding } from "./managed-project-binding.ts";
 
 function registeredRoot(projectId: ProjectId, registry: ProjectPlanStoreOptions["registry"]): string {
     if (registry) return projects.registrations.requireActiveRoot(registry, projectId);

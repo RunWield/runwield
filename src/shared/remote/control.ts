@@ -5,7 +5,7 @@ import {
     type ManagedProjectStoreLaunch,
 } from "./project-store-launch.ts";
 import { LaptopProjectStoreService } from "./project-store-service.ts";
-import type { ProjectStoreBinding } from "../../plan-store/index.ts";
+import type { ProjectStoreBinding } from "@runwield/plans/project-store-wire";
 import { handleBrowserOpen } from "./browser-bridge.ts";
 import { serveHttp } from "../http-server.ts";
 /* Connection-scoped local control and authenticated laptop model bridge. */

@@ -69,3 +69,54 @@ test("a managed write repairs the local Git identity before opening its operatio
             await fixture.cleanup();
         }
     }));
+
+test("a managed store handle rejects an in-flight read after the host reconnects", () =>
+    withProcessGlobalTestLock(async () => {
+        const fixture = await composedRemoteFixture();
+        try {
+            ok(await fixture.run("managed-author"));
+            await fixture.run("managed-connection-reopen");
+        } finally {
+            await fixture.cleanup();
+        }
+    }));
+
+test("a managed import retains its operation when the host reconnects before returning its result", () =>
+    withProcessGlobalTestLock(async () => {
+        const fixture = await composedRemoteFixture();
+        try {
+            await fixture.run("managed-import-reconnect");
+        } finally {
+            await fixture.cleanup();
+        }
+    }));
+
+test("a managed import can replay after reconnecting between owner commit and acknowledgement", () =>
+    withProcessGlobalTestLock(async () => {
+        const fixture = await composedRemoteFixture();
+        try {
+            await fixture.run("managed-import-reconnect-after-commit");
+        } finally {
+            await fixture.cleanup();
+        }
+    }));
+
+test("revoking a managed import while its journal lock is held preserves the operation for replay", () =>
+    withProcessGlobalTestLock(async () => {
+        const fixture = await composedRemoteFixture();
+        try {
+            await fixture.run("managed-import-reconnect-with-held-lock");
+        } finally {
+            await fixture.cleanup();
+        }
+    }));
+
+test("managed CLI prune keeps its approved selection when the connection changes at the copy cleanup lock", () =>
+    withProcessGlobalTestLock(async () => {
+        const fixture = await composedRemoteFixture();
+        try {
+            await fixture.run("managed-prune-reconnect");
+        } finally {
+            await fixture.cleanup();
+        }
+    }));

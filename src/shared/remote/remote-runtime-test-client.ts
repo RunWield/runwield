@@ -12,7 +12,7 @@ import { startInteractiveSession } from "../../ui/tui/chat-session.ts";
 import { stdinStream } from "../../testing/stdin-stream.ts";
 import { processLines } from "./remote-runtime-lines.ts";
 import { configureRemotePersonalResources, type RemotePersonalResources } from "./personal-resources.ts";
-import { activateRemoteProjectOwner } from "./entry.ts";
+import { activateRemoteProjectOwner } from "./managed-project-owner.ts";
 import { configureRemoteModelConnection } from "@runwield/pi-ai/models";
 import { configureRemoteMemoryConnection } from "./memory-bridge.ts";
 import { configureRemoteSettingsConnection } from "./settings-bridge.ts";

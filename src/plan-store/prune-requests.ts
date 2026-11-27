@@ -1,4 +1,10 @@
+import {
+    assertManagedProjectConnection,
+    managedPersonalStoreActive,
+    withManagedProjectConnection,
+} from "@runwield/plans/managed-project-connection";
 import { projects } from "@runwield/projects";
+import { unlinkSync } from "node:fs";
 import { readFile, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { assertManagedRuntimePath } from "../shared/project-runtime-managed.ts";
@@ -60,6 +66,17 @@ export async function confirmPruneRequest(
     approved: ApprovedPrune[],
     mnemotecaPort?: import("../shared/work-records/mnemoteca-port.ts").WorkRecordMnemotecaPort,
 ) {
+    const run = () => applyPruneRequest(cwd, kind, approved, mnemotecaPort);
+    return await (managedPersonalStoreActive() ? withManagedProjectConnection(run) : run());
+}
+
+async function applyPruneRequest(
+    cwd: string,
+    kind: RetentionKind,
+    approved: ApprovedPrune[],
+    mnemotecaPort?: import("../shared/work-records/mnemoteca-port.ts").WorkRecordMnemotecaPort,
+) {
+    const managed = managedPersonalStoreActive();
     const location = await requestLocation(cwd, kind);
     const apply = async (request: PruneRequest) => {
         const deleted: string[] = [],
@@ -67,23 +84,33 @@ export async function confirmPruneRequest(
         while (request.approved.length) {
             const [item] = request.approved;
             const changed = await confirmRetention(cwd, kind, item.token, mnemotecaPort);
+            if (managed) assertManagedProjectConnection();
             (changed ? deleted : skipped).push(item.label);
             request.approved.shift();
             if (location && request.approved.length) writeJsonAtomically(location.path, request);
         }
-        if (location) await unlink(location.path);
+        if (location) {
+            if (managed) {
+                assertManagedProjectConnection();
+                unlinkSync(location.path);
+            } else await unlink(location.path);
+        }
         return { deleted, skipped };
     };
     if (!location) return await apply({ binding: "", approved: [...approved] });
+    if (managed) assertManagedProjectConnection();
     ensurePrivateDir(dirname(location.path));
     const lockPath = location.path + ".lock";
     const inspected = projects.checkout.inspect(cwd);
     if (inspected.kind !== "existing") throw new Error("Missing Project binding before prune confirmation.");
     await assertManagedRuntimePath(lockPath, inspected.identity.executionAccountHome);
+    if (managed) assertManagedProjectConnection();
     const lock = openNativeFileLock(lockPath);
     try {
         await lock.lock(true);
+        if (managed) assertManagedProjectConnection();
         const retained = await readRequest(location);
+        if (managed) assertManagedProjectConnection();
         if (retained) return await apply(retained);
         const request = { binding: location.binding, approved: [...approved] };
         writeJsonAtomically(location.path, request);

@@ -282,13 +282,10 @@ export { PlanAccessMismatchError } from "./access.ts";
 
 export {
     PreparedProjectStore,
-    type ProjectStoreBinding,
     type ProjectStoreCommand,
     type ProjectStoreReply,
     type ProjectStoreDocument,
 } from "./project-service.ts";
-
-export { configureManagedPlanStore } from "./managed.ts";
 
 export { receiveManagedRuntimeTransfer, acknowledgeManagedRuntimeRetirement } from "./runtime-adoption.ts";
 

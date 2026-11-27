@@ -1,4 +1,4 @@
-import { managedPersonalStoreActive } from "./managed.ts";
+import { managedPersonalStoreActive } from "@runwield/plans/managed-project-connection";
 import { opendir as fsOpendir, stat as fsStat } from "node:fs/promises";
 import { join } from "node:path";
 import { listArchivedPlans } from "../plan-store.ts";

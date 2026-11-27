@@ -1,3 +1,4 @@
+import { managedPersonalStoreActive, withManagedProjectConnection } from "@runwield/plans/managed-project-connection";
 import { StalePlanWriteError } from "@runwield/plans/store";
 import type { PackageDocuments } from "@runwield/plans/history";
 import { packageDocumentText } from "@runwield/plans/file-snapshots";
@@ -86,6 +87,8 @@ export async function readLocalHomeStore<T>(
         return await read();
     }
     if (store.kind === "empty") return empty();
+    if (store.kind === "managed-remote" && managedPersonalStoreActive())
+        return await withManagedProjectConnection(read);
     if (store.kind !== "local") return await read();
     return await bindProjectPlanStore(store.identity.projectId, { admitted: store.identity })(read, "read");
 }
@@ -315,10 +318,12 @@ export async function withLocalPlanWorkflow<T>(
     planId?: string,
 ): Promise<T> {
     if (managedPlanStoreActive()) {
-        const selection = await selectManagedPlan(cwd, planId ?? name, planId !== undefined);
-        if (planId !== undefined && selection.planName !== name)
-            throw new Error("Plan selection does not match the requested Plan name.");
-        return await withManagedPlan(cwd, selection, run);
+        return await withManagedProjectConnection(async () => {
+            const selection = await selectManagedPlan(cwd, planId ?? name, planId !== undefined);
+            if (planId !== undefined && selection.planName !== name)
+                throw new Error("Plan selection does not match the requested Plan name.");
+            return await withManagedPlan(cwd, selection, run);
+        });
     }
     const selection = await selectLocalPlanWorkflow(cwd, planId ?? name, planId !== undefined);
     if (planId !== undefined && !selection) throw new Error("Plan workflow requires its canonical owner.");
@@ -395,6 +400,8 @@ export async function importLocalPlanReference(cwd: string, reference: string) {
 /** Mutation admission is shared by Project actions that have no selected Plan. */
 export async function withLocalProjectAction<T>(cwd: string, action: () => Promise<T>): Promise<T> {
     const before = inspectLocalHomeStore(cwd);
+    if (before.kind === "managed-remote" && managedPersonalStoreActive())
+        return await withManagedProjectConnection(action);
     if (before.kind === "managed-remote" || before.kind === "retained-checkout") return await action();
     if (!projects.home.current()) await enterProjectRuntime(cwd);
     const admitted = inspectLocalHomeStore(cwd);

@@ -448,6 +448,11 @@ authoring, browser review and execution use one laptop Plan identity. Publishing
 and configured target. Canonical records and searches use the laptop store; the remote checkout gains no personal
 package or `.wld/internal/` fallback.
 
+**Acceptance: Managed disconnect and reconnect.** A passive read keeps registration and runtime unchanged. If the
+host disconnects during a read, the original store handle rejects that read and later requests. Opening the Project
+store after reconnect resolves its canonical laptop owner. A write that committed before its response was lost
+can recover the same outcome under its retained operation ID.
+
 **Acceptance: Original attempts survive adoption.** Given an unfinished pre-cutover managed attempt, admission verifies
 staged personal bytes and original owner, repository, checkout, attempt, branch and base before source retirement.
 Saved continuation resumes that original attempt. Its controller, publication and recording remain usable without
