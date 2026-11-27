@@ -41,8 +41,9 @@ import { enterProjectRuntime } from "../shared/project-runtime-layout.ts";
 import { operationHash } from "@runwield/plans/operation-receipts";
 import type { ProjectStoreCommand, ProjectStoreReply } from "./project-service.ts";
 import type { PlanAuthoringInput } from "./access.ts";
+import type { ManagedExecutionRecreationContext } from "./recovery.ts";
 import type { PlanExecutionReservation } from "./workflows.ts";
-import type { PlanId } from "@runwield/plans";
+import type { PlanFrontMatter, PlanId } from "@runwield/plans";
 import type { WorkflowIdentity } from "@runwield/plans/retained-checkout";
 import { decodePackageMarkdown, planArtifactReference, type EpicArtifactName } from "@runwield/plans/format";
 
@@ -1400,7 +1401,7 @@ export async function reopenManagedPlanReview(
 export async function recoverManagedExecution(
     cwd: string,
     name: string,
-    action: import("./project-service.ts").ProjectStoreRecoveryAction["action"],
+    action: Exclude<import("./project-service.ts").ProjectStoreRecoveryAction["action"], "recreate">,
     expectedRevision?: string,
     attemptId?: string,
     controllerRevision?: number,
@@ -1420,6 +1421,28 @@ export async function recoverManagedExecution(
         });
         const current = await readManagedPlan(cwd, selected.planId);
         if (!current) throw new Error("Recovered Plan is unavailable.");
+        return current.attrs;
+    });
+}
+
+export async function recreateManagedExecution(
+    cwd: string,
+    replacementAttemptId: string,
+    { planId, originalAttemptId, expectedRevision, operationId }: ManagedExecutionRecreationContext,
+): Promise<PlanFrontMatter> {
+    return await withManagedProjectConnection(async () => {
+        await mutateManagedPlan(cwd, {
+            kind: "recover-execution",
+            operationId,
+            planId,
+            expectedRevision,
+            attemptId: originalAttemptId,
+            replacementAttemptId,
+            action: "recreate",
+            controllerRevision: null,
+        });
+        const current = await readManagedPlan(cwd, planId);
+        if (current?.attrs.planId !== planId) throw new Error("Recovered Plan is unavailable.");
         return current.attrs;
     });
 }

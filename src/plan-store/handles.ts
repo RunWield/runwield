@@ -103,9 +103,9 @@ export async function resumePlanAttempt<T>(
                     throw new Error("Retained continuation names another Plan.");
                 return await withManagedPlan(cwd, current, run);
             }
+            const current = await selectManagedPlan(cwd, managed.planId, true);
             const execution = await readManagedExecution(cwd, managed.planId);
             if (!execution || execution.attemptId !== attemptId) throw new Error("Managed execution attempt changed.");
-            const current = await selectManagedPlan(cwd, managed.planId);
             if (planName && current.planName !== planName) throw new Error("Managed continuation names another Plan.");
             return await withManagedPlan(cwd, current, run);
         });

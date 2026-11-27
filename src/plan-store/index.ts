@@ -374,3 +374,11 @@ export {
 } from "./work-record-readers.ts";
 export { openRegisteredPlanDocuments } from "./registered-documents.ts";
 export { editCheckoutPlanBody, readCheckoutPlanDisplayCatalog } from "./checkout-presentation.ts";
+
+export {
+    readManagedRecreationOriginal,
+    readManagedRecreatedPlan,
+    recreateManagedWorktree,
+    replayManagedWorktreeRecreation,
+    type ManagedRecreateResult,
+} from "./managed-execution-recreate.ts";

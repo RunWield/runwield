@@ -31,12 +31,28 @@ export async function composedRemoteFixture(allowRecoveryFaults = false) {
     const previousPath = process.env.PATH;
     process.env.PATH = `${bin}:${previousPath}`;
     const build = { buildId: "a".repeat(64), protocol: 1 };
-    const control = startRemoteControlService(build, undefined, undefined, "", {
-        host: "fixture-host",
-        cwd: root,
-        remoteHome,
-        executable: "/verified/runtime/wld",
-    });
+    const control = startRemoteControlService(
+        build,
+        {
+            baseDir: join(temporary, "laptop-sessions"),
+            targetLabel: `fixture-host:${root}`,
+            target: {
+                host: { hostname: "fixture-host", user: "developer", port: 22, hostKeyFingerprint: "SHA256:verified" },
+                cwd: root,
+                home: remoteHome,
+                os: "Linux",
+                arch: "x86_64",
+                gitRoot: root,
+                gitDir: join(root, ".git"),
+                gitCommonDir: join(root, ".git"),
+                primaryRoot: root,
+                isWorktree: false,
+            },
+        },
+        undefined,
+        "",
+        { host: "fixture-host", cwd: root, remoteHome, executable: "/verified/runtime/wld" },
+    );
     const endpoint = `http://127.0.0.1:${control.port}`;
     const headers = { Authorization: `Bearer ${control.credential}` };
     for (const action of ["handshake", "readiness"])
@@ -92,6 +108,43 @@ export async function composedRemoteFixture(allowRecoveryFaults = false) {
         endpoint,
         headers,
         runRaw,
+        async interruptRecreateAfterGitAdd() {
+            const executable = Bun.which("git");
+            if (!executable) throw new Error("Fixture requires Git.");
+            const wrapper = join(bin, "git");
+            const boundary = join(temporary, "interrupted-git-add.json");
+            const configuration = { executable, boundary };
+            await writeFile(
+                wrapper,
+                `#!/usr/bin/env python3
+import json, os, signal, subprocess, sys
+config = json.loads(${JSON.stringify(JSON.stringify(configuration))})
+args = sys.argv[1:]
+result = subprocess.run([config['executable'], *args])
+if result.returncode == 0 and args[:3] == ['worktree', 'add', '-b']:
+    with open(config['boundary'], 'w') as marker:
+        json.dump({'branch': args[3], 'path': args[4], 'baseCommit': args[5]}, marker)
+    os.kill(os.getppid(), signal.SIGKILL)
+sys.exit(result.returncode)
+`,
+                { mode: 0o700 },
+            );
+            try {
+                const interrupted = await runRaw("managed-recovery-recreate");
+                const marker = await readFile(boundary, "utf8").catch((cause) => {
+                    throw new Error(
+                        `Recovery did not reach Git creation: ${new TextDecoder().decode(interrupted.stderr)}`,
+                        {
+                            cause,
+                        },
+                    );
+                });
+                const worktree: { branch: string; path: string; baseCommit: string } = JSON.parse(marker);
+                return { interrupted, worktree };
+            } finally {
+                await rm(wrapper);
+            }
+        },
         async withoutSsh<Result>(run: () => Promise<Result>) {
             await writeFile(disabledSshLogPath, "");
             try {

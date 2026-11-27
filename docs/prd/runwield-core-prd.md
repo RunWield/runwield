@@ -457,7 +457,10 @@ can recover the same outcome under its retained operation ID.
 contacting the execution host. During recovery, the authenticated host reports what happened to the requested
 attempt. Plans checks the personal owner, Project, repository, Plan and attempt against its saved records and checks
 that the observation supports the requested action. A mismatch stops the operation before it changes the Plan.
-The observation applies only to that recovery operation.
+The observation applies only to that recovery operation. When Recreate replaces a worktree, the same saved
+recovery operation must identify both the old attempt and its distinct replacement. Plans verifies the old
+reservation and the replacement before switching the Plan to the new attempt. If the reply is lost after the
+switch, retrying the operation returns the same outcome. Incomplete or conflicting evidence preserves the reservation.
 
 **Acceptance: Original attempts survive adoption.** Given an unfinished pre-cutover managed attempt, admission verifies
 staged personal bytes and original owner, repository, checkout, attempt, branch and base before source retirement.

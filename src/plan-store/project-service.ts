@@ -1,5 +1,5 @@
 import type { ExecutionRecoveryAction, ProjectStoreBinding } from "@runwield/plans/project-store-wire";
-import { withManagedExecutionRecovery } from "@runwield/plans/managed-store-host";
+import { adoptManagedExecutionReplacement, withManagedExecutionRecovery } from "@runwield/plans/managed-store-host";
 import { StalePlanWriteError } from "@runwield/plans/store";
 import type { ExecutionPublicationPolicy, PackagePublicationReference } from "@runwield/plans/publication-copies";
 import { projects, type HomeProjectOwner } from "@runwield/projects";
@@ -279,6 +279,7 @@ export interface ProjectStoreRecoveryAction {
     planId: string;
     expectedRevision: string;
     attemptId: string | null;
+    replacementAttemptId?: string;
     action: "non-git" | ExecutionRecoveryAction;
     controllerRevision: number | null;
 }
@@ -1534,6 +1535,61 @@ export class PreparedProjectStore {
                     if (command.kind === "reconcile")
                         return inspectOperationReceipt(directory, command.operationId, command.planId);
                     const digest = operationDigest(JSON.stringify({ binding: this.binding, command }));
+                    if (command.kind === "recover-execution" && command.action === "recreate") {
+                        const {
+                            planId,
+                            operationId,
+                            expectedRevision,
+                            attemptId: originalAttemptId,
+                            replacementAttemptId,
+                        } = command;
+                        const homeOwner = this.homeOwner;
+                        const launch = this.launch;
+                        const execution = this.execution;
+                        if (!homeOwner || !launch || !execution)
+                            throw new Error("Execution recovery requires the admitted execution host.");
+                        if (!originalAttemptId || !replacementAttemptId || originalAttemptId === replacementAttemptId)
+                            throw new Error("Recreation requires a distinct replacement for the reserved Git attempt.");
+                        const current = await selectedPackage({ planId });
+                        const name = current.metadata.name;
+                        const apply = () =>
+                            runReceiptedOperation(directory, operationId, digest, planId, async () => {
+                                this.signal?.throwIfAborted();
+                                return {
+                                    revision: await adoptManagedExecutionReplacement(homeOwner, {
+                                        planId,
+                                        originalAttemptId,
+                                        replacementAttemptId,
+                                        operationId,
+                                        expectedRevision,
+                                    }),
+                                };
+                            });
+                        if (inspectOperationReceipt(directory, operationId, planId).status === "completed")
+                            return await apply();
+                        const { proveManagedExecutionRecovery } =
+                            await import("../shared/remote/project-store-launch.ts");
+                        return await withLocalPlanWorkflow(
+                            this.cwd,
+                            name,
+                            () =>
+                                withManagedExecutionRecovery(
+                                    homeOwner,
+                                    execution,
+                                    {
+                                        planId,
+                                        expectedPlanName: name,
+                                        expectedRevision: command.controllerRevision ?? current.metadata.revision,
+                                        attemptId: originalAttemptId,
+                                        action: "recreate",
+                                        recreate: { operationId, replacementAttemptId, expectedRevision },
+                                    },
+                                    (request) => proveManagedExecutionRecovery(launch, request, this.signal),
+                                    apply,
+                                ),
+                            planId,
+                        );
+                    }
                     return await runReceiptedOperation(
                         directory,
                         command.operationId,
@@ -1669,12 +1725,6 @@ export class PreparedProjectStore {
                                                 plan.metadata.name,
                                                 command.attemptId,
                                                 current.revision,
-                                            );
-                                        else if (command.action === "recreate" && command.attemptId)
-                                            await recovery.restoreRecreatedPlanExecution(
-                                                this.cwd,
-                                                plan.metadata.name,
-                                                command.attemptId,
                                             );
                                         else
                                             throw new Error("Recovery action requires its original execution attempt.");

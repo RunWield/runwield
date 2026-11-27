@@ -3,8 +3,8 @@ import { test } from "node:test";
 import type { ProjectStoreBinding } from "@runwield/plans/project-store-wire";
 import type { ProjectStoreReply } from "../../plan-store/index.ts";
 import type { PlanHistory } from "@runwield/plans/history";
-import { deepEqual, equal, ok, rejects } from "node:assert/strict";
-import { readFile, rm, writeFile } from "node:fs/promises";
+import { deepEqual, equal, notEqual, ok, rejects } from "node:assert/strict";
+import { readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { projects } from "@runwield/projects";
 import { plans } from "@runwield/plans";
@@ -17,6 +17,8 @@ import { captureForegroundProcess } from "@runwield/resources/process";
 import { ProjectStoreClient } from "./project-store-client.ts";
 import type { ProjectStoreRequest } from "./project-store-protocol.ts";
 import { tree } from "../testing/plan-package-fixture.ts";
+import { readWorktreeRegistryAtPath, type WorktreeRegistryEntry } from "@runwield/project-runtime/registry-inspection";
+import type { RecoveryJournal } from "../workflow/execution-recovery-proof.ts";
 
 test("only authenticated, matching host observations settle canonical Plan recovery", () =>
     withProcessGlobalTestLock(async () => {
@@ -114,6 +116,319 @@ test("only authenticated, matching host observations settle canonical Plan recov
             equal("status" in settled.result && settled.result.status, "completed");
             equal((await resolve()).attrs.status, "ready_for_work");
             equal(await attempt(), undefined);
+        } finally {
+            await fixture.cleanup();
+        }
+    }));
+
+interface ManagedRecreateSeed {
+    planId: string;
+    attemptId: string;
+    original: WorktreeRegistryEntry;
+    journalDirectory: string;
+    registryPath: string;
+}
+
+interface ManagedRecreateResult {
+    confirmations: number;
+    executions: number;
+    errors: string[];
+}
+
+test("approved managed Recreate switches the reservation only after matching evidence for its linked replacement", () =>
+    withProcessGlobalTestLock(async () => {
+        const fixture = await composedRemoteFixture(true);
+        const requests: ProjectStoreRequest[] = [];
+        let accepted: ProjectStoreReply | undefined;
+        const proxy = serveHttp({ hostname: "127.0.0.1", port: 0, onListen() {} }, async (request) => {
+            const path = new URL(request.url).pathname;
+            const body = await request.text();
+            const submitted: ProjectStoreRequest | undefined = path === "/project-store" ? JSON.parse(body) : undefined;
+            const recreateRequest =
+                submitted?.command.kind === "recover-execution" && submitted.command.action === "recreate"
+                    ? requests.push(submitted)
+                    : 0;
+            if (recreateRequest === 1) return new Response(null, { status: 503 });
+            const response = await fetch(`${fixture.endpoint}${path}`, {
+                method: request.method,
+                headers: request.headers,
+                body: body || undefined,
+            });
+            if (recreateRequest === 2 && response.ok) {
+                accepted = await response.json();
+                return new Response(null, { status: 503 });
+            }
+            return response;
+        });
+        try {
+            const seed: ManagedRecreateSeed = JSON.parse(await fixture.run("managed-recovery-seed"));
+            const binding: ProjectStoreBinding = await (
+                await fetch(`${fixture.endpoint}/project-store/admit`, { method: "POST", headers: fixture.headers })
+            ).json();
+            const client = new ProjectStoreClient(
+                authenticatedProjectStoreRequest(fixture.endpoint, fixture.input.connection.credential),
+                binding,
+            );
+            const owner = projects.home.inspect(binding.projectId, binding.repositoryId);
+            const packages = join(owner.executionAccountHome, ".wld", "projects", binding.projectId, "plans");
+            const readPlan = async () => {
+                const { result } = await client.execute({ kind: "resolve-plan", reference: seed.planId });
+                ok("plan" in result && result.plan);
+                return result.plan;
+            };
+            const readAttempt = async () => {
+                const { result } = await client.execute({ kind: "read-execution", planId: seed.planId });
+                ok("execution" in result);
+                return result.execution;
+            };
+            const before = await readPlan();
+            const reserved = await readAttempt();
+            equal(reserved?.attemptId, seed.attemptId);
+            const ownerBytes = await tree(packages);
+            const originalGit = await git(fixture.root, ["worktree", "list", "--porcelain"]);
+
+            const declined: ManagedRecreateResult = JSON.parse(
+                await fixture.run("managed-recovery-decline-recreate", proxy.addr.port),
+            );
+            deepEqual(declined, { confirmations: 1, executions: 0, errors: [] });
+            equal(requests.length, 0);
+            deepEqual(await readPlan(), before);
+            deepEqual(await readAttempt(), reserved);
+            deepEqual(await tree(packages), ownerBytes);
+            equal(await git(fixture.root, ["worktree", "list", "--porcelain"]), originalGit);
+
+            const first: ManagedRecreateResult = JSON.parse(
+                await fixture.run("managed-recovery-recreate", proxy.addr.port),
+            );
+            equal(first.confirmations, 1);
+            equal(first.executions, 0);
+            ok(first.errors.length, "Recovery did not report the refused owner call.");
+            const [interrupted] = requests;
+            ok(interrupted?.command.kind === "recover-execution" && interrupted.command.action === "recreate");
+            const command = interrupted.command;
+            equal(command.attemptId, seed.attemptId);
+            equal(command.planId, seed.planId);
+            equal(command.expectedRevision, before.revision);
+            ok(command.replacementAttemptId);
+            notEqual(command.replacementAttemptId, seed.attemptId);
+            const replacementGit = await git(fixture.root, ["worktree", "list", "--porcelain"]);
+            notEqual(replacementGit, originalGit);
+            const replacementPath = replacementGit
+                .split("\n")
+                .filter((line) => line.startsWith("worktree ") && !originalGit.split("\n").includes(line))
+                .map((line) => line.slice("worktree ".length));
+            equal(replacementPath.length, 1);
+            const sentinel = join(replacementPath[0], "retry-sentinel.txt");
+            await writeFile(sentinel, "Preserve independent execution work.\n");
+
+            const assertUnchanged = async () => {
+                deepEqual(await readPlan(), before);
+                deepEqual(await readAttempt(), reserved);
+                deepEqual(await tree(packages), ownerBytes);
+                equal(await git(fixture.root, ["worktree", "list", "--porcelain"]), replacementGit);
+                equal(await readFile(sentinel, "utf8"), "Preserve independent execution work.\n");
+            };
+            await assertUnchanged();
+            await rejects(client.execute({ ...command, expectedRevision: "0".repeat(64) }), /refused/);
+            await assertUnchanged();
+            const sameAttempt = await fetch(`${fixture.endpoint}/project-store`, {
+                method: "POST",
+                headers: fixture.headers,
+                body: JSON.stringify({ binding, command: { ...command, replacementAttemptId: seed.attemptId } }),
+            });
+            equal(sameAttempt.status, 400);
+            await assertUnchanged();
+            for (const [label, changed] of [
+                ["unknown replacement", { ...command, replacementAttemptId: crypto.randomUUID().slice(0, 8) }],
+                ["unlinked operation", { ...command, operationId: crypto.randomUUID() }],
+            ] as const) {
+                await rejects(client.execute(changed), /refused/, label);
+                await assertUnchanged();
+            }
+            const detachedPath = `${replacementPath[0]}.fixture-detached`;
+            await rename(replacementPath[0], detachedPath);
+            try {
+                await rejects(client.execute(command), /refused/, "missing replacement checkout");
+            } finally {
+                await rename(detachedPath, replacementPath[0]);
+            }
+            await assertUnchanged();
+            const journalPath = join(seed.journalDirectory, `${command.operationId}.json`);
+            const journalBytes = await readFile(journalPath, "utf8");
+            const journal: RecoveryJournal = JSON.parse(journalBytes);
+            const settledEffect = journal.completedEffects?.find(
+                ({ effect }) => effect === "recovery_recreate_registry_settled",
+            );
+            ok(settledEffect?.proof?.baseCommit);
+            settledEffect.proof.baseCommit = "0".repeat(settledEffect.proof.baseCommit.length);
+            await writeFile(journalPath, JSON.stringify(journal));
+            try {
+                await rejects(client.execute(command), /refused/, "handoff base differs from saved intent");
+                await assertUnchanged();
+            } finally {
+                await writeFile(journalPath, journalBytes);
+            }
+            for (const [section, field, value] of [
+                ["request", "personalOwner", `${owner.personalOwner.identity}-different`],
+                ["request", "attemptId", crypto.randomUUID()],
+                ["request.recreate", "operationId", crypto.randomUUID()],
+                ["request.recreate", "expectedRevision", "0".repeat(64)],
+                ["request.recreate", "replacementAttemptId", seed.attemptId],
+                ["entry", "id", seed.attemptId],
+                ["", "entry", null],
+                ["", "transitionId", crypto.randomUUID()],
+                ["entry", "planId", crypto.randomUUID()],
+                ["entry", "status", "abandoned"],
+            ]) {
+                await writeFile(fixture.recoveryFaultPath, JSON.stringify({ section, field, value }));
+                await rejects(client.execute(command), /refused/, `${section}.${field}`);
+                await assertUnchanged();
+            }
+            await rm(fixture.recoveryFaultPath);
+
+            const lostReply: ManagedRecreateResult = JSON.parse(
+                await fixture.run("managed-recovery-resume-recreate", proxy.addr.port),
+            );
+            equal(lostReply.confirmations, 0);
+            equal(lostReply.executions, 0);
+            ok(lostReply.errors.length, "Recovery did not report the lost owner response.");
+            deepEqual(requests, [interrupted, interrupted]);
+            equal((await readAttempt())?.attemptId, command.replacementAttemptId);
+            const settled = await readPlan();
+            equal(settled.attrs.status, "ready_for_work");
+            equal(settled.body, before.body);
+            const settledBytes = await tree(packages);
+            const retry: ManagedRecreateResult = JSON.parse(
+                await fixture.run("managed-recovery-resume-recreate", proxy.addr.port),
+            );
+            deepEqual(retry, { confirmations: 0, executions: 1, errors: [] });
+            deepEqual(requests, [interrupted, interrupted, interrupted]);
+            const receipt = await client.execute(command);
+            equal("status" in receipt.result && receipt.result.status, "completed");
+            deepEqual(receipt, accepted);
+            deepEqual(await readPlan(), settled);
+            deepEqual(await tree(packages), settledBytes);
+            equal(await git(fixture.root, ["worktree", "list", "--porcelain"]), replacementGit);
+            equal(await readFile(sentinel, "utf8"), "Preserve independent execution work.\n");
+        } finally {
+            await proxy.shutdown();
+            await fixture.cleanup();
+        }
+    }));
+
+test("TUI Load Plan resumes a killed managed recreation only while the replacement Git evidence matches", () =>
+    withProcessGlobalTestLock(async () => {
+        const fixture = await composedRemoteFixture();
+        try {
+            const seed: ManagedRecreateSeed = JSON.parse(await fixture.run("managed-recovery-seed"));
+            const binding: ProjectStoreBinding = await (
+                await fetch(`${fixture.endpoint}/project-store/admit`, { method: "POST", headers: fixture.headers })
+            ).json();
+            const client = new ProjectStoreClient(
+                authenticatedProjectStoreRequest(fixture.endpoint, fixture.input.connection.credential),
+                binding,
+            );
+            const owner = projects.home.inspect(binding.projectId, binding.repositoryId);
+            const packages = join(owner.executionAccountHome, ".wld", "projects", binding.projectId, "plans");
+            const beforeBytes = await tree(packages);
+            const readAttempt = async () => {
+                const { result } = await client.execute({ kind: "read-execution", planId: seed.planId });
+                ok("execution" in result);
+                return result.execution?.attemptId;
+            };
+            equal(await readAttempt(), seed.attemptId);
+
+            const rescueContents = "Preserve the committed original work.\n";
+            await writeFile(join(seed.original.path, "original-work.txt"), rescueContents);
+            await git(seed.original.path, ["add", "original-work.txt"]);
+            await git(seed.original.path, ["commit", "-m", "Original execution work"]);
+            const originalHead = await git(seed.original.path, ["rev-parse", "HEAD"]);
+
+            const { interrupted, worktree: replacement } = await fixture.interruptRecreateAfterGitAdd();
+            notEqual(interrupted.code, 0);
+            const journals = (await readdir(seed.journalDirectory)).filter((name) => name.endsWith(".json"));
+            equal(journals.length, 1);
+            const journalPath = join(seed.journalDirectory, journals[0]);
+            const journal: RecoveryJournal = JSON.parse(await readFile(journalPath, "utf8"));
+            const worktreesAfterCrash = await git(fixture.root, ["worktree", "list", "--porcelain"]);
+            const intent = journal.intendedPostconditions?.managedRecreation;
+            ok(intent);
+            equal(intent.originalAttemptId, seed.attemptId);
+            equal(intent.baseCommit, replacement.baseCommit);
+            notEqual(intent.replacementAttemptId, seed.attemptId);
+            equal(
+                journal.completedEffects?.some(({ effect }) => effect === "recovery_recreate_registry_settled"),
+                false,
+            );
+            const readRegistry = () => readWorktreeRegistryAtPath(seed.registryPath);
+            const records = await readRegistry();
+            const pending = records.find(({ id }) => id === intent.replacementAttemptId);
+            ok(pending?.creationContext, "Git creation finished before registry settlement");
+            equal(pending.path, replacement.path);
+            equal(pending.branch, replacement.branch);
+            equal(records.find(({ id }) => id === seed.attemptId)?.status, "abandoned");
+            equal(await git(replacement.path, ["rev-parse", "HEAD"]), replacement.baseCommit);
+            const replacementMarker = join(replacement.path, "resume-sentinel.txt");
+            const replacementContents = "Reuse the original replacement checkout.\n";
+            await writeFile(replacementMarker, replacementContents);
+            const gitLink = await readFile(join(replacement.path, ".git"), "utf8");
+
+            const assertOriginalPreserved = async () => {
+                equal(await git(fixture.root, ["rev-parse", seed.original.branch]), originalHead);
+                equal(
+                    await git(fixture.root, ["show", `${seed.original.branch}:original-work.txt`]),
+                    rescueContents.trim(),
+                );
+            };
+            const assertRefused = async () => {
+                const rejected: ManagedRecreateResult = JSON.parse(
+                    await fixture.run("managed-recovery-resume-recreate"),
+                );
+                equal(rejected.confirmations, 0);
+                equal(rejected.executions, 0);
+                ok(
+                    rejected.errors.some((error) => /preserve|changed.*evidence/i.test(error)),
+                    JSON.stringify(rejected),
+                );
+                equal(await readAttempt(), seed.attemptId);
+                deepEqual(await tree(packages), beforeBytes);
+                deepEqual(await readRegistry(), records);
+                equal(await readFile(replacementMarker, "utf8"), replacementContents);
+                await assertOriginalPreserved();
+            };
+
+            const wrongBranch = "fixture-wrong-recreation";
+            await git(fixture.root, ["branch", wrongBranch, replacement.baseCommit]);
+            await git(replacement.path, ["symbolic-ref", "HEAD", `refs/heads/${wrongBranch}`]);
+            try {
+                await assertRefused();
+                equal(await git(replacement.path, ["branch", "--show-current"]), wrongBranch);
+            } finally {
+                await git(replacement.path, ["symbolic-ref", "HEAD", `refs/heads/${replacement.branch}`]);
+            }
+            await git(fixture.root, ["update-ref", `refs/heads/${replacement.branch}`, originalHead]);
+            try {
+                await assertRefused();
+                equal(await git(replacement.path, ["rev-parse", "HEAD"]), originalHead);
+            } finally {
+                await git(fixture.root, ["update-ref", `refs/heads/${replacement.branch}`, replacement.baseCommit]);
+            }
+
+            const resume: ManagedRecreateResult = JSON.parse(await fixture.run("managed-recovery-resume-recreate"));
+            deepEqual(resume, { confirmations: 0, executions: 1, errors: [] });
+            equal(await readAttempt(), intent.replacementAttemptId);
+            await rejects(readFile(journalPath), { code: "ENOENT" });
+            equal(await git(fixture.root, ["worktree", "list", "--porcelain"]), worktreesAfterCrash);
+            const finalRegistry = await readRegistry();
+            deepEqual(finalRegistry.map(({ id }) => id).sort(), records.map(({ id }) => id).sort());
+            const settled = finalRegistry.find(({ id }) => id === intent.replacementAttemptId);
+            equal(settled?.path, replacement.path);
+            equal(settled?.branch, replacement.branch);
+            equal(settled?.creationContext, undefined);
+            equal(await git(replacement.path, ["rev-parse", "HEAD"]), replacement.baseCommit);
+            equal(await readFile(replacementMarker, "utf8"), replacementContents);
+            equal(await readFile(join(replacement.path, ".git"), "utf8"), gitLink);
+            await assertOriginalPreserved();
         } finally {
             await fixture.cleanup();
         }

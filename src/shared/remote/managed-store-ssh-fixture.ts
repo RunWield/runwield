@@ -39,7 +39,11 @@ if distort_recovery and result.returncode == 0:
     with open(fault_path) as f:
         fault = json.load(f)
     evidence = json.loads(result.stdout)
-    evidence[fault['section']][fault['field']] = fault['value']
+    section = evidence
+    if fault['section']:
+        for segment in fault['section'].split('.'):
+            section = section[segment]
+    section[fault['field']] = fault['value']
     print(json.dumps(evidence))
 sys.exit(result.returncode)
 `,

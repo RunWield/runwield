@@ -57,6 +57,13 @@ import { SharedPlanLockError } from "../shared/collaboration/lock.ts";
 import { findById as findWorktreeRegistryEntryById } from "../shared/worktree-registry.ts";
 import { recordWorkflowOutcome } from "../shared/workflow/outcome-observations.ts";
 import { resolveWorkflowPlanLocation } from "./location.ts";
+import type {
+    ManagedRecreateIntent,
+    MarkManagedRecreateEffect,
+    RecoveryJournal,
+} from "../shared/workflow/execution-recovery-proof.ts";
+import { projects } from "@runwield/projects";
+import { assertManagedRuntimePath } from "../shared/project-runtime-managed.ts";
 
 export interface TransitionRecoveryAction {
     label: string;
@@ -138,6 +145,10 @@ interface TransitionOptionsBase {
 interface RecoveryPlanSource {
     planName: string;
     snapshot: PlanSnapshot;
+}
+
+function managedRecreatePending(record: Partial<RecoveryJournal>): boolean {
+    return record.operation === "recovery_recreate" && Boolean(record.intendedPostconditions?.managedRecreation);
 }
 const activeRecoveryPlanSource = new AsyncLocalStorage<RecoveryPlanSource>();
 export function recoveryPlanSnapshot(planName: string): PlanSnapshot {
@@ -808,10 +819,11 @@ async function runSemanticTransition<T>({
                     });
                 };
                 const canSupersede = (record: RecoveryRecord) =>
-                    supersedesUnresolved ||
-                    (record.planName === planName &&
-                        typeof record.operation === "string" &&
-                        supersedesOperations.includes(record.operation));
+                    !managedRecreatePending(record) &&
+                    (supersedesUnresolved ||
+                        (record.planName === planName &&
+                            typeof record.operation === "string" &&
+                            supersedesOperations.includes(record.operation)));
                 const conflictingRecoveryRecord = existingRecoveryRecords.find(
                     (record) => conflictsWithThisTransition(record) && !canSupersede(record),
                 );
@@ -860,6 +872,8 @@ async function runSemanticTransition<T>({
                                           path: entry.path,
                                           branch: entry.branch,
                                           status: entry.status,
+                                          baseCommit: entry.baseCommit,
+                                          baseBranch: entry.baseBranch,
                                           executionBaselineTree: entry.executionBaselineTree,
                                           updatedAt: entry.updatedAt,
                                       }
@@ -873,12 +887,20 @@ async function runSemanticTransition<T>({
                         plan: beforePlan
                             ? {
                                   path: beforePlan.path,
+                                  planId: beforePlan.attrs.planId,
                                   revision: beforePlan.revision,
                                   status: beforePlan.attrs.status,
                                   controllerState: pickControllerState(beforePlan.attrs),
                               }
                             : { missing: true },
                         ...(attemptBeforeFacts.length > 0 ? { worktreeRegistry: attemptBeforeFacts } : {}),
+                        ...(managedRecreatePending({ operation, intendedPostconditions: postconditions })
+                            ? {
+                                  supersededTransitionIds: supersededRecords
+                                      .map((record) => String(record.transitionId || ""))
+                                      .filter((id) => /^[a-f0-9-]{36}$/.test(id)),
+                              }
+                            : {}),
                     },
                 });
                 try {
@@ -1658,6 +1680,8 @@ export async function closeTransitionRecordByAttestation(
         // going with what we know rather than making the corner permanent.
         record = { transitionId, unreadable: compactError(error) };
     }
+    if (managedRecreatePending(record as Partial<RecoveryJournal>))
+        return { closed: false, reason: "The managed worktree recreation must finish against its Plan owner." };
     const archiveDir = join(await enteredTransitionJournalDir(projectRoot), "attested");
     const archivedPath = join(archiveDir, `${transitionId}.json`);
     await fsMkdir(archiveDir, { recursive: true });
@@ -1800,6 +1824,14 @@ export async function reconcileTransitionRecoveryRecords(
 
         if (!transitionId) {
             reconciliations.push({ ...base, resolvable: false, reason: "journal file is unreadable or has no id" });
+            continue;
+        }
+        if (managedRecreatePending(record)) {
+            reconciliations.push({
+                ...base,
+                resolvable: false,
+                reason: "The managed worktree recreation is awaiting verification against its Plan owner",
+            });
             continue;
         }
         if (currentPackageSelection() && record.packageSource) {
@@ -2183,6 +2215,7 @@ export async function runEpicDecompositionFinalizeTransition<T>(
 export async function runRecoveryTransition<T>(
     opts: TransitionOptionsBase & {
         action: "recover" | "reset" | "recreate" | "abandon";
+        managedRecreation?: ManagedRecreateIntent;
         recover: (ctx: RollbackTransitionContext) => Promise<T>;
     },
 ): Promise<TransitionResult> {
@@ -2196,6 +2229,8 @@ export async function runRecoveryTransition<T>(
         resources,
         supersedesUnresolved: true,
         expectedRevision: opts.expectedRevision,
+        postconditions: opts.managedRecreation ? { managedRecreation: opts.managedRecreation } : undefined,
+        irreversibleEffects: opts.managedRecreation ? ["recovery_recreate_prepared"] : undefined,
         apply: async (ctx) => {
             const value = await activeRecoveryPlanSource.run(
                 { planName: opts.planName, snapshot: ctx.beforePlan },
@@ -2205,6 +2240,80 @@ export async function runRecoveryTransition<T>(
             return { postconditions: { action: opts.action }, value };
         },
     });
+}
+
+/** Resume the original host journal under the same locks as the first recovery request. */
+export async function replayManagedRecreateTransition<T>(
+    projectRoot: string,
+    planName: string,
+    transitionId: string,
+    intent: ManagedRecreateIntent,
+    replay: (
+        record: RecoveryJournal,
+        markEffect: MarkManagedRecreateEffect,
+    ) => Promise<{ value: T; complete: boolean }>,
+): Promise<T | null> {
+    return await withOrderedTransitionResources(
+        projectRoot,
+        [
+            { kind: "plan", id: planName },
+            { kind: "attempt", id: intent.originalAttemptId },
+        ],
+        async () => {
+            const path = await enteredTransitionJournalPath(projectRoot, transitionId);
+            const owner = projects.checkout.inspect(projectRoot);
+            if (owner.kind !== "existing") throw new Error("The execution Project identity is unavailable.");
+            await assertManagedRuntimePath(path, owner.identity.executionAccountHome);
+            const record: RecoveryJournal | null = await fsReadFile(path, "utf8")
+                .then((value) => JSON.parse(value))
+                .catch((error) => {
+                    if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
+                    throw error;
+                });
+            if (!record) return null;
+            const saved = record.intendedPostconditions?.managedRecreation;
+            if (
+                !managedRecreatePending(record) ||
+                record.transitionId !== transitionId ||
+                record.planName !== planName ||
+                saved?.originalAttemptId !== intent.originalAttemptId ||
+                saved.replacementAttemptId !== intent.replacementAttemptId ||
+                saved.baseCommit !== intent.baseCommit ||
+                saved.baseBranch !== intent.baseBranch ||
+                !Array.isArray(record.completedEffects)
+            )
+                throw new Error("Managed worktree recreation journal changed.");
+            const superseded = record.beforeFacts?.supersededTransitionIds ?? [];
+            if (
+                !Array.isArray(superseded) ||
+                superseded.some((id) => !/^[a-f0-9-]{36}$/.test(id) || id === transitionId)
+            )
+                throw new Error("Managed worktree recreation journal names invalid prior operations.");
+            const markEffect: MarkManagedRecreateEffect = async (effect, proof) => {
+                record.completedEffects!.push({
+                    effect,
+                    proof,
+                    completedAt: new Date().toISOString(),
+                });
+                await writeJournal(projectRoot, transitionId, {
+                    ...record,
+                    state: "applying",
+                    updatedAt: new Date().toISOString(),
+                });
+            };
+            const { value, complete } = await replay(record, markEffect);
+            if (complete) {
+                await writeJournal(projectRoot, transitionId, {
+                    ...record,
+                    state: "committed",
+                    committedAt: new Date().toISOString(),
+                });
+                for (const id of superseded) await removeJournal(projectRoot, id);
+                await removeJournal(projectRoot, transitionId);
+            }
+            return value;
+        },
+    );
 }
 
 /**

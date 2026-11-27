@@ -141,7 +141,16 @@ test("only the authenticated Project service can supply recovery evidence for a 
     const host = "@runwield/plans/managed-store-host";
     const service = "src/plan-store/project-service.ts";
     const recover = `import { withManagedExecutionRecovery } from "${host}";`;
+    const adopt = `import { adoptManagedExecutionReplacement } from "${host}";`;
     equal(inspectPlanStoreImports(service, recover).length, 0);
+    equal(inspectPlanStoreImports(service, adopt).length, 0);
+    equal(
+        inspectPlanStoreImports(
+            service,
+            `import { withManagedExecutionRecovery, adoptManagedExecutionReplacement } from "${host}";`,
+        ).length,
+        0,
+    );
     for (const file of [
         "src/shared/remote/managed-project-owner.ts",
         "src/plan-store/managed.ts",
@@ -149,6 +158,7 @@ test("only the authenticated Project service can supply recovery evidence for a 
         "packages/plans/index.ts",
     ]) {
         equal(inspectPlanStoreImports(file, recover).length, 1, file);
+        equal(inspectPlanStoreImports(file, adopt).length, 1, file);
     }
     for (const source of [
         `import { configureManagedPlanStore as recover } from "${host}";`,
@@ -157,6 +167,7 @@ test("only the authenticated Project service can supply recovery evidence for a 
         `const managed = await import("${host}");`,
         `export { withManagedExecutionRecovery } from "${host}";`,
         'import { withManagedExecutionRecovery } from "../../packages/plans/execution-recovery.ts";',
+        'import { adoptManagedExecutionReplacement } from "../../packages/plans/managed-execution-adoption.ts";',
     ]) {
         equal(inspectPlanStoreImports(service, source).length, 1, source);
     }

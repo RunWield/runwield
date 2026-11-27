@@ -70,7 +70,13 @@ export function validateProjectStoreRequest(request: ProjectStoreRequest): void 
             "options",
         ],
         "lifecycle-decision": [...common, "decision"],
-        "recover-execution": [...common, "attemptId", "action", "controllerRevision"],
+        "recover-execution": [
+            ...common,
+            "attemptId",
+            "action",
+            "controllerRevision",
+            ...(command.kind === "recover-execution" && command.action === "recreate" ? ["replacementAttemptId"] : []),
+        ],
         "reopen-review": [...common, "attemptId"],
         "unshare-preview": ["kind", "options"],
         collaboration: ["kind", "operationId", "intent"],
@@ -301,6 +307,15 @@ export function validateProjectStoreRequest(request: ProjectStoreRequest): void 
             command.targetBranch.includes(".."))
     )
         throw new Error("Invalid publication input.");
+    if (
+        command.kind === "recover-execution" &&
+        command.action === "recreate" &&
+        (command.attemptId === null ||
+            !identity(command.attemptId) ||
+            !identity(command.replacementAttemptId) ||
+            command.replacementAttemptId === command.attemptId)
+    )
+        throw new Error("Invalid recovery replacement identity.");
     if (command.kind === "settle-in-place" && !identity(command.attemptId))
         throw new Error("Invalid in-place execution identity.");
     if (

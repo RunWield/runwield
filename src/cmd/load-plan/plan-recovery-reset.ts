@@ -26,10 +26,18 @@ import { executeReadyPlanWithRepair } from "./plan-execution.ts";
 import { updateEntry as updateWorktreeRegistryEntry } from "../../shared/worktree-registry.ts";
 import { settleDiscardedRecoveryAttempt } from "./plan-recovery-discard.ts";
 import { transitionFailureError } from "./transition-failure.ts";
+import {
+    readManagedRecreationOriginal,
+    readManagedRecreatedPlan,
+    recreateManagedWorktree,
+    replayManagedWorktreeRecreation as replayManagedRecreation,
+    type ManagedRecreateResult,
+} from "../../plan-store/index.ts";
 
 import type { PlanFrontMatter } from "@runwield/plans";
 import type { RecoveryWorktreeContext } from "./plan-session-types.ts";
 import type { RecoveryActionContext, RecoveryActionOutcome } from "./plan-recovery-actions.ts";
+import type { RecoveryFlowPlan } from "./plan-recovery-flow.ts";
 
 interface RecoveryPlanTransitionValue {
     value?: PlanFrontMatter;
@@ -42,6 +50,40 @@ interface RecoveryRecreateTransitionResult {
 
 interface RecoveryRecreateTransitionValue {
     value?: RecoveryRecreateTransitionResult;
+}
+
+/** Replay the host operation before showing a menu or starting implementation. */
+export async function replayManagedWorktreeRecreation(
+    plan: RecoveryFlowPlan,
+    mayDiscardOriginal = false,
+): Promise<ManagedRecreateResult | "confirmation" | null> {
+    const result = await replayManagedRecreation(plan.planName, plan.attrs.planId, mayDiscardOriginal);
+    if (result && result !== "confirmation") await refreshRecreatedPlan(plan, result.worktree.id);
+    return result;
+}
+
+async function refreshRecreatedPlan(plan: RecoveryFlowPlan, attemptId: string) {
+    Object.assign(plan, await readManagedRecreatedPlan(plan.planName, plan.attrs.planId, attemptId));
+}
+
+type RecoveryExecutionContext = Pick<
+    RecoveryActionContext,
+    "projectRoot" | "plan" | "uiAPI" | "agentName" | "session" | "recordRecoveryResult"
+>;
+
+export async function executeRecreatedRecovery(context: RecoveryExecutionContext): Promise<RecoveryActionOutcome> {
+    const { projectRoot, plan, uiAPI } = context;
+    await executeReadyPlanWithRepair({
+        projectRoot,
+        plan,
+        agentName: context.agentName,
+        uiAPI,
+        executePlan: context.session.executePlan,
+        continueWorkflowValidation: context.session.runValidation,
+        session: context.session,
+    });
+    await context.recordRecoveryResult("reset", "handled");
+    return { kind: "handled" };
 }
 
 export async function resetRecoveryPlan(
@@ -134,22 +176,31 @@ export async function resetRecoveryPlan(
         const resetTransitionValue = (resetTransition.value || {}) as RecoveryPlanTransitionValue;
         plan.attrs = { ...plan.attrs, ...resetTransitionValue.value, status: "ready_for_work" };
     }
-    await executeReadyPlanWithRepair({
-        projectRoot,
-        plan,
-        agentName: context.agentName,
-        uiAPI,
-        executePlan: context.session.executePlan,
-        continueWorkflowValidation: context.session.runValidation,
-        session: context.session,
-    });
-    await context.recordRecoveryResult("reset", "handled");
-    return { kind: "handled" };
+    return await executeRecreatedRecovery(context);
 }
 
 async function recreateRecoveryWorktree(context: RecoveryActionContext): Promise<RecoveryWorktreeContext | null> {
     const { projectRoot, plan, uiAPI } = context;
     const worktreeContext = context.worktreeContext;
+    try {
+        let resumed = await replayManagedWorktreeRecreation(plan);
+        if (resumed === "confirmation") {
+            if (!(await confirmWorktreeAction(plan.planName, uiAPI, "Delete/recreate"))) return null;
+            resumed = await replayManagedWorktreeRecreation(plan, true);
+            return resumed && resumed !== "confirmation" ? resumed.worktree : null;
+        }
+        if (resumed) return resumed.worktree;
+        const original = await readManagedRecreationOriginal(plan.planName, plan.attrs.planId, worktreeContext?.id);
+        if (original) return await startManagedWorktreeRecreation(context, original);
+    } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        uiAPI.appendSystemMessage(
+            buildPlanRecoveryUserMessage({ kind: "worktree_cleanup_result", failed: true, detail }),
+            true,
+            "RunWield",
+        );
+        return null;
+    }
     const recreateBaseRef = getRecordedWorktreeRecreateBase(worktreeContext);
     if (!recreateBaseRef) {
         uiAPI.appendSystemMessage(buildPlanRecoveryUserMessage({ kind: "recreate_base_missing" }), true, "RunWield");
@@ -271,4 +322,36 @@ async function recreateRecoveryWorktree(context: RecoveryActionContext): Promise
         );
         return null;
     }
+}
+
+async function startManagedWorktreeRecreation(
+    context: RecoveryActionContext,
+    original: NonNullable<Awaited<ReturnType<typeof readManagedRecreationOriginal>>>,
+): Promise<RecoveryWorktreeContext | null> {
+    const { plan, worktreeContext, uiAPI } = context;
+    const planId = plan.attrs.planId;
+    if (
+        !planId ||
+        !plan.revision ||
+        original.path !== worktreeContext?.path ||
+        original.branch !== worktreeContext?.branch
+    )
+        throw new Error("Managed worktree recreation requires the Plan's original attempt and revision.");
+    const baseRef = getRecordedWorktreeRecreateBase(original);
+    if (!baseRef) {
+        uiAPI.appendSystemMessage(buildPlanRecoveryUserMessage({ kind: "recreate_base_missing" }), true, "RunWield");
+        return null;
+    }
+    const confirmed = (await pathExists(original.path))
+        ? await confirmWorktreeAction(plan.planName, uiAPI, "Delete/recreate")
+        : await confirmMissingWorktreeRecreate(plan.planName, worktreeContext, uiAPI);
+    if (!confirmed) return null;
+    const value = await recreateManagedWorktree(plan.planName, planId, plan.revision, original, baseRef);
+    await refreshRecreatedPlan(plan, value.worktree.id);
+    uiAPI.appendSystemMessage(
+        buildPlanRecoveryUserMessage({ kind: "worktree_cleanup_result", detail: value.cleanupMessage }),
+        false,
+        "RunWield",
+    );
+    return value.worktree;
 }

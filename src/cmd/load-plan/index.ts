@@ -34,7 +34,11 @@ import { isPlanArchivePending, startBackgroundArchive } from "./archive-backgrou
 import { decidePostPlanning } from "@runwield/workflow/decisions";
 import { buildPlanningReReviewRequest, buildResumeRequest } from "./plan-presentation.ts";
 import { buildPlanSummary } from "../../shared/plan-presentation.ts";
-import { handlePlanRecovery, SYSTEM_RECOVERY_FLOW_PORTS } from "./plan-recovery-flow.ts";
+import {
+    handlePlanRecovery,
+    resumeManagedRecreationFromLoadPlan,
+    SYSTEM_RECOVERY_FLOW_PORTS,
+} from "./plan-recovery-flow.ts";
 import {
     buildManagedUnsupportedLoadPlanMessage,
     createPlanSessionSurface,
@@ -361,6 +365,20 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
                 true,
                 "RunWield",
             );
+            return;
+        }
+        const recoveryAgentName = isEpicPlan(plan.attrs) ? AGENTS.ARCHITECT : AGENTS.PLANNER;
+        if (
+            await resumeManagedRecreationFromLoadPlan({
+                projectRoot,
+                plan,
+                agentName: recoveryAgentName,
+                uiAPI,
+                session,
+                ports: SYSTEM_RECOVERY_FLOW_PORTS,
+            })
+        ) {
+            restoreAgentName = selectPlanFlowRestoreAgent(initialAgentName, recoveryAgentName);
             return;
         }
         // Clear our own leftovers before doing anything with the Plan. An interrupted

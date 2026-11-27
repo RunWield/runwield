@@ -937,7 +937,35 @@ try {
         equal(document.body, "# Canonical recovery\n");
         equal(document.attrs.status, "in_progress");
         equal(document.attrs.worktreeStatus, undefined);
-        console.log(JSON.stringify({ planId: document.planId, attemptId: state.worktreeId }));
+        const { resolveProjectRuntimeLayout } = await import("@runwield/project-runtime/layout");
+        const { findById } = await import("../worktree-registry.ts");
+        const layout = resolveProjectRuntimeLayout(input.cwd);
+        const original = await findById(input.cwd, state.worktreeId);
+        ok(original);
+        console.log(
+            JSON.stringify({
+                planId: document.planId,
+                attemptId: state.worktreeId,
+                original,
+                journalDirectory: layout.selected.transitionJournalsDir,
+                registryPath: layout.primary.worktreeRegistryPath,
+            }),
+        );
+    } else if (
+        command === "managed-recovery-recreate" ||
+        command === "managed-recovery-decline-recreate" ||
+        command === "managed-recovery-resume-recreate"
+    ) {
+        const { recreateManagedFixturePlan } = await import("./managed-recreate-fixture.ts");
+        const confirmation =
+            command === "managed-recovery-recreate"
+                ? "confirm"
+                : command === "managed-recovery-decline-recreate"
+                  ? "cancel"
+                  : null;
+        console.log(
+            JSON.stringify(await recreateManagedFixturePlan(input.cwd, "recovery", confirmation, input.connection)),
+        );
     } else if (command === "managed-recovery-abandon") {
         const { updateEntry } = await import("../worktree-registry.ts");
         ok(input.attemptId);

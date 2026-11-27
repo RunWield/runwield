@@ -6,6 +6,7 @@ import {
     managedPlanStoreActive,
     reopenManagedPlanReview,
     recoverManagedExecution,
+    recreateManagedExecution,
     settleRetainedExecutionAbandonment,
 } from "./managed.ts";
 import { mkdir } from "node:fs/promises";
@@ -158,12 +159,23 @@ export async function reopenPlanReview(
         throw new Error(result.message || `Review reopen transition failed for ${name}.`);
 }
 
+export interface ManagedExecutionRecreationContext {
+    planId: string;
+    originalAttemptId: string;
+    operationId: string;
+    expectedRevision: string;
+}
+
 /** Restore the owner-captured document into the freshly registered execution attempt. */
-export async function restoreRecreatedPlanExecution(cwd: string, name: string, attemptId: string) {
+export async function restoreRecreatedPlanExecution(
+    cwd: string,
+    name: string,
+    attemptId: string,
+    managed?: ManagedExecutionRecreationContext,
+) {
     if (managedPlanStoreActive()) {
-        const snapshot = recoveryPlanSnapshot(name);
-        if (!snapshot) throw new Error("The recovery transaction has no retained Plan source.");
-        return await recoverManagedExecution(cwd, name, "recreate", snapshot.revision, attemptId);
+        if (!managed) throw new Error("Recreation requires the saved host recovery operation.");
+        return await recreateManagedExecution(cwd, attemptId, managed);
     }
     const source = projects.home.current() ? await loadPlan(cwd, name) : recoveryPlanSnapshot(name);
     if (!source) throw new Error("The recovery transaction has no retained Plan source.");

@@ -29,29 +29,17 @@ import {
     packageDocumentContent,
     commitPlanPackageBatch,
     savePlanPackageDocument,
-    listPlanPackages,
-    resolvePlanPackageReference,
     readPlanPackage,
     readPlanPackageInput,
     readPlanPackagePublication,
-    writePackageControllerEvidence,
     updatePlanPackageMetadata,
     withPlanPackageLocks,
     planPackageFamilyIds,
-    packageDefinitionStrings,
-    packageControllerStrings,
-    packageControllerNumbers,
-    packageControllerEnums,
     type LoadedPlanPackage,
     type PackageDefinition,
-    type PackageControllerState,
     type PackageWorkflowEvidence,
 } from "@runwield/plans/package-storage";
-import {
-    CONTROLLER_STATE_FIELDS,
-    pickControllerState,
-    type WorkflowControllerState,
-} from "@runwield/plans/controller-state";
+import type { WorkflowControllerState } from "@runwield/plans/controller-state";
 import type { PlanFrontMatter, PlanId } from "@runwield/plans";
 
 export interface PlanExecutionHost {
@@ -336,7 +324,10 @@ export async function assertPackageWorkflowInput(
     }
     const owner = await selectedPackage(planName);
     const generated = owner.metadata.workflow?.generatedArtifact;
-    const artifact = generated?.attemptId === owner.metadata.workflow?.attempt?.attemptId ? generated : undefined;
+    const artifact =
+        (generated?.reusedByAttemptId ?? generated?.attemptId) === owner.metadata.workflow?.attempt?.attemptId
+            ? generated
+            : undefined;
     for (const plan of packages) {
         const reference = input.inputs.find((ref) => ref.planId === plan.metadata.planId);
         if (!reference) throw new Error("Required parent input is missing.");
@@ -431,60 +422,15 @@ export async function loadPackageWorkflowPlan(
     return await projectPlanFiles.forOwner(currentPackageProject()!).readWorkflow(planName, currentPackageSelection());
 }
 
-export async function preparePackageWorkflowUpdate(
+export function preparePackageWorkflowUpdate(
     current: LoadedPlanPackage,
     attrs: PlanFrontMatter,
     updates: Partial<PlanFrontMatter>,
     workflowUpdate?: PackageWorkflowEvidence,
 ) {
-    const scalarFields = [
-        ...packageControllerStrings,
-        ...packageControllerNumbers,
-        ...Object.keys(packageControllerEnums),
-    ];
-    const definitionFields = [
-        "classification",
-        "status",
-        "affectedPaths",
-        "order",
-        "frontend",
-        "devServerHmr",
-        "tickets",
-        "supersedes",
-        "planDeviations",
-        ...packageDefinitionStrings,
-    ];
-    const workflow = { ...current.metadata.workflow, ...workflowUpdate };
-    if (Object.hasOwn(updates, "workRecord")) workflow.workRecord = updates.workRecord;
-    const files = projectPlanFiles.forOwner(currentPackageProject()!);
-    const entry = await files.observeAttempt(current, workflow.attempt);
-    if (entry?.status === "abandoned") workflow.attempt = undefined;
-    const catalog = await listPlanPackages(currentPackageProject()!, true);
-    if (catalog.issues.length) throw new Error(catalog.issues[0].message);
-    const related = (reference: string) => resolvePlanPackageReference(catalog.packages, reference, attrs.parentPlan);
-    const relations = {
-        parentPlanId: Object.hasOwn(updates, "parentPlan")
-            ? updates.parentPlan
-                ? related(updates.parentPlan)
-                : null
-            : current.metadata.parentPlanId,
-        dependencyPlanIds: Object.hasOwn(updates, "dependencies")
-            ? (updates.dependencies || []).map(related)
-            : current.metadata.dependencyPlanIds,
-    };
-    const definition: PackageDefinition = { ...current.metadata.definition };
-    const controller: PackageControllerState = { ...current.metadata.controller };
-    const state = { ...(await files.readController(current)), ...pickControllerState(updates) };
-    for (const [key, value] of Object.entries(updates)) {
-        if (definitionFields.includes(key)) Object.assign(definition, { [key]: value ?? undefined });
-        if (scalarFields.includes(key)) Object.assign(controller, { [key]: value });
-    }
-    const evidence: WorkflowControllerState = {};
-    for (const key of CONTROLLER_STATE_FIELDS) {
-        if (!scalarFields.includes(key) && state[key] !== undefined) Object.assign(evidence, { [key]: state[key] });
-    }
-    const ref = await writePackageControllerEvidence(currentPackageProject()!, current.metadata.planId, evidence);
-    return { ...relations, definition, controller, workflow: { ...workflow, controller: ref } };
+    return projectPlanFiles
+        .forOwner(currentPackageProject()!)
+        .prepareWorkflowUpdate(current, attrs, updates, workflowUpdate);
 }
 
 export async function reopenedPackageReview(plan: LoadedPlanPackage) {
@@ -607,7 +553,13 @@ export async function updatePackageWorkflowMetadata(
                 { inputs, reopened },
             );
         } else {
-            await updatePlanPackageMetadata(identity, current.metadata.planId, current.metadata.revision, update);
+            await updatePlanPackageMetadata(
+                identity,
+                current.metadata.planId,
+                current.metadata.revision,
+                update,
+                expectedRevision,
+            );
         }
         return (await loadPackageWorkflowPlan(planName))!.attrs;
     });
@@ -847,7 +799,7 @@ export async function saveGeneratedManualQaArtifact(
             throw new Error("Generated checklist requires the recorded child attempt.");
         await assertPackageWorkflowInput(childName, attempt.input);
         const artifact = child.metadata.workflow?.generatedArtifact;
-        if (artifact && artifact.attemptId !== attempt.attemptId)
+        if (artifact && (artifact.reusedByAttemptId ?? artifact.attemptId) !== attempt.attemptId)
             throw new Error("Generated checklist belongs to another attempt.");
         if (!artifact)
             await updatePackageWorkflowMetadata(childName, {}, undefined, {
@@ -873,12 +825,16 @@ export async function recoverGeneratedManualQaArtifact(childName: PackagePlanTar
     const artifact = child.metadata.workflow?.generatedArtifact;
     if (!artifact) return;
     const attempt = child.metadata.workflow?.attempt;
-    if (!attempt || artifact.attemptId !== attempt.attemptId || artifact.planId !== child.metadata.parentPlanId)
+    if (
+        !attempt ||
+        (artifact.reusedByAttemptId ?? artifact.attemptId) !== attempt.attemptId ||
+        artifact.planId !== child.metadata.parentPlanId
+    )
         throw new Error("Generated checklist owner changed.");
     const parent = await selectedPackage({ planId: artifact.planId });
     const current = parent.documents.find((doc) => doc.name === artifact.name)?.hash ?? null;
     if (current === artifact.hash) return;
-    if (current !== artifact.beforeHash)
+    if (artifact.reusedByAttemptId || current !== artifact.beforeHash)
         throw new Error("Generated checklist document changed; review the current input.");
     await savePlanPackageDocument(
         currentPackageSelection()!.identity,

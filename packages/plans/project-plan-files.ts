@@ -3,18 +3,27 @@ import { checkedProjectRuntimeLayout, withProjectRuntimeReadScope } from "@runwi
 import { readWorktreeRegistryAtPath } from "@runwield/project-runtime/registry-inspection";
 import { join } from "node:path";
 import type { PendingControllerRepair } from "./checkout-controller.ts";
-import type { WorkflowControllerState } from "./controller-state.ts";
+import { CONTROLLER_STATE_FIELDS, pickControllerState, type WorkflowControllerState } from "./controller-state.ts";
 import type { PlanFrontMatter } from "./document.ts";
 import { currentExecutionRecoveryObservation } from "./execution-recovery.ts";
 import { isPlanId, planArtifactReference, type PlanId, type PlanTextLoaded } from "./format.ts";
 import {
     listPlanPackages,
+    packageControllerEnums,
+    packageControllerNumbers,
+    packageControllerStrings,
+    packageDefinitionStrings,
+    resolvePlanPackageReference,
+    writePackageControllerEvidence,
     packageWorkflowRevision,
     readPackageControllerEvidence,
     readPlanPackage,
     readPlanPackagePublication,
     type LoadedPlanPackage,
     type PackageAttemptReference,
+    type PackageControllerState,
+    type PackageDefinition,
+    type PackageWorkflowEvidence,
 } from "./package-storage.ts";
 import { readRetainedExecutionPlan, type RetainedExecutionRead } from "./retained-execution.ts";
 import { PlanNotFoundError } from "./store-errors.ts";
@@ -119,6 +128,62 @@ async function observeAttempt(
     if (attempt && attempt.planId !== plan.metadata.planId)
         throw new Error("Package attempt evidence belongs to a different Plan.");
     return attempt;
+}
+
+async function prepareWorkflowUpdate(
+    identity: ProjectStoreIdentity,
+    current: LoadedPlanPackage,
+    attrs: PlanFrontMatter,
+    updates: Partial<PlanFrontMatter>,
+    workflowUpdate?: PackageWorkflowEvidence,
+) {
+    const scalarFields = [
+        ...packageControllerStrings,
+        ...packageControllerNumbers,
+        ...Object.keys(packageControllerEnums),
+    ];
+    const definitionFields = [
+        "classification",
+        "status",
+        "affectedPaths",
+        "order",
+        "frontend",
+        "devServerHmr",
+        "tickets",
+        "supersedes",
+        "planDeviations",
+        ...packageDefinitionStrings,
+    ];
+    const workflow = { ...current.metadata.workflow, ...workflowUpdate };
+    if (Object.hasOwn(updates, "workRecord")) workflow.workRecord = updates.workRecord;
+    const entry = await observeAttempt(identity, current, workflow.attempt);
+    if (entry?.status === "abandoned") workflow.attempt = undefined;
+    const catalog = await listPlanPackages(identity, true);
+    if (catalog.issues.length) throw new Error(catalog.issues[0].message);
+    const related = (reference: string) => resolvePlanPackageReference(catalog.packages, reference, attrs.parentPlan);
+    const relations = {
+        parentPlanId: Object.hasOwn(updates, "parentPlan")
+            ? updates.parentPlan
+                ? related(updates.parentPlan)
+                : null
+            : current.metadata.parentPlanId,
+        dependencyPlanIds: Object.hasOwn(updates, "dependencies")
+            ? (updates.dependencies || []).map(related)
+            : current.metadata.dependencyPlanIds,
+    };
+    const definition: PackageDefinition = { ...current.metadata.definition };
+    const controller: PackageControllerState = { ...current.metadata.controller };
+    const state = { ...(await readController(identity, current)), ...pickControllerState(updates) };
+    for (const [key, value] of Object.entries(updates)) {
+        if (definitionFields.includes(key)) Object.assign(definition, { [key]: value ?? undefined });
+        if (scalarFields.includes(key)) Object.assign(controller, { [key]: value });
+    }
+    const evidence: WorkflowControllerState = {};
+    for (const key of CONTROLLER_STATE_FIELDS) {
+        if (!scalarFields.includes(key) && state[key] !== undefined) Object.assign(evidence, { [key]: state[key] });
+    }
+    const ref = await writePackageControllerEvidence(identity, current.metadata.planId, evidence);
+    return { ...relations, definition, controller, workflow: { ...workflow, controller: ref } };
 }
 
 async function projectPackage(identity: ProjectStoreIdentity, plan: LoadedPlanPackage): Promise<PackagePlanText> {
@@ -239,10 +304,16 @@ function forOwner(identity: ProjectStoreIdentity) {
         select: (target: PackagePlanTarget, selection?: PackageReadSelection) =>
             selectPackage(identity, target, selection),
         readController: (plan: LoadedPlanPackage) => readController(identity, plan),
+        prepareWorkflowUpdate: (
+            plan: LoadedPlanPackage,
+            attrs: PlanFrontMatter,
+            updates: Partial<PlanFrontMatter>,
+            workflow?: PackageWorkflowEvidence,
+        ) => prepareWorkflowUpdate(identity, plan, attrs, updates, workflow),
         observeAttempt: (plan: LoadedPlanPackage, binding: PackageAttemptReference | undefined) =>
             observeAttempt(identity, plan, binding),
     };
 }
 
-/** Read canonical Plan packages for an admitted personal Project owner. */
+/** Read canonical Plan packages and prepare workflow metadata for an admitted personal Project owner. */
 export const projectPlanFiles = { forOwner };

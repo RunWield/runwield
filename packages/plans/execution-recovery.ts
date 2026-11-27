@@ -1,11 +1,17 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { projects, type HomeProjectOwner, type ProjectStoreIdentity } from "@runwield/projects";
-import { readPlanPackage, type LoadedPlanPackage, type PackageAttemptReference } from "./package-storage.ts";
+import {
+    packageWorkflowRevision,
+    readPlanPackage,
+    type LoadedPlanPackage,
+    type PackageAttemptReference,
+} from "./package-storage.ts";
 import {
     validateExecutionRecoveryEvidence,
     type ExecutionRecoveryAction,
     type ExecutionRecoveryEvidence,
     type ExecutionRecoveryRequest,
+    type ExecutionRecreation,
     type RecoveryExecutionRecord,
 } from "./project-store-wire.ts";
 
@@ -22,6 +28,7 @@ interface ExecutionRecoveryOperation {
     expectedRevision: number;
     attemptId: string;
     action: ExecutionRecoveryAction;
+    recreate?: ExecutionRecreation;
 }
 
 type ExecutionRecoveryEntry = Pick<
@@ -83,7 +90,7 @@ export async function withManagedExecutionRecovery<T>(
     observe: (request: ExecutionRecoveryRequest) => Promise<ExecutionRecoveryEvidence>,
     run: () => Promise<T>,
 ): Promise<T> {
-    const { action, expectedRevision } = operation;
+    const { action, expectedRevision, recreate } = operation;
     // Even a nested probe starts without access to the enclosing operation's evidence.
     return await recoveryScope.run(null, async () => {
         projects.home.assertStoreIdentity(owner);
@@ -95,6 +102,8 @@ export async function withManagedExecutionRecovery<T>(
         )
             throw new Error("Execution recovery requires the admitted execution host.");
 
+        if ((action === "recreate") !== Boolean(recreate) || recreate?.replacementAttemptId === operation.attemptId)
+            throw new Error("Execution recreation requires the saved replacement operation.");
         const request: ExecutionRecoveryRequest = {
             projectId: owner.projectId,
             repositoryId: owner.repositoryId,
@@ -103,6 +112,7 @@ export async function withManagedExecutionRecovery<T>(
             planName: operation.expectedPlanName,
             attemptId: operation.attemptId,
             purpose: action === "refresh" || action === "recreate" ? "active" : "abandoned",
+            ...(recreate ? { recreate: { ...recreate } } : {}),
         };
         const repositoryRoot = host.repositoryRoot;
         const assertCurrentAttempt = async () => {
@@ -110,12 +120,15 @@ export async function withManagedExecutionRecovery<T>(
             if (
                 plan.kind !== "loaded" ||
                 plan.metadata.revision !== expectedRevision ||
+                (recreate &&
+                    (packageWorkflowRevision(plan) !== recreate.expectedRevision ||
+                        plan.metadata.workflow?.attempt?.executionMode)) ||
                 !matchesRecoveryAttempt(request, repositoryRoot, plan, plan.metadata.workflow?.attempt)
             )
                 throw new Error("Execution recovery does not match the current canonical Plan attempt.");
         };
         await assertCurrentAttempt();
-        const evidence = await observe({ ...request });
+        const evidence = await observe(structuredClone(request));
         validateExecutionRecoveryEvidence(request, evidence);
         const { id, planId, planName, path, branch, status, baseBranch, baseCommit, baseTree, executionBaselineTree } =
             evidence.entry;
@@ -168,6 +181,8 @@ export function currentExecutionRecoveryObservation(
     const { request } = observation;
     if (
         (action !== undefined && action !== scope.action) ||
+        (request.recreate &&
+            (action !== "recreate" || packageWorkflowRevision(plan) !== request.recreate.expectedRevision)) ||
         identity.projectId !== request.projectId ||
         identity.repositoryId !== request.repositoryId ||
         identity.personalOwner.kind !== "execution-account" ||

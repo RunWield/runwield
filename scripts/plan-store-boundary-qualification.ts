@@ -7,8 +7,12 @@ export const PLAN_STORE_QUALIFICATIONS: Readonly<Record<string, { reason: string
         modules: ["packages/plans/artifact-files.ts"],
     },
     "packages/plans/execution-recovery.test.ts": {
-        reason: "Verify host recovery observations are isolated against persisted Plan and attempt bindings.",
-        modules: ["packages/plans/execution-recovery.ts", "packages/plans/package-storage.ts"],
+        reason: "Verify scoped host recovery and replacement adoption against persisted attempt and checklist evidence.",
+        modules: [
+            "packages/plans/execution-recovery.ts",
+            "packages/plans/managed-execution-adoption.ts",
+            "packages/plans/package-storage.ts",
+        ],
     },
     "packages/plans/publication-files.test.ts": {
         reason: "Verify delivery copy materialization rejects checkout escapes and preserves files outside the checkout.",

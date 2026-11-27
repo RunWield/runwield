@@ -247,7 +247,8 @@ Git snapshot. After settlement, reads use the canonical Plan. [Retained checkout
 For a canonical Plan, the filesystem driver assembles the document, revision, family references and controller state.
 When the execution checkout lives on an SSH host, the laptop can serve the saved document without querying the host.
 During recovery the host supplies an observation of the requested attempt. Plans verifies it against the saved Plan
-and binds it to that operation. Desktop, TUI, ACP and worker callers continue to use `store.read(planId)`.
+and binds it to that operation. For Recreate, the host journal links the old and new attempt IDs and Plans owns
+the switch between them. Desktop, TUI, ACP and worker callers continue to use `store.read(planId)`.
 
 Plans owns the canonical operation receipt files and validates the retained operation identity before completion. The application owns typed command result files, including `sequence-review-results/<operationId>.json`. It reads the retained Sequence decision and passes its operation identity, digest, Plan ID, and revision to Plans to settle the canonical receipt.
 The host coordinates milestone capture with the lifecycle event that makes the version visible.
