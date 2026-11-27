@@ -5,7 +5,6 @@ import { projectPlanArtifacts } from "./artifacts.ts";
 import { currentRetainedCheckoutSource, hasRetainedCheckoutSource } from "@runwield/plans/retained-checkout";
 import { plans, type PlanEventDetails, type PlanId } from "@runwield/plans";
 import type {
-    ProjectPlanCatalogEntry,
     ProjectPlanCatalog,
     ProjectPlanDocument,
     ProjectPlanStore,
@@ -18,7 +17,11 @@ import { requireOwnedWorkRecordFiles } from "../shared/work-records/owner.ts";
 import { projectWorkRecordReads } from "./project-work-records.ts";
 import { bindProjectPlanStore, checkoutPlanIdentity } from "./project-binding.ts";
 import { readPlanPackagePublicationForCheckout } from "@runwield/plans/package-storage";
-import { projectPlanDocumentFields, projectPlanFiles } from "@runwield/plans/project-plan-files";
+import {
+    projectPlanCatalogFields,
+    projectPlanDocumentFields,
+    projectPlanFiles,
+} from "@runwield/plans/project-plan-files";
 import type { PlanResource } from "../plan-store.ts";
 import { currentPackageProject } from "./workflows.ts";
 import {
@@ -72,28 +75,10 @@ function checkRevision(expected: string, actual: string): void {
     if (expected !== actual) throw new StalePlanWriteError(expected, actual);
 }
 
-function safeDiagnostic(message: string, cwd: string, path: string): string {
-    let sanitized = message;
-    for (const locator of [cwd, path].filter(Boolean)) sanitized = sanitized.split(locator).join("[workspace path]");
-    return sanitized.replace(/(?:[A-Za-z]:)?[\\/][^\s"'\`<>)]*/g, "[workspace path]");
-}
-
-function catalogEntry(resource: PlanResource): ProjectPlanCatalogEntry {
-    const document = projectPlanDocumentFields(resource);
-    return resource.planId ? { ...document, planId: requirePlanId(resource.planId) } : { ...document, planId: "" };
-}
-
 export async function readProjectPlanDisplayCatalog(cwd: string): Promise<ProjectPlanCatalog> {
-    const catalog = await readPlanResourceCatalog(cwd);
-    return {
-        resources: catalog.resources.map(catalogEntry),
-        diagnostics: catalog.diagnostics.map(({ name, kind, message, path, planId }) => ({
-            name,
-            kind,
-            message: safeDiagnostic(message, cwd, path),
-            ...(plans.identity.isValid(planId) ? { planId } : {}),
-        })),
-    };
+    const identity = currentPackageProject();
+    if (identity && !managedPlanStoreActive()) return await projectPlanFiles.forOwner(identity).list();
+    return projectPlanCatalogFields(await readPlanResourceCatalog(cwd), cwd);
 }
 
 function document(resource: PlanResource, planId: PlanId): ProjectPlanDocument {
@@ -113,6 +98,8 @@ async function readActive(cwd: string, planId: PlanId): Promise<ProjectPlanDocum
 }
 
 async function readArchived(cwd: string, planId: PlanId): Promise<ProjectPlanDocument> {
+    const identity = currentPackageProject();
+    if (identity && !managedPlanStoreActive()) return await projectPlanFiles.forOwner(identity).readArchived(planId);
     const resource = await loadArchivedPlan(cwd, planId, true);
     if (!resource || resource.attrs.planId !== planId) throw new PlanNotFoundError(planId);
     return { ...projectPlanDocumentFields({ ...resource, relativePath: planArtifactReference(planId) }), planId };

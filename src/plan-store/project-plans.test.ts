@@ -1,6 +1,6 @@
 import { StalePlanWriteError } from "@runwield/plans/store";
 import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
-import { lstat, unlink } from "node:fs/promises";
+import { lstat, mkdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import {
     openPlanStoreForCheckout,
@@ -11,12 +11,13 @@ import {
     type PlanSubmissionDocument,
     selectPlanAccess,
 } from "./index.ts";
-import { equal, notEqual, rejects } from "node:assert/strict";
+import { deepEqual, equal, match, notEqual, rejects } from "node:assert/strict";
 import { test } from "node:test";
-import { packageFixture } from "../shared/testing/plan-package-fixture.ts";
+import { create, packageFixture } from "../shared/testing/plan-package-fixture.ts";
 import { seedPlan } from "../shared/testing/plan-state-fixture.ts";
 import { withRetainedPlanFixture } from "../shared/testing/retained-plan-fixture.ts";
 import { archiveSavedPlan, openProjectPlanStore, restoreSavedPlan } from "./index.ts";
+import { listArchivedPlans, listPlans, readPlanResourceCatalog } from "../shared/testing/plan-query-fixture.ts";
 
 test("a project-bound store preserves Plan identity and guards each write across independent opens", async () => {
     const fixture = await packageFixture();
@@ -80,6 +81,34 @@ test("a project-bound store preserves Plan identity and guards each write across
         equal((await open().read(id)).revision, restored.revision);
     } finally {
         await Promise.all([fixture.cleanup(), other.cleanup()]);
+    }
+});
+
+test("canonical display catalogs report damaged packages while workflow and archive catalogs reject them", async () => {
+    const fixture = await packageFixture();
+    try {
+        const store = openProjectPlanStore(fixture.identity.projectId, { admitted: fixture.identity });
+        const healthy = await store.create({ planName: "healthy", contextMarkdown: "# Healthy\n" });
+        const damaged = await create(fixture.identity, { name: "damaged" });
+        const privatePath = join(damaged.path, "context.md");
+        await unlink(privatePath);
+        await mkdir(privatePath);
+
+        const display = await store.list();
+        deepEqual(display.resources, [healthy]);
+        deepEqual(
+            display.diagnostics.map(({ name, kind }) => ({ name, kind })),
+            [{ name: "Plan package", kind: "malformed" }],
+        );
+        equal("path" in display.diagnostics[0], false);
+        const operational = await readPlanResourceCatalog(fixture.root);
+        equal(operational.diagnostics.length, 1);
+        equal(operational.diagnostics[0].message, `Package resource is not a regular file: ${privatePath}`);
+        match(display.diagnostics[0].message, /^Package resource is not a regular file: (?:\[workspace path\])+$/);
+        await rejects(listPlans(fixture.root), { message: operational.diagnostics[0].message });
+        await rejects(listArchivedPlans(fixture.root), { message: operational.diagnostics[0].message });
+    } finally {
+        await fixture.cleanup();
     }
 });
 
