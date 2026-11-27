@@ -71,7 +71,6 @@ import {
     type PlanImportCommitted,
 } from "@runwield/plans/package-storage";
 /** Prepared owner service. Only trusted local registration supplies the Project location. */
-import { join } from "node:path";
 import { inspectLocalHomeStore, withLocalPlanWorkflow, readLocalHomeStore } from "./access.ts";
 import { packageWorkflowLocks, selectedPackage } from "./workflows.ts";
 import { readPlanDocuments, savePlanDocument, savePlanProse, type PlanDocumentView } from "./documents.ts";
@@ -81,6 +80,7 @@ import {
     inspectOperationReceipt,
     operationDigest,
     operationHash,
+    planOperationReceiptDirectory,
     runReceiptedOperation,
     type OperationOutcome,
 } from "@runwield/plans/operation-receipts";
@@ -781,14 +781,7 @@ export class PreparedProjectStore {
     }
     private async executeAdmitted(command: ProjectStoreCommand): Promise<ProjectStoreReply> {
         const owner = this.owner();
-        const directory = join(
-            owner.executionAccountHome,
-            ".wld",
-            "projects",
-            owner.projectId,
-            "internal",
-            "plan-packages",
-        );
+        const directory = planOperationReceiptDirectory(owner);
         const result = await readLocalHomeStore(
             this.cwd,
             async () => {
@@ -1089,7 +1082,7 @@ export class PreparedProjectStore {
                     const { listLocalPlanHistory, readLocalPlanMilestone, resolveLocalHistoryPlan } =
                         await import("./history.ts");
                     // Existing clients can still send a name. Bound callers send only a durable ID.
-                    const planId = command.planId ?? (await resolveLocalHistoryPlan(command.reference));
+                    const planId = command.planId ?? (await resolveLocalHistoryPlan(this.cwd, command.reference));
                     if (!plans.identity.isValid(planId)) throw new Error("Invalid Plan identity.");
                     const serialized = JSON.stringify(
                         command.kind === "list-history"

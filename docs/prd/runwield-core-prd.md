@@ -694,6 +694,12 @@ approval gets a distinct version even when the documents repeat. Local and non-G
 store. A managed remote Project reads large catalogs and document sets in bounded replies from its initiating laptop.
 Retrying after a lost restore acknowledgement returns the original revision and preserves intervening edits.
 
+**Acceptance: Read history after interrupted Sequence approval.** A history request for any member settles the
+previous approval before returning milestones. If the complete approval was accepted, every member keeps its version.
+Before acceptance, recovery clears the preparation even if no member metadata changed, or rolls back any approval
+metadata already written. It preserves editor documents and leaves unrelated Plans untouched. The request uses the
+ordinary history API. Subsequent reads leave the settled store untouched.
+
 **Requirement: Conversation is not a Plan Status.** Review chat alone does not change status or write Plan front
 matter. Legacy `feedback` and `in_review` Plans read as `draft` in every surface, including Epic, Sequence, dependency,
 and load-plan paths. No user migration is needed. A later write uses `draft`. The board has no Feedback column or

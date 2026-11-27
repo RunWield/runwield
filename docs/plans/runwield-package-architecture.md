@@ -267,6 +267,10 @@ A caller opens the Project Plan Store once, then uses its `history` collection w
 
 Lifecycle operations trigger capture on approval, delivery, closure, and archive. The store assigns the version. Restore keeps the current Plan identity and delivery evidence and reopens review when changed content requires it. Managed callers use the personal owner’s store and its existing restore receipts. [Core milestone requirements](../prd/runwield-core-prd.md#plan-lifecycle)
 
+Plans owns local catalog selection, milestone reads, and atomic document restoration. The host settles interrupted
+Sequence approvals before returning history. Restore still uses the host’s collaboration guard and review reopening
+because they read live controller and execution evidence.
+
 ### Plan artifacts and publication copies
 
 An Epic can own a Manual QA checklist and an integration report. Use `store.artifacts` with the stable Plan ID and artifact name to read or save either document. A read of an absent optional document returns `null`. A successful read returns the Markdown, its logical reference, and the revision used for editing. The QA operations take the Epic and child IDs so a retried append can recognize the child's existing section. The Plans filesystem driver checks active Epic ownership, reads artifacts with their package revision, and revalidates saves under the Plan family locks. The workflow retains the child's attempt and frozen input evidence for generated QA. [Store contract](../../packages/plans/store.ts)

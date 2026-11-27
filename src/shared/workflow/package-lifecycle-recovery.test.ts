@@ -1,3 +1,4 @@
+import { plans } from "@runwield/plans";
 import { seedPlanState, seedPlanController, inspectPlanFixtureController } from "../testing/plan-state-fixture.ts";
 
 import { listFixturePlanHistory, readFixtureMilestone, loadPlan } from "../testing/plan-query-fixture.ts";
@@ -6,7 +7,7 @@ import { planPackageJournalDirectory } from "@runwield/plans/package-storage";
 import { importPlanPackages } from "../../plan-store/import-packages.ts";
 import { addEntry } from "../worktree-registry.ts";
 
-import { preparePlanWorkflow } from "../../plan-store/index.ts";
+import { openProjectPlanStore, PreparedProjectStore, preparePlanWorkflow } from "../../plan-store/index.ts";
 import { currentPackageSelection } from "../../plan-store/workflows.ts";
 import { hasRetainedCheckoutSource, withRetainedCheckoutSource } from "@runwield/plans/retained-checkout";
 import type { ValidationCheckpoint } from "@runwield/plans/controller-state";
@@ -15,10 +16,10 @@ import { recordPlanEvent } from "../../plan-store/index.ts";
 import { inspectWorktreeRegistry } from "../worktree-registry.ts";
 import { git } from "../git-test-fixture.ts";
 import { test } from "node:test";
-import { equal, deepEqual, ok } from "node:assert/strict";
+import { equal, deepEqual, ok, rejects } from "node:assert/strict";
 import fs from "node:fs/promises";
 import { join } from "node:path";
-import { create, read, driver, packageFixture, startDriver } from "../testing/plan-package-fixture.ts";
+import { create, read, driver, documents, packageFixture, startDriver, tree } from "../testing/plan-package-fixture.ts";
 
 for (const boundary of ["lifecycle-intent", "staged-package", "metadata"]) {
     test(`fresh-process recovery settles ${boundary} without replacing an editor's bytes`, async () => {
@@ -561,3 +562,111 @@ for (const boundary of ["review-documents", "review-metadata"])
             }
         });
     }
+
+for (const [boundary, candidates] of [
+    ["sequence-prepared", 0],
+    ["sequence-applying", 0],
+    ["sequence-first-milestone", 1],
+    ["sequence-before-acceptance", 3],
+    ["sequence-accepted", 3],
+] as const) {
+    test(`project history settles Sequence approval interrupted at ${boundary}`, async () => {
+        const f = await packageFixture();
+        try {
+            const parent = await create(f.identity, {
+                planId: "sequence",
+                name: "sequence",
+                definition: { classification: "PROJECT", type: "sequence", status: "draft" },
+            });
+            const children = await Promise.all(
+                ["first", "second"].map((planId, index) =>
+                    create(f.identity, {
+                        planId,
+                        name: `sequence/${planId}`,
+                        parentPlanId: parent.metadata.planId,
+                        definition: {
+                            classification: "PLANNED_CHANGE",
+                            status: "draft",
+                            order: index + 1,
+                            executionAgent: "engineer",
+                            collaborationRecommendation: "autonomous",
+                        },
+                    }),
+                ),
+            );
+            const members = [parent, ...children];
+            const unrelated = await create(f.identity, { planId: "unrelated", name: "unrelated" });
+            const accepted = boundary === "sequence-accepted";
+            const operationId = accepted ? crypto.randomUUID() : undefined;
+            const interrupted = await driver({
+                identity: f.identity,
+                command: "sequence",
+                planId: parent.metadata.planId,
+                boundary,
+                operationId,
+            });
+            equal(interrupted.code, 86, interrupted.output + interrupted.errors);
+            const journal = planPackageJournalDirectory(f.identity);
+            const activeJournals = async () => (await fs.readdir(journal)).filter((entry) => entry.endsWith(".json"));
+            const active = await activeJournals();
+            equal(active.length, 1);
+            const record = JSON.parse(await fs.readFile(join(journal, active[0]), "utf8"));
+            equal(record.packageWrites?.length ?? 0, candidates);
+            const partial = await Promise.all(members.map((plan) => read(f.identity, plan.metadata.planId)));
+            const provisional = partial.filter((plan) => plan.metadata.history?.length);
+            equal(provisional.length, candidates);
+            const { history } = openProjectPlanStore(f.identity.projectId, { admitted: f.identity });
+            const unrelatedId = plans.identity.parse(unrelated.metadata.planId)!;
+            const beforeUnrelatedRead = await tree(join(journal, ".."));
+            deepEqual((await history.list(unrelatedId)).milestones, []);
+            deepEqual(await tree(join(journal, "..")), beforeUnrelatedRead);
+            if (operationId) {
+                const service = new PreparedProjectStore(f.root);
+                const receipt = { kind: "reconcile" as const, planId: parent.metadata.planId, operationId };
+                const before = (await service.execute(receipt)).result;
+                equal("status" in before && before.status, "pending");
+                const [approved] = provisional;
+                const approvedId = plans.identity.parse(approved.metadata.planId)!;
+                deepEqual(await history.read(approvedId, approved.metadata.history![0].version), documents);
+                const after = (await service.execute(receipt)).result;
+                equal("status" in after && after.status, "completed");
+                const retained = (await service.execute({ ...receipt, kind: "read-sequence-result" })).result;
+                equal("sequenceResult" in retained && retained.sequenceResult.approved, true);
+            } else {
+                const edited = join(parent.path, "context.md");
+                await fs.writeFile(edited, "# An editor kept working\n");
+                const firstChildId = plans.identity.parse(children[0].metadata.planId)!;
+                deepEqual((await history.list(firstChildId)).milestones, []);
+                equal((await activeJournals()).length, 0);
+                for (const plan of provisional) {
+                    const planId = plans.identity.parse(plan.metadata.planId)!;
+                    await rejects(history.read(planId, plan.metadata.history![0].version), /version is unavailable/);
+                }
+                equal(await fs.readFile(edited, "utf8"), "# An editor kept working\n");
+            }
+            equal((await activeJournals()).length, 0);
+
+            const packageState = await tree(join(journal, ".."));
+            const listed = await Promise.all(
+                members.map((plan) => history.list(plans.identity.parse(plan.metadata.planId)!)),
+            );
+            for (const [index, plan] of members.entries()) {
+                const planId = plans.identity.parse(plan.metadata.planId)!;
+                const current = await read(f.identity, planId);
+                equal(current.metadata.definition.status, accepted ? "ready_for_work" : "draft");
+                if (!candidates) equal(current.metadata.revision, plan.metadata.revision);
+                deepEqual(listed[index].milestones, accepted ? partial[index].metadata.history : []);
+                deepEqual(await history.list(planId), listed[index]);
+                if (accepted) {
+                    const milestone = listed[index].milestones[0];
+                    equal(milestone.milestone, "approved");
+                    ok((await history.read(planId, milestone.version))["context.md"]);
+                }
+            }
+            deepEqual(await tree(join(journal, "..")), packageState);
+            deepEqual(await read(f.identity, unrelatedId), unrelated);
+        } finally {
+            await f.cleanup();
+        }
+    });
+}

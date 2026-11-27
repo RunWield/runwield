@@ -1,5 +1,7 @@
 /** Owner-private receipt recovery. The package catalog lock protects both intent and effect. */
 import type { ManualQaSectionAppend } from "./store.ts";
+import type { ProjectStoreIdentity } from "@runwield/projects";
+import { localPackageLayout } from "./package-files.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, unlinkSync, lstatSync } from "node:fs";
@@ -59,6 +61,11 @@ export function operationDigest(value: string): string {
     return operationHash(JSON.stringify(canonical(parsed)));
 }
 export const operationHash = (text: string) => createHash("sha256").update(text).digest("hex");
+/** Canonical location for the admitted Project's package operation evidence. */
+export function planOperationReceiptDirectory(owner: ProjectStoreIdentity): string {
+    return localPackageLayout(owner).internal;
+}
+
 const receiptPath = (directory: string, id: string) => join(directory, "operations", `${id}.json`);
 const effectPath = (directory: string) => join(directory, "operation-effect.json");
 

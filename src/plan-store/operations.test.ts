@@ -16,7 +16,12 @@ import {
     loadPlan,
 } from "../shared/testing/plan-query-fixture.ts";
 import { seedPlanState } from "../shared/testing/plan-state-fixture.ts";
-import { create as createPackageFixture, packageFixture, tree } from "../shared/testing/plan-package-fixture.ts";
+import {
+    create as createPackageFixture,
+    driver,
+    packageFixture,
+    tree,
+} from "../shared/testing/plan-package-fixture.ts";
 
 test("competing authoring commands preserve one complete context and validation generation", async () => {
     const fixture = await packageFixture();
@@ -511,6 +516,41 @@ test("an interrupted restore preserves an intervening edit and resumes one compl
     }
 });
 
+test("history keeps catalog recovery and its result under one lock", async () => {
+    const fixture = await packageFixture();
+    try {
+        const plan = await createPackageFixture(fixture.identity);
+        await recordPlanEvent({
+            cwd: fixture.root,
+            planName: plan.metadata.name,
+            event: "review_approved",
+            currentStatus: "draft",
+        });
+        const id = plans.identity.parse(plan.metadata.planId)!;
+        const { history } = openProjectPlanStore(fixture.identity.projectId, { admitted: fixture.identity });
+        const before = await history.list(id);
+        for (const name of ["first-rename", "second-rename"]) {
+            const stopped = await driver({ identity: fixture.identity, command: "rename", boundary: "intent", name });
+            equal(stopped.code, 86, stopped.output + stopped.errors);
+            const result = await driver({
+                identity: fixture.identity,
+                command: "history",
+                boundary: "history-after-recovery",
+            });
+            equal(result.code, 0, result.output + result.errors);
+            const read = JSON.parse(result.output.trim().split("\n").at(-1)!).result;
+            ok(read.recoveredHistoryScans > 0);
+            equal(read.readKeptRecoveryCatalog, true);
+            equal(read.readHeldExclusiveCatalog, true);
+            equal(read.releasedRecoveryCatalog, true);
+            deepEqual(read.history.milestones, before.milestones);
+            equal((await loadPlan(fixture.root, name))?.attrs.planId, id);
+        }
+    } finally {
+        await fixture.cleanup();
+    }
+});
+
 test("Epic publication keeps only the Markdown retained by its integration gate", async () => {
     const fixture = await packageFixture();
     try {
@@ -627,11 +667,16 @@ test("history reads existing milestone bytes and rejects tampering for a Windows
         for (const [name, text] of Object.entries(frozen)) await writeFile(join(folder, name), text);
         await writeFile(join(folder, "plan.wld.json"), JSON.stringify(plan.metadata));
         await writeFile(join(plan.path, "plan.wld.json"), JSON.stringify({ ...plan.metadata, history: [milestone] }));
+        // A copied store can have a complete history without the source machine's lock files.
+        const store = dirname(dirname(plan.path));
+        await rm(join(store, "internal", "plan-packages", "locks"), { recursive: true });
+        const before = await tree(store);
         const { history } = openProjectPlanStore(fixture.identity.projectId, { admitted: fixture.identity });
         const planId = plan.metadata.planId;
         ok(plans.identity.isValid(planId));
         deepEqual((await history.list(planId)).milestones, [milestone]);
         deepEqual(await history.read(planId, milestone.version), frozen);
+        deepEqual(await tree(store), before);
         await writeFile(join(folder, "manual-qa.md"), "QA\n");
         await rejects(history.read(planId, milestone.version), /Frozen milestone documents changed/);
     } finally {

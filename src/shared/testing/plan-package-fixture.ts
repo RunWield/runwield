@@ -66,10 +66,12 @@ export interface DriverRequest {
         | "read"
         | "input"
         | "hold"
+        | "history"
         | "import"
         | "list"
         | "evidence";
     executionContextPath?: string;
+    operationId?: string;
     barrier?: string;
     boundary?: string;
     planId?: string;

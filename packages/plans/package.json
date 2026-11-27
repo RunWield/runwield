@@ -17,6 +17,8 @@
         "./store-format": "./store-format.ts",
         "./file-snapshots": "./file-snapshots.ts",
         "./history": "./history.ts",
+        "./local-history": "./local-history.ts",
+        "./review-markdown": "./review-markdown.ts",
         "./publication-copies": "./publication-copies.ts",
         "./publication-files": "./publication-files.ts",
         "./history-files": "./history-files.ts",
@@ -32,6 +34,7 @@
         "@runwield/project-runtime": "workspace:*",
         "@runwield/projects": "workspace:*",
         "@runwield/resources": "workspace:*",
-        "@runwield/tools": "workspace:*"
+        "@runwield/tools": "workspace:*",
+        "quikdown": "1.2.23"
     }
 }

@@ -1,5 +1,5 @@
 import { StalePlanWriteError } from "@runwield/plans/store";
-import { sameReviewedMarkdown } from "./review.ts";
+import { sameReviewedMarkdown } from "@runwield/plans/review-markdown";
 import { managedPlanStoreActive, readManagedDocument, saveManagedDocument, saveManagedProse } from "./managed.ts";
 import { posix } from "node:path";
 import { decodePackageMarkdown, isEpicArtifactName } from "@runwield/plans/format";
