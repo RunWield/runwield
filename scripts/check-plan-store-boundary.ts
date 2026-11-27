@@ -10,6 +10,7 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const configuration = ts.readConfigFile(resolve(root, "tsconfig.bun.json"), ts.sys.readFile);
 const compilerOptions = ts.parseJsonConfigFileContent(configuration.config, ts.sys, root).options;
 const projectStoreSurface = "packages/plans/store.ts";
+const publicStoreErrors = new Set(["PlanNotFoundError", "StalePlanWriteError"]);
 const privateMembers = new Set([
     projectStoreSurface,
     "src/plan-store.ts",
@@ -74,7 +75,7 @@ function isAllowedStoreExport(statement: ts.Statement): boolean {
         return statement.exportClause.elements.every(
             (entry) =>
                 entry.isTypeOnly ||
-                (entry.name.text === "StalePlanWriteError" &&
+                (publicStoreErrors.has(entry.name.text) &&
                     !entry.propertyName &&
                     statement.moduleSpecifier &&
                     ts.isStringLiteral(statement.moduleSpecifier) &&

@@ -1,6 +1,6 @@
-import { StalePlanWriteError } from "@runwield/plans/store";
+import { PlanNotFoundError, StalePlanWriteError } from "@runwield/plans/store";
 import { projects } from "@runwield/projects";
-import type { PlanFrontMatter, PlanFrontMatterInput, PlanFrontMatterWithCustomFields } from "@runwield/plans";
+import { type PlanFrontMatter, type PlanFrontMatterInput, type PlanFrontMatterWithCustomFields } from "@runwield/plans";
 
 import type { MoveEpicArtifactResult } from "@runwield/plans/artifact-files";
 
@@ -3355,13 +3355,6 @@ function findPlanResourceMatchesById(resources: Array<PlanResource>, normalized:
 }
 
 /** A missing durable ID is distinct from an unreadable or unsafe Plan catalog. */
-export class PlanNotFoundError extends Error {
-    constructor(planId: string) {
-        super(`Plan not found for planId: ${planId}`);
-        this.name = "PlanNotFoundError";
-    }
-}
-
 /**
  * Find a non-archived Plan resource by durable planId.
  *

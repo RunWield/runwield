@@ -31,6 +31,7 @@ import {
     listPlanPackages,
     readPlanPackageInput,
     readPlanPackagePublication,
+    readPlanPackagePublicationForCheckout,
     retainPlanPackagePublication,
     readPlanPackage,
     withPlanPackageLocks,
@@ -63,16 +64,12 @@ async function git(root: string, args: string[]) {
     const result = await captureForegroundProcess("git", { cwd: root, args });
     return { code: result.code, text: new TextDecoder().decode(result.stdout).trim() };
 }
-export async function packagePublicationInput(
+async function packagePublicationInput(
     root: string,
     reference: PackagePublicationReference,
 ): Promise<PackagePublicationManifest> {
     if (managedPlanStoreActive()) return await readManagedPublication(root, reference);
-    const homeOwner = projects.home.current();
-    if (homeOwner) return await readPlanPackagePublication(homeOwner, reference);
-    const inspected = projects.checkout.inspect(root);
-    if (inspected.kind !== "existing") throw new Error("Publication owner is unavailable.");
-    return await readPlanPackagePublication(inspected.identity, reference);
+    return await readPlanPackagePublicationForCheckout(root, reference);
 }
 
 /** Retain execution repository settings before sealing documents or preparing a Work Record. */

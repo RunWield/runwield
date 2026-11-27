@@ -5,7 +5,8 @@
 
 import { CLI_BIN, getCwd } from "../../constants.ts";
 import { type PlanReadAvailability } from "../../plan-store/index.ts";
-import { PlanNotFoundError, planDocumentsForCheckout } from "../../plan-store/index.ts";
+import { planDocumentsForCheckout } from "../../plan-store/index.ts";
+import { PlanNotFoundError } from "@runwield/plans/store";
 import { NO_OPEN_BROWSER_PORT, SYSTEM_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { startArtifactReadSurface } from "../../ui/review/review-launcher.ts";

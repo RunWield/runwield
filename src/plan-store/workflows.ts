@@ -1,4 +1,10 @@
-import type { PackageWorkflowInput } from "@runwield/plans/store";
+import type { ManualQaSection, PackageWorkflowInput } from "@runwield/plans/store";
+import {
+    assertEpicPackageFamily,
+    prepareManualQaSection,
+    readActiveArtifactPackage,
+} from "@runwield/plans/artifact-files";
+import { EPIC_MANUAL_QA_FILE_NAME } from "@runwield/plans/format";
 import { planHistoryFiles } from "@runwield/plans/history-files";
 import { projects, type ProjectStoreIdentity as ProjectIdentity } from "@runwield/projects";
 import {
@@ -21,6 +27,7 @@ import { join } from "node:path";
 import { packageDocumentText, type PackageInputReference } from "@runwield/plans/file-snapshots";
 import {
     capturePlanPackageInput,
+    packageDocumentContent,
     commitPlanPackageBatch,
     savePlanPackageDocument,
     listPlanPackages,
@@ -30,6 +37,7 @@ import {
     readPlanPackagePublication,
     updatePlanPackageMetadata,
     withPlanPackageLocks,
+    planPackageFamilyIds,
     packageDefinitionStrings,
     packageControllerStrings,
     packageControllerNumbers,
@@ -46,7 +54,7 @@ import {
     type WorkflowControllerState,
 } from "@runwield/plans/controller-state";
 import { findById } from "../shared/worktree-registry.ts";
-import type { PlanFrontMatter } from "@runwield/plans";
+import type { PlanFrontMatter, PlanId } from "@runwield/plans";
 
 export interface PlanExecutionHost {
     projectId: string;
@@ -297,18 +305,7 @@ export async function packageWorkflowLocks<T>(planNames: PackageWorkflowTarget[]
     const identity = currentPackageProject();
     if (!identity) return await run();
     const packages = await Promise.all(planNames.map(selectedPackage));
-    const catalog = await listPlanPackages(identity, true);
-    for (const parent of [...packages]) {
-        const ownerId = parent.metadata.parentPlanId || parent.metadata.planId;
-        if (parent.metadata.definition.classification === "PROJECT" || parent.metadata.parentPlanId)
-            packages.push(...catalog.packages.filter((p) => p.metadata.parentPlanId === ownerId));
-    }
-    const ids = [
-        ...new Set(
-            packages.flatMap((p) => [p.metadata.planId, ...(p.metadata.parentPlanId ? [p.metadata.parentPlanId] : [])]),
-        ),
-    ];
-    return await withPlanPackageLocks(identity, ids, run);
+    return await withPlanPackageLocks(identity, await planPackageFamilyIds(identity, packages), run);
 }
 
 function hash(value: string): string {
@@ -965,6 +962,30 @@ export function capturePackageWorkflowAccess({ preserveSelection = true } = {}) 
             run,
         );
     };
+}
+
+/** Prepare the Epic document and retain the child's attempt evidence under the same family locks. */
+export async function appendGeneratedManualQaSection(epicId: PlanId, childId: PlanId, section: ManualQaSection) {
+    const identity = currentPackageProject();
+    if (!identity) throw new Error("Generated checklist requires the recorded child attempt.");
+    const epicTarget = { planId: epicId };
+    const childTarget = { planId: childId };
+    return await packageWorkflowLocks([epicTarget, childTarget], async () => {
+        const epic = await readActiveArtifactPackage(identity, epicId);
+        const child = await readActiveArtifactPackage(identity, childId);
+        assertEpicPackageFamily(epic, child);
+        const existing = packageDocumentContent(epic, EPIC_MANUAL_QA_FILE_NAME);
+        const body = prepareManualQaSection(
+            existing?.body ?? null,
+            epic.metadata.name,
+            child.metadata.name,
+            childId,
+            section,
+        );
+        if (body === null) return "already_present";
+        await saveGeneratedManualQaArtifact(childTarget, epicTarget, existing?.packageHash ?? null, body);
+        return "recorded";
+    });
 }
 
 /** Durably record Core's generated checklist separately from the exact reviewed input. */

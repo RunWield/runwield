@@ -81,14 +81,19 @@ test("the public Project Plan store excludes driver values", async () => {
     const file = "packages/plans/store.ts";
     for (const source of [
         'export * from "./package-storage.ts";',
+        'export { PlanNotFoundError } from "./package-storage.ts";',
+        'export { StalePlanWriteError as PlanNotFoundError } from "./store-errors.ts";',
         'export { readPlanPackage as openProjectPlanStore } from "./package-storage.ts";',
         'import { readPlanPackage } from "./package-storage.ts"; export { readPlanPackage };',
     ]) {
         equal(inspectPlanStoreImports(file, source).length, 1, source);
     }
     equal(inspectPlanStoreImports(file, 'export type { PackageWorkflowInput } from "./package-storage.ts";').length, 0);
+    const errors = 'export { PlanNotFoundError, StalePlanWriteError } from "./store-errors.ts";';
+    equal(inspectPlanStoreImports(file, errors).length, 0);
     const store = await import("@runwield/plans/store");
-    equal(Object.keys(store).join(","), "StalePlanWriteError");
+    equal(Object.keys(store).sort().join(","), "PlanNotFoundError,StalePlanWriteError");
+    equal("PlanNotFoundError" in (await import("@runwield/plans")), false);
 });
 
 test("only the Plan store can bind a Project's Plan owner", () => {

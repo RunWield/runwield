@@ -1,13 +1,10 @@
-import { StalePlanWriteError } from "@runwield/plans/store";
-import { packageDocumentContent } from "./documents.ts";
+import { PlanNotFoundError } from "@runwield/plans/store";
 import { join, dirname, relative } from "node:path";
-import { createHash } from "node:crypto";
 import { inspectLocalHomeStore, withLocalPlanWorkflow } from "./access.ts";
 import { plans, type PlanId } from "@runwield/plans";
 import {
     EPIC_MANUAL_QA_FILE_NAME,
     EPIC_INTEGRATION_REPORT_FILE_NAME,
-    decodePackageMarkdown,
     planArtifactReference,
     isEpicArtifactName,
     splitPlanName,
@@ -15,12 +12,16 @@ import {
 } from "@runwield/plans/format";
 import {
     checkoutEpicArtifactPath,
+    epicArtifactDocument,
     hasManualQaSection,
+    packageArtifactFiles,
+    readActiveArtifactPackage,
     prepareManualQaSection,
-    readCheckoutEpicArtifact,
+    readVersionedCheckoutEpicArtifact,
+    saveVersionedCheckoutEpicArtifact,
     writeCheckoutEpicArtifact,
 } from "@runwield/plans/artifact-files";
-import type { ManualQaSection, ProjectPlanArtifact, ProjectPlanArtifacts } from "@runwield/plans/store";
+import type { ManualQaSection, ProjectPlanArtifacts } from "@runwield/plans/store";
 import {
     appendManagedEpicQa,
     managedPlanStoreActive,
@@ -28,16 +29,10 @@ import {
     readManagedDocument,
     saveManagedEpicArtifact,
 } from "./managed.ts";
-import {
-    currentPackageProject,
-    currentPackageSelection,
-    packageWorkflowLocks,
-    selectedPackage,
-    saveGeneratedManualQaArtifact,
-} from "./workflows.ts";
-import { packageWorkflowRevision, savePlanPackageDocument } from "@runwield/plans/package-storage";
+import { currentPackageProject, currentPackageSelection, appendGeneratedManualQaSection } from "./workflows.ts";
+import { packageWorkflowRevision } from "@runwield/plans/package-storage";
 import { findPlanById, loadPlan } from "./queries.ts";
-import { PlanNotFoundError, withPlanLock } from "../plan-store.ts";
+import { withPlanLock } from "../plan-store.ts";
 import { withOrderedTransitionResources } from "./transitions.ts";
 import type { bindProjectPlanStore } from "./project-binding.ts";
 
@@ -68,19 +63,11 @@ function assertEpic(plan: ArtifactPlanIdentity): void {
     if (plan.attrs.classification !== "PROJECT") throw new Error(`${plan.name} is not an Epic Plan.`);
 }
 
-function checkoutArtifactRevision(planRevision: string, body: string | null): string {
-    return body === null
-        ? planRevision
-        : createHash("sha256")
-              .update(JSON.stringify([planRevision, body]))
-              .digest("hex");
-}
-
 async function planById(cwd: string, planId: PlanId): Promise<ArtifactPlanIdentity> {
     if (!plans.identity.isValid(planId)) throw new Error("Plan artifact access requires a durable Plan ID.");
-    if (currentPackageProject()) {
-        const selected = await selectedPackage({ planId });
-        if (selected.metadata.archive && !selected.metadata.archive.restoredAt) throw new PlanNotFoundError(planId);
+    const identity = currentPackageProject();
+    if (identity) {
+        const selected = await readActiveArtifactPackage(identity, planId);
         return {
             attrs: { classification: selected.metadata.definition.classification, planId },
             path: join(selected.path, "context.md"),
@@ -98,7 +85,6 @@ async function planById(cwd: string, planId: PlanId): Promise<ArtifactPlanIdenti
 interface ArtifactRead {
     body: string;
     revision: string;
-    packageHash?: string;
 }
 
 async function readArtifact(
@@ -112,16 +98,7 @@ async function readArtifact(
         const document = await readManagedDocument(requirePlanId(plan), name, cwd, "read");
         return { body: document.body, revision: document.revision };
     }
-    if (currentPackageProject()) {
-        const selected = await selectedPackage({ planId: requirePlanId(plan) });
-        return packageDocumentContent(selected, name);
-    }
-    const body = await readCheckoutEpicArtifact(cwd, plan.name, name);
-    return body === null ? null : { body, revision: checkoutArtifactRevision(plan.revision, body) };
-}
-
-function ensureExpectedRevision(expected: string | undefined, actual: string) {
-    if (expected !== undefined && expected !== actual) throw new StalePlanWriteError(expected, actual);
+    return await readVersionedCheckoutEpicArtifact(cwd, plan.name, name, plan.revision);
 }
 
 async function saveArtifact(
@@ -135,40 +112,17 @@ async function saveArtifact(
     if (managedPlanStoreActive()) {
         return await saveManagedEpicArtifact(cwd, requirePlanId(plan), name, body, plan.revision, expectedRevision);
     }
-    const identity = currentPackageProject();
-    if (identity) {
-        const target = { planId: requirePlanId(plan) };
-        return await packageWorkflowLocks([target], async () => {
-            const current = await selectedPackage(target);
-            if (current.metadata.archive && !current.metadata.archive.restoredAt)
-                throw new PlanNotFoundError(target.planId);
-            if (current.metadata.definition.classification !== "PROJECT")
-                throw new Error(`${current.metadata.name} is not an Epic Plan.`);
-            ensureExpectedRevision(expectedRevision, packageWorkflowRevision(current));
-            const document = current.documents.find((entry) => entry.name === name);
-            return await savePlanPackageDocument(identity, target.planId, name, document?.hash ?? null, body);
-        });
-    }
     return await withPlanLock(cwd, plan.name, async () => {
         const current = await loadPlan(cwd, plan.name);
         if (!current || current.attrs.planId !== plan.attrs.planId) throw new PlanNotFoundError(plan.name);
         assertEpic({ ...current, name: plan.name });
-        if (expectedRevision !== undefined) {
-            const before = await readCheckoutEpicArtifact(cwd, plan.name, name);
-            ensureExpectedRevision(expectedRevision, checkoutArtifactRevision(current.revision, before));
-        }
-        const markdown = decodePackageMarkdown(new TextEncoder().encode(body));
-        await writeCheckoutEpicArtifact(cwd, plan.name, name, markdown);
-        return { body: markdown, revision: checkoutArtifactRevision(current.revision, markdown) };
+        return await saveVersionedCheckoutEpicArtifact(cwd, plan.name, name, current.revision, body, expectedRevision);
     });
 }
 
-async function assertEpicFamily(parent: ArtifactPlanIdentity, child: ArtifactPlanIdentity): Promise<void> {
+function assertEpicFamily(parent: ArtifactPlanIdentity, child: ArtifactPlanIdentity): void {
     assertEpic(parent);
-    if (currentPackageProject()) {
-        const loaded = await selectedPackage({ planId: requirePlanId(child) });
-        if (loaded.metadata.parentPlanId === parent.attrs.planId) return;
-    } else if (child.attrs.parentPlan === parent.name) {
+    if (child.attrs.parentPlan === parent.name) {
         const parentSegments = splitPlanName(parent.name);
         const childSegments = splitPlanName(child.name);
         if (
@@ -181,11 +135,11 @@ async function assertEpicFamily(parent: ArtifactPlanIdentity, child: ArtifactPla
 }
 
 function qaMarkerIdentity(child: ArtifactPlanIdentity): string {
-    return currentPackageProject() || managedPlanStoreActive() ? requirePlanId(child) : child.name;
+    return managedPlanStoreActive() ? requirePlanId(child) : child.name;
 }
 
 async function findQa(cwd: string, epic: ArtifactPlanIdentity, child: ArtifactPlanIdentity): Promise<boolean> {
-    await assertEpicFamily(epic, child);
+    assertEpicFamily(epic, child);
     const existing = await readArtifact(cwd, epic, EPIC_MANUAL_QA_FILE_NAME);
     return hasManualQaSection(existing?.body ?? null, qaMarkerIdentity(child));
 }
@@ -197,40 +151,20 @@ async function appendQa(
     section: ManualQaSection,
 ): Promise<"recorded" | "already_present"> {
     if (managedPlanStoreActive()) {
-        await assertEpicFamily(epic, child);
+        assertEpicFamily(epic, child);
         return await appendManagedEpicQa(cwd, requirePlanId(epic), requirePlanId(child), section);
     }
+    if (currentPackageProject())
+        return await appendGeneratedManualQaSection(requirePlanId(epic), requirePlanId(child), section);
+
     const write = async (epic: ArtifactPlanIdentity, child: ArtifactPlanIdentity) => {
-        await assertEpicFamily(epic, child);
+        assertEpicFamily(epic, child);
         const existing = await readArtifact(cwd, epic, EPIC_MANUAL_QA_FILE_NAME);
-        const body = prepareManualQaSection(
-            existing?.body ?? null,
-            epic.name,
-            child.name,
-            qaMarkerIdentity(child),
-            section,
-        );
+        const body = prepareManualQaSection(existing?.body ?? null, epic.name, child.name, child.name, section);
         if (body === null) return "already_present" as const;
-        if (currentPackageProject()) {
-            const target = { planId: requirePlanId(epic) };
-            await saveGeneratedManualQaArtifact(
-                { planId: requirePlanId(child) },
-                target,
-                existing?.packageHash ?? null,
-                body,
-            );
-        } else {
-            await writeCheckoutEpicArtifact(cwd, epic.name, EPIC_MANUAL_QA_FILE_NAME, body);
-        }
+        await writeCheckoutEpicArtifact(cwd, epic.name, EPIC_MANUAL_QA_FILE_NAME, body);
         return "recorded" as const;
     };
-    if (currentPackageProject()) {
-        const epicId = requirePlanId(epic);
-        const childId = requirePlanId(child);
-        return await packageWorkflowLocks([{ planId: epicId }, { planId: childId }], async () =>
-            write(await planById(cwd, epicId), await planById(cwd, childId)),
-        );
-    }
 
     async function reload(observed: ArtifactPlanIdentity): Promise<ArtifactPlanIdentity> {
         const current = await loadPlan(cwd, observed.name);
@@ -252,14 +186,8 @@ async function appendQa(
     );
 }
 
-function artifact(planId: PlanId, name: EpicArtifactName, content: Pick<ProjectPlanArtifact, "body" | "revision">) {
-    return {
-        planId,
-        name,
-        relativePath: planArtifactReference(planId, name),
-        body: content.body,
-        revision: content.revision,
-    };
+function localPackageOwner() {
+    return managedPlanStoreActive() ? undefined : currentPackageProject();
 }
 
 export function projectPlanArtifacts(run: ReturnType<typeof bindProjectPlanStore>): ProjectPlanArtifacts {
@@ -267,19 +195,25 @@ export function projectPlanArtifacts(run: ReturnType<typeof bindProjectPlanStore
         read: (planId, requested) =>
             run(async (cwd) => {
                 const name = requireArtifactName(requested);
+                const owner = localPackageOwner();
+                if (owner) return await packageArtifactFiles(owner).read(planId, name);
                 const plan = await planById(cwd, planId);
                 assertEpic(plan);
                 const content = await readArtifact(cwd, plan, name);
-                return content ? artifact(planId, name, content) : null;
+                return content ? epicArtifactDocument(planId, name, content) : null;
             }, "retained"),
         save: (planId, requested, body, expectedRevision) =>
             run(async (cwd) => {
                 const name = requireArtifactName(requested);
+                const owner = localPackageOwner();
+                if (owner) return await packageArtifactFiles(owner).save(planId, name, body, expectedRevision);
                 const content = await saveArtifact(cwd, await planById(cwd, planId), name, body, expectedRevision);
-                return artifact(planId, name, content);
+                return epicArtifactDocument(planId, name, content);
             }, "retained"),
         findManualQaSection: (epicId, childId) =>
             run(async (cwd) => {
+                const owner = localPackageOwner();
+                if (owner) return await packageArtifactFiles(owner).findManualQaSection(epicId, childId);
                 const [epic, child] = await Promise.all([planById(cwd, epicId), planById(cwd, childId)]);
                 return {
                     exists: await findQa(cwd, epic, child),

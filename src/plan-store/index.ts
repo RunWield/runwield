@@ -20,7 +20,6 @@ export {
     updatePlanCollaborationMetadata,
     clearPlanCollaborationMetadata,
     StalePlanBodyError,
-    PlanNotFoundError,
     PlanFileIssueError,
 } from "../plan-store.ts";
 export type {
