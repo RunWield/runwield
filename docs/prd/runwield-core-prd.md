@@ -2017,6 +2017,14 @@ remote personal store. Managed operations use the initiating laptop's registered
   the later choice reports the conflict and preserves the committed identity. Repeating the winning choice reuses it.
 - Given a non-Git folder that is moved and initialized with Git, entry preserves its ID and settings and removes only
   its valid identity marker. Conflicting or malformed evidence is preserved.
+- Given a non-Git Project whose marker was committed before a linked worktree was created, entry from either checkout
+  preserves the Project and repository IDs. Entry from the linked checkout writes the primary checkout binding to Git
+  before assigning the linked checkout its own binding, so the primary binding survives a branch change. Entry removes
+  verified marker copies from the working trees without staging the deletions. If the primary branch stopped carrying
+  the marker before first entry, a committed copy in a linked worktree can recover the same IDs when all three match
+  the primary checkout's binding in the current owner's registry. Git's CRLF checkout conversion preserves that proof.
+- Given Git worktrees with the same checkout ID, passive inspection and deliberate entry report the conflict from
+  either checkout and preserve their identity evidence and registered storage.
 - Given manual SSH, ownership remains the remote execution account. Given an explicit managed launch owner, ownership
   remains that owner, never an inference from the mount path or an automatic fallback after disconnection.
 - Given a managed remote Session with a saved binding, passive Session reads use that binding and skip the remote
