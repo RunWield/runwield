@@ -10,6 +10,10 @@ export const PLAN_STORE_QUALIFICATIONS: Readonly<Record<string, { reason: string
         reason: "Verify delivery copy materialization rejects checkout escapes and preserves files outside the checkout.",
         modules: ["packages/plans/publication-files.ts"],
     },
+    "packages/plans/retained-checkout.test.ts": {
+        reason: "Verify retained checkout identity and async scope independently of the application.",
+        modules: ["packages/plans/retained-checkout.ts"],
+    },
     "src/cmd/load-plan/missing-directory-recovery.integration.test.ts": {
         reason: "Compare exact imported package bytes before/after public missing-checkout recovery, including deliberately replaced registry identity.",
         modules: ["src/plan-store/packages.ts"],
@@ -24,7 +28,7 @@ export const PLAN_STORE_QUALIFICATIONS: Readonly<Record<string, { reason: string
     },
     "src/plan-package-import-evidence.test.ts": {
         reason: "Qualify retained import provenance, identity/name changes and historical controller evidence.",
-        modules: ["src/plan-store/packages.ts", "src/plan-store/retained-source.ts"],
+        modules: ["src/plan-store/packages.ts", "packages/plans/retained-checkout.ts"],
     },
     "src/plan-package-import-recovery.test.ts": {
         reason: "Interrupt and recover staged import batches; inspect immutable sources and partially published members.",
@@ -74,6 +78,10 @@ export const PLAN_STORE_QUALIFICATIONS: Readonly<Record<string, { reason: string
         reason: "Only archived metadata helper is private; author/import/archive/restore journeys exercise public commands.",
         modules: ["src/plan-store.ts"],
     },
+    "src/shared/project-runtime-read-denial.test.ts": {
+        reason: "Select the retained checkout owner in subprocesses that qualify passive reads under write denial and lock contention.",
+        modules: ["packages/plans/retained-checkout.ts"],
+    },
     "src/shared/testing/plan-controller-fixture.ts": {
         reason: "Arrange historical controller facts separately from prose for canonical versus retained fixture states.",
         modules: ["src/plan-store/access.ts"],
@@ -102,7 +110,7 @@ export const PLAN_STORE_QUALIFICATIONS: Readonly<Record<string, { reason: string
     },
     "src/shared/testing/retained-plan-fixture.ts": {
         reason: "Explicitly select an existing legacy owner for retained-source qualification; public cutover is tested separately.",
-        modules: ["src/plan-store/retained-source.ts"],
+        modules: ["packages/plans/retained-checkout.ts"],
     },
     "src/shared/workflow/controller-registry.integration.test.ts": {
         reason: "Owner qualification for controller/registry authority, interrupted migration and execution document binding.",
@@ -126,7 +134,7 @@ export const PLAN_STORE_QUALIFICATIONS: Readonly<Record<string, { reason: string
     },
     "src/shared/workflow/package-lifecycle-recovery.test.ts": {
         reason: "Poison/recover lifecycle journals and qualify the private retained-source continuation boundary.",
-        modules: ["src/plan-store/packages.ts", "src/plan-store/retained-source.ts", "src/plan-store/workflows.ts"],
+        modules: ["src/plan-store/packages.ts", "packages/plans/retained-checkout.ts", "src/plan-store/workflows.ts"],
     },
     "src/shared/workflow/package-lifecycle.integration.test.ts": {
         reason: "Owner lifecycle qualification for immutable review/readiness input, rename and execution artifact invariants.",

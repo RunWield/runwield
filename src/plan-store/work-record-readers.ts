@@ -5,7 +5,7 @@ import { readLocalHomeStore } from "./access.ts";
 import { openPlanStoreForCheckout, openProjectPlanStore } from "./project-plans.ts";
 import { managedDocumentRoot, managedPlanStoreActive } from "./managed.ts";
 import { workRecordOwnerLayout } from "../shared/work-records/owner.ts";
-import { validatedRetainedCheckoutSource } from "./retained-source.ts";
+import { validatedRetainedCheckoutSource } from "@runwield/plans/retained-checkout";
 import { listProjectWorkRecords, selectProjectWorkRecord } from "./project-work-records.ts";
 
 /** Resolve passive Work Record evidence at a checkout entry point. */

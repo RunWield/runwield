@@ -15,6 +15,7 @@ const fixture = defineCommittedGitFixture({
     "README.md": "# Passive read denial\n",
     "docs/plans/example.md": "---\nplanId: example-id\nstatus: draft\n---\n# Example\n",
 });
+const retainedCheckoutUrl = import.meta.resolve("@runwield/plans/retained-checkout");
 const storeUrl = new URL("../plan-store.ts", import.meta.url).href;
 const registryUrl = new URL("./worktree-registry.ts", import.meta.url).href;
 const doctorUrl = new URL("../cmd/plans/doctor.ts", import.meta.url).href;
@@ -71,7 +72,7 @@ for (const state of ["fresh", "legacy", "ready", "returning-legacy"]) {
                 const { runPlansDoctor } = await import(${JSON.stringify(doctorUrl)});
                 const root = ${JSON.stringify(root)};
                 const { projects } = await import(${JSON.stringify(import.meta.resolve("@runwield/projects"))});
-                const { withRetainedCheckoutSource } = await import(${JSON.stringify(new URL("../plan-store/retained-source.ts", import.meta.url).href)});
+                const { withRetainedCheckoutSource } = await import(${JSON.stringify(retainedCheckoutUrl)});
                 const selected = projects.checkout.inspect(root);
                 strictEqual(selected.kind, 'existing');
                 await withRetainedCheckoutSource(selected.identity, async () => {
@@ -151,7 +152,7 @@ test("passive reads do not wait for catalog and registry locks held by another p
             cwd: root,
             args: [
                 "--eval",
-                `const { listPlanResources } = await import(${JSON.stringify(storeUrl)}); const { projects } = await import(${JSON.stringify(import.meta.resolve("@runwield/projects"))}); const { withRetainedCheckoutSource } = await import(${JSON.stringify(new URL("../plan-store/retained-source.ts", import.meta.url).href)}); await withRetainedCheckoutSource(projects.checkout.inspect(${JSON.stringify(root)}).identity, async () => console.log((await listPlanResources(${JSON.stringify(root)}))[0].planId));`,
+                `const { listPlanResources } = await import(${JSON.stringify(storeUrl)}); const { projects } = await import(${JSON.stringify(import.meta.resolve("@runwield/projects"))}); const { withRetainedCheckoutSource } = await import(${JSON.stringify(retainedCheckoutUrl)}); await withRetainedCheckoutSource(projects.checkout.inspect(${JSON.stringify(root)}).identity, async () => console.log((await listPlanResources(${JSON.stringify(root)}))[0].planId));`,
             ],
             // The holder releases only after the read returns. Allow for Bun startup on CI.
             timeoutMs: 15_000,

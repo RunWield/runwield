@@ -10,7 +10,7 @@ import {
 import { packageWorkflowRevision, type PackageAttemptReference } from "./packages.ts";
 import { retainPlanAccess, retainManagedPlanAccess, type PlanAccess } from "./handles.ts";
 import { continueImportedPackage, readImportedExecutionPlan } from "./legacy.ts";
-import { currentRetainedCheckoutSource } from "./retained-source.ts";
+import { currentRetainedCheckoutSource } from "@runwield/plans/retained-checkout";
 import { withWorkRecordOwner, withoutWorkRecordOwner } from "../shared/work-records/owner.ts";
 import { journalPackageMetadataWrite } from "./transitions.ts";
 /** Explicit internal package authority. A scope propagates an admitted source through existing workflow owners. */

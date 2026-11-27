@@ -11,7 +11,7 @@ import {
     selectManagedPlan,
     withManagedPlan,
 } from "./managed.ts";
-import { hasRetainedCheckoutSource } from "./retained-source.ts";
+import { hasRetainedCheckoutSource } from "@runwield/plans/retained-checkout";
 import { remoteProjectOwner } from "../shared/remote/personal-resources.ts";
 import {
     currentPackageProject,

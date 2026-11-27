@@ -8,7 +8,7 @@ import { addEntry } from "../worktree-registry.ts";
 
 import { preparePlanWorkflow } from "../../plan-store/index.ts";
 import { currentPackageSelection } from "../../plan-store/workflows.ts";
-import { hasRetainedCheckoutSource, withRetainedCheckoutSource } from "../../plan-store/retained-source.ts";
+import { hasRetainedCheckoutSource, withRetainedCheckoutSource } from "@runwield/plans/retained-checkout";
 import type { ValidationCheckpoint } from "@runwield/plans/controller-state";
 import { withPackageWorkflow } from "../../plan-store/workflows.ts";
 import { recordPlanEvent } from "../../plan-store/index.ts";

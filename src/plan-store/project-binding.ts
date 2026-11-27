@@ -2,7 +2,7 @@ import { projects, type ProjectId } from "@runwield/projects";
 import { projectPlanStoreBinding } from "@runwield/plans/project-store-binding";
 import type { ProjectPlanStoreOptions } from "@runwield/plans/store";
 import { captureManagedProjectPlanAccess, managedPersonalStoreActive } from "./managed.ts";
-import { hasRetainedCheckoutSource } from "./retained-source.ts";
+import { hasRetainedCheckoutSource } from "@runwield/plans/retained-checkout";
 import { currentPackageProject, currentPackageSelection, withPackageProject } from "./workflows.ts";
 
 export class PlanAccessMismatchError extends Error {}
