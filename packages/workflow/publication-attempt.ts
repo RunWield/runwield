@@ -12,17 +12,13 @@ export {
     PUBLICATION_ATTEMPT_VERSION,
     PUBLICATION_PHASES,
     assertPublicationAttempt,
+    isPublicationCleanupPending,
     publicationPhaseAtLeast,
     type PublicationAttempt,
     type PublicationFailure,
     type PublicationPhase,
     type PublicationRevalidation,
 } from "@runwield/workflow-publication-format";
-
-/** Published attempts retain cleanup evidence, not ownership of an execution document. */
-export function isPublicationCleanupPending(attempt: PublicationAttempt | undefined): boolean {
-    return attempt?.phase === "publication_verified" || attempt?.phase === "cleanup_complete";
-}
 
 export type PublicationFailureInput = Omit<PublicationFailure, "phase" | "recordedAt"> & {
     phase?: PublicationPhase;

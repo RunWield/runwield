@@ -2,7 +2,11 @@ import { PlanNotFoundError, StalePlanWriteError } from "@runwield/plans/store";
 import { projectPlanDocuments } from "./checkout-documents.ts";
 import { projectPlanArtifacts } from "./artifacts.ts";
 
-import { currentRetainedCheckoutSource, hasRetainedCheckoutSource } from "@runwield/plans/retained-checkout";
+import {
+    currentRetainedCheckoutSource,
+    hasRetainedCheckoutSource,
+    readRetainedExecutionPlan,
+} from "@runwield/plans/retained-checkout";
 import { plans, type PlanEventDetails, type PlanId } from "@runwield/plans";
 import type {
     ProjectPlanCatalogEntry,
@@ -12,13 +16,14 @@ import type {
     ProjectPlanStoreOptions,
     ReviseProjectPlan,
 } from "@runwield/plans/store";
-import { type ProjectId } from "@runwield/projects";
+import { projects, type ProjectId } from "@runwield/projects";
 import { requestWorkspaceSearchRefresh } from "@runwield/resources/workspace-search-refresh";
 import { requireOwnedWorkRecordFiles } from "../shared/work-records/owner.ts";
 import { projectWorkRecordReads } from "./project-work-records.ts";
 import { bindProjectPlanStore, checkoutPlanIdentity } from "./project-binding.ts";
-import { readPlanPackagePublicationForCheckout } from "@runwield/plans/package-storage";
+import { readPlanPackage, readPlanPackagePublicationForCheckout } from "@runwield/plans/package-storage";
 import type { PlanResource } from "../plan-store.ts";
+import { currentPackageProject, projectPackageWorkflowPlan } from "./workflows.ts";
 import {
     createSavedPlan,
     reviseSavedPlan,
@@ -122,11 +127,34 @@ function document(resource: PlanResource, planId: PlanId): ProjectPlanDocument {
 }
 
 async function readActive(cwd: string, planId: PlanId): Promise<ProjectPlanDocument> {
-    const resource = managedPlanStoreActive()
-        ? await readManagedActivePlanById(cwd, planId)
-        : await findPlanById(cwd, planId);
-    if (!resource) throw new PlanNotFoundError(planId);
-    return document(resource, planId);
+    if (managedPlanStoreActive()) {
+        const resource = await readManagedActivePlanById(cwd, planId);
+        if (!resource) throw new PlanNotFoundError(planId);
+        return document(resource, planId);
+    }
+    const identity = currentPackageProject();
+    if (identity) {
+        const observation = projects.home.isOwner(identity)
+            ? undefined
+            : await readRetainedExecutionPlan(identity, planId);
+        const selected = observation?.selected ?? (await readPlanPackage(identity, { planId }));
+        if (
+            selected.kind === "missing" ||
+            (selected.kind === "loaded" && selected.metadata.archive && !selected.metadata.archive.restoredAt)
+        )
+            throw new PlanNotFoundError(planId);
+        if (selected.kind !== "loaded") throw new Error(selected.message);
+        const loaded = await projectPackageWorkflowPlan(observation ?? { selected });
+        return {
+            ...documentFields({
+                ...loaded,
+                name: selected.metadata.name,
+                relativePath: planArtifactReference(planId),
+            }),
+            planId,
+        };
+    }
+    return document(await findPlanById(cwd, planId), planId);
 }
 
 async function readArchived(cwd: string, planId: PlanId): Promise<ProjectPlanDocument> {

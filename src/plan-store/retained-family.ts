@@ -14,7 +14,7 @@ import {
 } from "@runwield/plans/controller-state";
 import type { ControllerWriteOptions } from "./controllers.ts";
 import type { ControllerRecord } from "@runwield/plans/controller-state";
-import { readControllerRecordAtPath } from "./controllers.ts";
+import { readControllerRecordAtPath } from "@runwield/plans/retained-checkout";
 import {
     readRetainedManagedExecution,
     parseRetainedManagedController,

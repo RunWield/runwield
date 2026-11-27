@@ -9,7 +9,8 @@ import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { parsePlanFrontMatter } from "@runwield/plans/format";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
-import { inspectTargetBranchPlansByParent, TargetBranchSnapshotUnavailableError } from "./planning-worktree.ts";
+import { TargetBranchSnapshotUnavailableError } from "@runwield/plans/retained-checkout";
+import { inspectTargetBranchPlansByParent } from "./planning-worktree.ts";
 
 const smallCount = 2;
 const largeCount = 32;

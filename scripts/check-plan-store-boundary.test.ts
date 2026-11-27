@@ -69,6 +69,19 @@ test("only the Plan store can use its filesystem drivers and retained evidence",
     }
 });
 
+test("the retained execution reader stays private to the Plan owner and independent of the application", () => {
+    for (const module of ["retained-execution", "checkout-controller", "execution-git-snapshot"]) {
+        const reader = `packages/plans/${module}.ts`;
+        const relativeImport = `await import("../../${reader}");`;
+        equal(inspectPlanStoreImports("src/plan-store/legacy.ts", relativeImport).length, 0, module);
+        equal(inspectPlanStoreImports("src/tools/example.ts", relativeImport).length, 1, module);
+        equal(inspectPlanStoreImports("src/tools/example.test.ts", relativeImport).length, 1, module);
+        equal(inspectPlanStoreImports(reader, 'import "../../src/plan-store/index.ts";').length, 1, module);
+        const graph = new Map([["packages/plans/index.ts", `export * from "./${module}.ts";`]]);
+        equal(inspectPlanFormatGraph(graph).length, 1, module);
+    }
+});
+
 test("tests in the Plan owner directory require exact driver qualification", () => {
     const specifier = 'await import("@runwield/plans/package-storage");';
     equal(inspectPlanStoreImports("src/plan-store/unqualified.test.ts", specifier).length, 1);
@@ -155,6 +168,15 @@ test("only Plan owners and exact qualifications can select the retained checkout
     ]) {
         equal(inspectPlanStoreImports("src/tools/example.ts", source).length, 1, source);
         equal(inspectPlanStoreImports("src/tools/example.test.ts", source).length, 1, source);
+    }
+    for (const [file, operation] of [
+        ["src/shared/workflow/execution-worktree-rescue.ts", "findMissingExecutionSnapshot"],
+        ["src/shared/workflow/planning-target.ts", "TargetBranchSnapshotUnavailableError"],
+        ["src/shared/workflow/planning-worktree-inspection.test.ts", "TargetBranchSnapshotUnavailableError"],
+    ]) {
+        equal(inspectPlanStoreImports(file, `import { ${operation} } from "${entry}";`).length, 0);
+        equal(inspectPlanStoreImports(file, `import { readRetainedExecutionPlan } from "${entry}";`).length, 1);
+        equal(inspectPlanStoreImports(file, `const driver = await import("${entry}");`).length, 1);
     }
     const specifier = `import.meta.resolve("${entry}");`;
     equal(inspectPlanStoreImports("src/plan-store/managed.ts", specifier).length, 0);

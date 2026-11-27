@@ -1,22 +1,15 @@
+import { findMissingExecutionSnapshot } from "@runwield/plans/retained-checkout";
 import { projects } from "@runwield/projects";
-import { enterProjectRuntime } from "../project-runtime-layout.ts";
 import { captureForegroundProcess } from "@runwield/resources/process";
 import { lstat as fsLstat } from "node:fs/promises";
-/** Recover a deleted execution checkout from Git evidence left by a manual rescue. */
-import { parsePlanFrontMatter } from "@runwield/plans/format";
-import { planDocumentsForCheckout } from "../../plan-store/index.ts";
-import { listPlanExecutionDocuments } from "../../plan-store/index.ts";
-import { loadTargetPlan, TargetBranchSnapshotUnavailableError } from "./planning-worktree.ts";
+import { listPlanExecutionDocuments, planDocumentsForCheckout } from "../../plan-store/index.ts";
+import { enterProjectRuntime } from "../project-runtime-layout.ts";
+import { loadTargetPlan } from "./planning-worktree.ts";
 
 interface GitResult {
     code: number;
     stdout: string;
     stderr: string;
-}
-
-interface RescueCandidate {
-    commit: string;
-    refs: string[];
 }
 
 interface RegisteredExecutionAttempt {
@@ -39,15 +32,6 @@ export interface RecoveredExecutionWorktree {
     planName: string;
     branch: string;
 }
-
-const RESCUED_EXECUTION_STATUSES = new Set([
-    "in_progress",
-    "failed",
-    "implemented",
-    "validated_ci",
-    "reviewed",
-    "validated",
-]);
 
 async function runGitResult(cwd: string, args: string[]): Promise<GitResult> {
     const output = await captureForegroundProcess("git", { cwd, args, env: { GIT_NO_LAZY_FETCH: "1" } });
@@ -75,84 +59,11 @@ export async function executionWorktreePathExists(path: string): Promise<boolean
     }
 }
 
-async function commitContainsExecutionPlan(
-    projectRoot: string,
-    attempt: RegisteredExecutionAttempt,
-    commit: string,
-    requireExecutionStatus: boolean,
-): Promise<boolean> {
-    const planPath = `docs/plans/${attempt.planName}.md`;
-    const shown = await runGitResult(projectRoot, ["show", `${commit}:${planPath}`]);
-    if (shown.code !== 0) {
-        const listed = await runGitResult(projectRoot, ["ls-tree", commit, "--", planPath]);
-        if (listed.code !== 0 || listed.stdout) throw new TargetBranchSnapshotUnavailableError(commit);
-        return false;
-    }
-    try {
-        const parsed = parsePlanFrontMatter(shown.stdout);
-        if (!attempt.planId || parsed.attrs.planId !== attempt.planId) return false;
-        if (requireExecutionStatus && !RESCUED_EXECUTION_STATUSES.has(String(parsed.attrs.status || ""))) return false;
-    } catch {
-        return false;
-    }
-    if (attempt.baseCommit) {
-        const ancestor = await runGitResult(projectRoot, ["merge-base", "--is-ancestor", attempt.baseCommit, commit]);
-        if (ancestor.code !== 0) return false;
-    }
-    return true;
-}
-
-async function findUniqueRescueCandidate(
-    projectRoot: string,
-    attempt: RegisteredExecutionAttempt,
-): Promise<RescueCandidate | null> {
-    const refsResult = await runGitResult(projectRoot, [
-        "for-each-ref",
-        "--format=%(refname)%00%(objectname)",
-        "refs/heads",
-        "refs/remotes",
-    ]);
-    if (refsResult.code !== 0) return null;
-    const candidatesByCommit = new Map<string, RescueCandidate>();
-    for (const line of refsResult.stdout.split("\n").filter(Boolean)) {
-        const [ref = "", commit = ""] = line.split("\0");
-        if (!ref || !commit || /\/HEAD$/.test(ref)) continue;
-        if (!(await commitContainsExecutionPlan(projectRoot, attempt, commit, true))) continue;
-        const existing = candidatesByCommit.get(commit);
-        if (existing) existing.refs.push(ref);
-        else candidatesByCommit.set(commit, { commit, refs: [ref] });
-    }
-    const candidates = [...candidatesByCommit.values()];
-    const tips: RescueCandidate[] = [];
-    for (const candidate of candidates) {
-        let superseded = false;
-        for (const other of candidates) {
-            if (candidate.commit === other.commit) continue;
-            const ancestor = await runGitResult(projectRoot, [
-                "merge-base",
-                "--is-ancestor",
-                candidate.commit,
-                other.commit,
-            ]);
-            if (ancestor.code === 0) {
-                superseded = true;
-                break;
-            }
-        }
-        if (!superseded) tips.push(candidate);
-    }
-    return tips.length === 1 ? tips[0] : null;
-}
-
 /** Read recoverable execution evidence without recreating its checkout or changing refs. */
 export async function readMissingExecutionPlan(projectRoot: string, attempt: RegisteredExecutionAttempt) {
-    const recorded = await runGitResult(projectRoot, ["rev-parse", "--verify", `refs/heads/${attempt.branch}`]);
-    if (recorded.code === 0) {
-        if (!(await commitContainsExecutionPlan(projectRoot, attempt, recorded.stdout, false))) return null;
-        return await loadTargetPlan(projectRoot, attempt.planName, recorded.stdout);
-    }
-    const candidate = await findUniqueRescueCandidate(projectRoot, attempt);
-    return candidate ? await loadTargetPlan(projectRoot, attempt.planName, candidate.commit) : null;
+    const source = await findMissingExecutionSnapshot(projectRoot, attempt, "read");
+    if (source.kind !== "recorded" && source.kind !== "rescue") return null;
+    return await loadTargetPlan(projectRoot, attempt.planName, source.commit);
 }
 
 /**
@@ -168,24 +79,13 @@ export async function recoverMissingExecutionWorktree(
         return { recovered: false, reason: "recorded path still exists" };
     }
 
-    const expectedBranchRef = `refs/heads/${attempt.branch}`;
-    const expectedBranch = await runGitResult(projectRoot, ["rev-parse", "--verify", expectedBranchRef]);
-    let sourceRef = expectedBranchRef;
-    let sourceCommit = expectedBranch.stdout;
-    let createdBranch = false;
-    if (expectedBranch.code !== 0 || !(await commitContainsExecutionPlan(projectRoot, attempt, sourceCommit, false))) {
-        const candidate = await findUniqueRescueCandidate(projectRoot, attempt);
-        if (!candidate) {
-            return { recovered: false, reason: "no unique matching rescue branch was found" };
-        }
-        sourceCommit = candidate.commit;
-        sourceRef = candidate.refs.find((ref) => ref.startsWith("refs/heads/")) || candidate.refs[0];
-        if (expectedBranch.code === 0) {
-            return { recovered: false, reason: "the recorded branch now contains different Plan evidence" };
-        }
-        await runGit(projectRoot, ["branch", attempt.branch, sourceCommit]);
-        createdBranch = true;
+    const source = await findMissingExecutionSnapshot(projectRoot, attempt, "repair");
+    if (source.kind === "missing") return { recovered: false, reason: "no unique matching rescue branch was found" };
+    if (source.kind === "recorded_branch_conflict") {
+        return { recovered: false, reason: "the recorded branch now contains different Plan evidence" };
     }
+    const createdBranch = source.kind === "rescue";
+    if (createdBranch) await runGit(projectRoot, ["branch", attempt.branch, source.commit]);
 
     let worktreeAdded = false;
     try {
@@ -197,7 +97,7 @@ export async function recoverMissingExecutionWorktree(
         if (!restored || restored.attrs.planId !== attempt.planId) {
             throw new Error("the restored checkout did not contain the expected Plan");
         }
-        return { recovered: true, branch: attempt.branch, sourceRef };
+        return { recovered: true, branch: attempt.branch, sourceRef: source.sourceRef };
     } catch (error) {
         if (worktreeAdded) {
             await runGitResult(projectRoot, ["worktree", "remove", "--force", attempt.path]);

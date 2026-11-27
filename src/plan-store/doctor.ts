@@ -1,9 +1,6 @@
 import { inspectWorktreeRegistryAtPath } from "@runwield/project-runtime/registry-inspection";
-import {
-    TargetBranchSnapshotUnavailableError,
-    resolveExistingTargetSnapshot,
-    prepareExistingTargetSnapshot,
-} from "../shared/workflow/planning-target.ts";
+import { readControllerRecordAtPath, TargetBranchSnapshotUnavailableError } from "@runwield/plans/retained-checkout";
+import { resolveExistingTargetSnapshot, prepareExistingTargetSnapshot } from "../shared/workflow/planning-target.ts";
 import { managedPlanStoreActive, inspectManagedOwner, readManagedRetainedExecution } from "./managed.ts";
 import { currentPackageProject } from "./workflows.ts";
 import { readLocalHomeStore, withLocalProjectAction } from "./index.ts";
@@ -56,7 +53,7 @@ import {
     inspectTargetBranchPlansByParent,
     prepareTargetBranchPlansByParent,
 } from "../shared/workflow/planning-worktree.ts";
-import { prepareControllerView, readControllerRecordAtPath } from "./controllers.ts";
+import { prepareControllerView } from "./controllers.ts";
 import { verifyRecordedPublication } from "../shared/workflow/validation-merge-verification.ts";
 
 /** A registry attempt as stored, before doctor proves anything about it. */

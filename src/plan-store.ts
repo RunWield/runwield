@@ -4,7 +4,8 @@ import { type PlanFrontMatter, type PlanFrontMatterInput, type PlanFrontMatterWi
 
 import type { MoveEpicArtifactResult } from "@runwield/plans/artifact-files";
 
-import type { ControllerDocumentWorktree, PendingControllerRepair } from "./plan-store/controllers.ts";
+import { TargetBranchSnapshotUnavailableError, type PendingControllerRepair } from "@runwield/plans/retained-checkout";
+import type { ControllerDocumentWorktree } from "./plan-store/controllers.ts";
 import { assertContainedProjectPath } from "./plan-store/resources.ts";
 
 import type { FrontMatterValue } from "./shared/front-matter.ts";
@@ -375,8 +376,6 @@ import {
     updatePackageWorkflowMetadata,
 } from "./plan-store/workflows.ts";
 
-import { hasApplicablePublicationReceipt } from "@runwield/workflow/publication";
-
 import fs from "node:fs/promises";
 
 import { openNativeFileLock } from "./shared/native-file-lock.ts";
@@ -425,7 +424,6 @@ import {
     findTargetBranchPlansByParent,
     readTargetBranchPlanCatalogByParent,
     loadTargetPlan,
-    TargetBranchSnapshotUnavailableError,
 } from "./shared/workflow/planning-worktree.ts";
 
 import { probeGitRepository } from "./shared/git.ts";
@@ -436,12 +434,7 @@ import { writePlanDocumentAndController } from "./plan-store/transitions.ts";
 
 import { requestWorkspaceSearchRefresh } from "@runwield/resources/workspace-search-refresh";
 
-import {
-    type WorkflowControllerState,
-    type WorkflowWorktreeContext,
-    pickControllerState,
-    stripRuntimeFields,
-} from "@runwield/plans/controller-state";
+import { effectivePlanLifecycleAttrs, pickControllerState, stripRuntimeFields } from "@runwield/plans/controller-state";
 
 import { enterProjectRuntime } from "./shared/project-runtime-layout.ts";
 import {
@@ -554,7 +547,7 @@ function pendingPlanReadAvailability(): PlanReadAvailability {
     return { kind: "pending", message: WORKFLOW_DETAILS_PENDING };
 }
 
-/** @param {PlanFrontMatter} attrs @param {import("./plan-store/controllers.ts").PendingControllerRepair[]} [pendingControllerRepairs] */
+/** @param {PlanFrontMatter} attrs @param {PendingControllerRepair[]} [pendingControllerRepairs] */
 function pendingControllerMetadata(attrs: PlanFrontMatter, pendingControllerRepairs: PendingControllerRepair[] = []) {
     return {
         attrs: effectivePlanLifecycleAttrs(attrs, {}),
@@ -618,45 +611,6 @@ async function prepareStoredPlan(cwd: string, planName: string) {
     const plan = await loadPlan(cwd, planName);
     if (!plan) return null;
     return { ...plan, ...(await prepareControllerMetadata(plan.path, parsePlanFrontMatter(plan.markdown).attrs)) };
-}
-
-/**
- * Project only durable local controller evidence. Publication verification and
- * receipt invalidation belong to the lifecycle owner, not readers.
- * @param {PlanFrontMatter} attrs
- * @param {import('@runwield/plans/controller-state').WorkflowWorktreeContext} state
- * @param {boolean} [publicationConfirmed]
- * @returns {PlanFrontMatter}
- */
-function effectivePlanLifecycleAttrs(
-    attrs: PlanFrontMatter,
-    state: WorkflowControllerState & WorkflowWorktreeContext,
-    publicationConfirmed: boolean = false,
-): PlanFrontMatter {
-    const combined = { ...stripRuntimeFields(attrs), ...state };
-    if (
-        (publicationConfirmed || hasApplicablePublicationReceipt(combined)) &&
-        !["on_hold", "user_verified", "closed_without_verification"].includes(combined.status)
-    ) {
-        combined.status = "verified";
-    } else if (combined.status === "validated") {
-        const delivered = Boolean(
-            combined.deliveryEvidence?.mode === "non_git_in_place" ||
-            (combined.verifiedAt &&
-                !combined.worktreeId &&
-                (!combined.publicationReceipt || hasApplicablePublicationReceipt(combined))),
-        );
-        combined.status = delivered
-            ? "verified"
-            : isProjectPlan(combined) && combined.epicCompletionMode === "done_enough"
-              ? "closed_without_verification"
-              : "reviewed";
-    }
-    if (combined.status === "validated_ci") {
-        combined.status = "implemented";
-        combined.validationPhase = "semantic";
-    }
-    return combined;
 }
 
 /**
