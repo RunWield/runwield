@@ -89,6 +89,7 @@ interface MixedEditSnapshot {
 
 interface MixedEditResult {
     isError?: boolean;
+    content: { text: string }[];
 }
 
 for (const phase of [
@@ -165,6 +166,28 @@ for (const phase of ["interrupted", "short-write"]) {
             }
         }));
 }
+
+test("a managed file edit refuses an invalid partial-write checkpoint", () =>
+    withProcessGlobalTestLock(async () => {
+        const fixture = await composedRemoteFixture();
+        const source = join(fixture.root, "source.txt");
+        try {
+            await fixture.run("managed-mixed-seed");
+            await fixture.run("managed-file-edit-reconnect", undefined, "short-write");
+            const { mtimeNs } = await stat(source, { bigint: true });
+            // Keep the original digest and generation while changing the checkpoint offset.
+            for (const offset of ["4", "20", "null"]) {
+                await fixture.run("managed-mixed-checkpoint-offset", undefined, offset);
+                const result: MixedEditResult = JSON.parse(await fixture.run("managed-mixed-edit"));
+                equal(result.isError, true);
+                equal(result.content[0].text, "File changed before edit: " + source);
+                equal(await readFile(source, "utf8"), "Updginal source");
+                equal((await stat(source, { bigint: true })).mtimeNs, mtimeNs);
+            }
+        } finally {
+            await fixture.cleanup();
+        }
+    }));
 
 test("a managed import retains its operation when the host reconnects before returning its result", () =>
     withProcessGlobalTestLock(async () => {

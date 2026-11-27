@@ -2,7 +2,7 @@ import { authenticatedProjectStoreRequest } from "../shared/remote/project-store
 import { workRecords } from "@runwield/plans/work-records";
 import { workRecordFiles } from "@runwield/plans/work-record-files";
 import { parseProjectId, projects, type HomeProjectOwner } from "@runwield/projects";
-import { tmpdir } from "node:os";
+import { constants, tmpdir } from "node:os";
 import { parseHistoryList, parseMilestoneDocuments } from "../shared/remote/project-store-protocol.ts";
 import { test } from "node:test";
 import { equal, deepEqual, rejects } from "node:assert/strict";
@@ -977,6 +977,47 @@ test("a managed multi-file retry preserves independent changes to already settle
             deepEqual(JSON.parse(await f.run("managed-mixed-inspect")), first);
         } finally {
             proxy.stop(true);
+            await f.cleanup();
+        }
+    });
+});
+
+test("a managed multi-file retry preserves a partial source after a crash before its checkpoint", async () => {
+    const { withProcessGlobalTestLock } = await import("../testing/process-global-lock.ts");
+    const { composedRemoteFixture } = await import("../shared/remote/composed-store-fixture.ts");
+    await withProcessGlobalTestLock(async () => {
+        const f = await composedRemoteFixture();
+        const source = join(f.root, "source.txt");
+        const cleared = join(f.root, "clear.txt");
+        const later = join(f.root, "conflict.txt");
+        try {
+            await f.run("managed-mixed-seed");
+            await writeFile(cleared, "Remove me");
+            await writeFile(later, "Before");
+            const before = JSON.parse(await f.run("managed-mixed-inspect"));
+            const crash = await f.runRaw("managed-mixed-batch-edit", undefined, "before-checkpoint");
+            equal(crash.code, 128 + constants.signals.SIGKILL, new TextDecoder().decode(crash.stderr));
+            const interrupted = JSON.parse(await f.run("managed-mixed-inspect"));
+            equal(interrupted.body, "Updated Plan");
+            equal(interrupted.revision === before.revision, false);
+            equal(interrupted.source, "Updginal source");
+            const { mtimeNs } = await stat(source, { bigint: true });
+
+            const retry = JSON.parse(await f.run("managed-mixed-batch-edit"));
+            equal(retry.isError, true);
+            equal(retry.content[0].text, "File changed before edit: " + source);
+            equal((await stat(source, { bigint: true })).mtimeNs, mtimeNs);
+            equal(await readFile(cleared, "utf8"), "Remove me");
+            equal(await readFile(later, "utf8"), "Before");
+            deepEqual(JSON.parse(await f.run("managed-mixed-inspect")), interrupted);
+
+            await writeFile(source, before.source);
+            const restored = JSON.parse(await f.run("managed-mixed-batch-edit"));
+            equal(restored.isError, undefined, JSON.stringify(restored));
+            deepEqual(JSON.parse(await f.run("managed-mixed-inspect")), { ...interrupted, source: "Updated source" });
+            equal(await readFile(cleared, "utf8"), "");
+            equal(await readFile(later, "utf8"), "After");
+        } finally {
             await f.cleanup();
         }
     });

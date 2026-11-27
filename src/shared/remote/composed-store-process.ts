@@ -11,9 +11,9 @@ type ComposedRemoteInput = Pick<RemoteInteractiveConfig, "cwd" | "resources" | "
 const input: ComposedRemoteInput = JSON.parse(json);
 const managed = command.startsWith("managed");
 
-type ManagedSourceSyncFailure = "after-truncate" | "retry-sync";
+type ManagedSourceInterruption = "before-checkpoint" | "after-truncate" | "retry-sync";
 
-async function interruptManagedSourceSync(pathname: string, phase: ManagedSourceSyncFailure) {
+async function interruptManagedSource(pathname: string, phase: ManagedSourceInterruption) {
     const { mock } = await import("bun:test");
     const { open } = await import("node:fs/promises");
     mock.module("node:fs/promises", () => ({
@@ -24,7 +24,21 @@ async function interruptManagedSourceSync(pathname: string, phase: ManagedSource
         ) {
             const file = await open(path, flags, mode);
             if (path !== pathname) return file;
-            if (phase === "retry-sync") {
+            if (phase === "before-checkpoint") {
+                const write = file.write.bind(file);
+                Object.defineProperty(file, "write", {
+                    async value(buffer: Buffer, offset: number, length: number, position: number) {
+                        equal(offset, 0);
+                        equal(position, 0);
+                        const prefixLength = 3;
+                        ok(length > prefixLength);
+                        const result = await write(buffer, offset, prefixLength, position);
+                        equal(result.bytesWritten, prefixLength);
+                        process.kill(process.pid, "SIGKILL");
+                        return result;
+                    },
+                });
+            } else if (phase === "retry-sync") {
                 file.sync = () => Promise.reject(new Error("Interrupted while syncing the settled source on retry."));
             } else {
                 const truncate = file.truncate.bind(file);
@@ -69,9 +83,10 @@ interface ManagedEditRequests {
     replacement: string[];
 }
 
-interface LegacySourceJournalRecord {
+interface SourceJournalFixtureRecord {
     sourceIdentity?: string;
     sourceRequest?: string;
+    sourceWriteCheckpoint?: { bytesWritten: number } | null;
 }
 
 async function qualifyManagedFileEdit(phase: ManagedEditDisconnectPhase): Promise<void> {
@@ -728,7 +743,7 @@ try {
         if (command === "managed-mixed-seed") {
             await authorLocalPlan(input.cwd, { planName: "mixed", contextMarkdown: "Original Plan" });
             await writeFile(join(input.cwd, "source.txt"), "Original source");
-        } else if (command === "managed-mixed-legacy-journal") {
+        } else if (command === "managed-mixed-legacy-journal" || command === "managed-mixed-checkpoint-offset") {
             const { enterProjectRuntime } = await import("../project-runtime-layout.ts");
             const directory = join(
                 (await enterProjectRuntime(input.cwd)).selected.transitionJournalsDir,
@@ -737,11 +752,23 @@ try {
             const [name] = (await readdir(directory)).filter((file) => file.endsWith(".json"));
             ok(name);
             const path = join(directory, name);
-            const records: LegacySourceJournalRecord[] = JSON.parse(await readFile(path, "utf8"));
-            ok(records.some(({ sourceIdentity }) => sourceIdentity));
-            for (const record of records) {
-                delete record.sourceIdentity;
-                delete record.sourceRequest;
+            const records: SourceJournalFixtureRecord[] = JSON.parse(await readFile(path, "utf8"));
+            if (command === "managed-mixed-checkpoint-offset") {
+                const source = records.find((record) => record.sourceWriteCheckpoint);
+                ok(source?.sourceWriteCheckpoint);
+                if (input.attemptId === "null") {
+                    source.sourceWriteCheckpoint = null;
+                } else {
+                    const offset = Number(input.attemptId);
+                    ok(Number.isSafeInteger(offset));
+                    source.sourceWriteCheckpoint.bytesWritten = offset;
+                }
+            } else {
+                ok(records.some(({ sourceIdentity }) => sourceIdentity));
+                for (const record of records) {
+                    delete record.sourceIdentity;
+                    delete record.sourceRequest;
+                }
             }
             await writeFile(path, JSON.stringify(records));
         } else {
@@ -765,9 +792,11 @@ try {
                         : [];
                 if (
                     command === "managed-mixed-batch-edit" &&
-                    (input.attemptId === "after-truncate" || input.attemptId === "retry-sync")
+                    (input.attemptId === "before-checkpoint" ||
+                        input.attemptId === "after-truncate" ||
+                        input.attemptId === "retry-sync")
                 )
-                    await interruptManagedSourceSync(join(input.cwd, "source.txt"), input.attemptId);
+                    await interruptManagedSource(join(input.cwd, "source.txt"), input.attemptId);
                 const { createMultiFileEditTool } = await import("../../tools/multi_file_edit.ts");
                 const tool = createMultiFileEditTool(input.cwd);
                 const result = await tool.execute(

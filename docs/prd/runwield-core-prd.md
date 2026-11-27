@@ -494,9 +494,11 @@ unchanged until a deliberate retry in the same Project confirms the retained Pla
 without a live Plan connection or personal mount.
 
 **Acceptance: Reconnect during a mixed edit.** Given a dropped successful Plan reply, a retry preserves the original
-Plan revision and finishes the source edit once. A retry can also finish a source write interrupted partway through.
-If the requested path resolves to a different file or the source has an independent change, the retry preserves it.
-This includes independent changes that resemble a different point in an observed partial write.
+Plan revision and finishes the source edit once. A retry can start from the original bytes or finish a partial source
+write that matches its recorded progress. If a crash leaves partial bytes without a verified checkpoint, the retry
+preserves those bytes, reports a conflict, and stops before changing any later source file. The confirmed Plan revision
+stays the same. The retry also preserves a replaced file or an independent change, even if the bytes resemble an
+interrupted write.
 If one source file finishes and a later file conflicts, the retry also preserves independent changes to the finished file.
 If a source file already contains its full replacement after an interruption, a retry settles it without rewriting it
 and continues with the remaining source files.

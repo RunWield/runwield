@@ -36,7 +36,9 @@ tool finish those source edits locally after disconnect. An uncertain reply leav
 deliberate retry in the same Project replays the retained Plan operation before settling the source files. Source-only
 edits can run without a live Plan connection or personal mount. Before writing a source file, the tool records its
 intent in the journal. It records a fingerprint of the verified bytes and the file generation after a short write and
-before truncation. A retry resumes a partial write only if both still match. If the same file already contains the full
+before truncation. A retry starts from the original bytes when there is no checkpoint. To resume a partial write, it
+checks the recorded offset, fingerprint, and file generation against the file. A missing or invalid checkpoint leaves
+partial bytes in place and stops the remaining edits with a conflict. If the same file already contains the full
 replacement, a retry can sync it and record completion without rewriting it. A retry checks that files with recorded
 completion still contain their replacement bytes.
 

@@ -119,16 +119,6 @@ async function readManagedSource(baseDir: string, { path, label }: EditTarget) {
     }
 }
 
-/** A retained sequential write can leave a replacement prefix followed by the original suffix. */
-function matchesInterruptedSourceWrite(current: Buffer, original: Buffer, replacement: Buffer) {
-    let prefix = 0;
-    while (prefix < current.length && prefix < replacement.length && current[prefix] === replacement[prefix]) prefix++;
-    return (
-        current.length === Math.max(original.length, prefix) &&
-        current.subarray(prefix).equals(original.subarray(prefix))
-    );
-}
-
 async function readSourceBytes(file: FileHandle, length: number) {
     const buffer = Buffer.alloc(length);
     let offset = 0;
@@ -160,16 +150,6 @@ async function settleManagedSource(baseDir: string, label: string, edit: Prepare
                 if (!settled) throw new Error("File changed before edit: " + edit.path);
                 return;
             }
-            const checkpoint = edit.sourceWriteCheckpoint;
-            // Exact replacement bytes need only a sync, even after a recorded pre-truncation checkpoint.
-            if (
-                !settled &&
-                checkpoint &&
-                (checkpoint.generation !== sourceGeneration(info) ||
-                    checkpoint.fingerprint !== sourceFingerprint(current))
-            )
-                throw new Error("File changed before edit: " + edit.path);
-
             const retainCheckpoint = async (bytesWritten: number) => {
                 const observed = await verifiedSource(edit.path, file);
                 const expectedLength = Math.max(current.length, bytesWritten);
@@ -195,11 +175,28 @@ async function settleManagedSource(baseDir: string, label: string, edit: Prepare
             };
             if (!settled) {
                 const started = edit.sourceWriteState === "started" && edit.sourceIdentity && edit.sourceRequest;
-                if (
-                    !current.equals(original) &&
-                    !(started && matchesInterruptedSourceWrite(current, original, replacement))
-                )
+                const checkpoint = edit.sourceWriteCheckpoint;
+                let offset = 0;
+                if (checkpoint !== undefined) {
+                    if (
+                        !started ||
+                        !checkpoint ||
+                        !Number.isSafeInteger(checkpoint.bytesWritten) ||
+                        checkpoint.bytesWritten < 0 ||
+                        checkpoint.bytesWritten > replacement.length ||
+                        current.length !== Math.max(original.length, checkpoint.bytesWritten) ||
+                        checkpoint.generation !== sourceGeneration(info) ||
+                        checkpoint.fingerprint !== sourceFingerprint(current) ||
+                        !current
+                            .subarray(0, checkpoint.bytesWritten)
+                            .equals(replacement.subarray(0, checkpoint.bytesWritten)) ||
+                        !current.subarray(checkpoint.bytesWritten).equals(original.subarray(checkpoint.bytesWritten))
+                    )
+                        throw new Error("File changed before edit: " + edit.path);
+                    offset = checkpoint.bytesWritten;
+                } else if (!current.equals(original)) {
                     throw new Error("File changed before edit: " + edit.path);
+                }
                 if (!started) {
                     // Older journals can adopt the observed identity when the retained path and bytes agree.
                     edit.sourceIdentity = identity;
@@ -210,7 +207,7 @@ async function settleManagedSource(baseDir: string, label: string, edit: Prepare
                     assertUnchangedSource(edit.path, info, await verifiedSource(edit.path, file));
                 }
                 // Use the checked descriptor so a renamed path cannot redirect the write.
-                for (let offset = checkpoint?.bytesWritten ?? 0; offset < replacement.length;) {
+                while (offset < replacement.length) {
                     const { bytesWritten } = await file.write(replacement, offset, replacement.length - offset, offset);
                     if (!bytesWritten) throw new Error("Could not write file: " + edit.path);
                     offset += bytesWritten;
