@@ -1,7 +1,7 @@
 import { planSessionArtifactAlias } from "../plan-store/index.ts";
 import { withPlanSubmission, type PlanSubmissionDocument, type PlanSubmissionOptions } from "../plan-store/index.ts";
 import { buildPlanConversationRequest } from "../shared/workflow/plan-review-conversation.ts";
-import { reviewSourceStillMatches } from "../plan-store/index.ts";
+import { reviewSourceStillMatches } from "@runwield/plans/review-markdown";
 import {
     isSequencePlan,
     parsePlanFrontMatter,

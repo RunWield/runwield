@@ -260,6 +260,9 @@ An older saved authoring request replays with its original identity and payload.
 
 Plans owns the canonical operation receipt files and validates the retained operation identity before completion. The application owns typed command result files, including `sequence-review-results/<operationId>.json`. It reads the retained Sequence decision and passes its operation identity, digest, Plan ID, and revision to Plans to settle the canonical receipt.
 The host coordinates milestone capture with the lifecycle event that makes the version visible.
+Plans also decides whether a change to reviewed text, definition, or family references reopens approval. Authoring,
+document edits, and history restore use the same comparison and commit the review update with the changed data.
+Callers comparing a saved review source import `reviewSourceStillMatches` from `@runwield/plans/review-markdown`.
 PostgreSQL remains a future driver. [Store operations](../../src/plan-store/index.ts)
 
 ### Work Records

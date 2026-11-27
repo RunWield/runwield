@@ -1,4 +1,5 @@
 import type { PackageWorkflowInput } from "@runwield/plans/store";
+import type { ReviewDocumentEquivalence } from "@runwield/plans/project-plan-files";
 import {
     managedPlanStoreActive,
     prepareManagedSequence,
@@ -39,10 +40,10 @@ import { findPlansByParent, loadPlan } from "./queries.ts";
 import type { PlanFrontMatter } from "@runwield/plans";
 import { assertSharedPlanWriteAllowed } from "../shared/collaboration/lock.ts";
 import { stripRuntimeFields } from "@runwield/plans/controller-state";
-import { buildPlanEventUpdates } from "@runwield/plans/lifecycle";
+import { buildPlanEventUpdates, reopensReviewOnEdit } from "@runwield/plans/lifecycle";
 import { loadPlanActionEvidence } from "../shared/workflow/plan-actions.ts";
 import { runSequenceReviewTransition } from "./transitions.ts";
-import { reviewSourceStillMatches } from "./review.ts";
+import { reviewSourceStillMatches } from "@runwield/plans/review-markdown";
 import { workflowEvents } from "@runwield/workflow/events";
 import type { HostedSession } from "@runwield/session-runtime/host";
 import type { PlanApprovalAction } from "../shared/workflow/plan-approval.ts";
@@ -265,9 +266,10 @@ export async function validateSequenceReviewDecision(
         const original = documents[index];
         if (currentPackageSelection()) {
             if (!original.packageInput) throw new Error("Sequence review requires complete package inputs.");
-            await assertPackageWorkflowInput(doc.planName, original.packageInput, (left, right) =>
-                reviewSourceStillMatches({ attrs: original.frontmatter, body: right }, original.frontmatter, left),
-            );
+            await assertPackageWorkflowInput(doc.planName, original.packageInput, {
+                kind: "sequence",
+                frontMatter: original.frontmatter,
+            });
         }
         if (
             !reviewSourceStillMatches(
@@ -433,8 +435,7 @@ export async function applySequenceReviewDecision({
                     if (
                         (!decision.conversationTurn &&
                             (attrs.status === "ready_for_work" || attrs.status === "ready_for_decomposition")) ||
-                        (meaningChanged &&
-                            ["approved", "ready_for_work", "ready_for_decomposition"].includes(attrs.status))
+                        (meaningChanged && reopensReviewOnEdit(attrs.status))
                     ) {
                         attrs = {
                             ...attrs,
@@ -509,22 +510,13 @@ export async function applySequenceReviewDecision({
             if (currentPackageSelection()) {
                 // Every intended document edit lands before any approval metadata. Compare
                 // against the opened review, permitting only these explicit context edits.
-                const matchesReviewedDocument = (left: string, right: string, name: string, id: string) => {
-                    const edited = writes.find((item) => item.doc.planId === id);
-                    return name === "context.md" && edited
-                        ? right === edited.markdown
-                        : reviewSourceStillMatches(
-                              { attrs: parent.frontmatter, body: right },
-                              parent.frontmatter,
-                              left,
-                          );
+                const equivalence: ReviewDocumentEquivalence = {
+                    kind: "sequence",
+                    frontMatter: parent.frontmatter,
+                    editedContexts: writes.map(({ doc, markdown }) => ({ planId: doc.planId, text: markdown })),
                 };
                 for (const [index, write] of writes.entries())
-                    await assertPackageWorkflowInput(
-                        write.doc.planName,
-                        documents[index].packageInput!,
-                        matchesReviewedDocument,
-                    );
+                    await assertPackageWorkflowInput(write.doc.planName, documents[index].packageInput!, equivalence);
                 for (const write of writes) {
                     if (decision.conversationTurn && write.markdown === write.doc.plan) continue;
                     const selected = await selectedPackage(write.doc.planName);
@@ -541,11 +533,7 @@ export async function applySequenceReviewDecision({
                     };
                     const input = await capturePackageWorkflowInput(write.doc.planName, definition);
                     const original = documents.find((doc) => doc.planId === write.doc.planId)!;
-                    await assertPackageWorkflowInput(
-                        write.doc.planName,
-                        original.packageInput!,
-                        matchesReviewedDocument,
-                    );
+                    await assertPackageWorkflowInput(write.doc.planName, original.packageInput!, equivalence);
                     await updatePackageWorkflowMetadata(
                         write.doc.planName,
                         write.attrs,

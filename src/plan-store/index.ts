@@ -106,7 +106,6 @@ export { assertAuthorizedPlanPath, assertReadablePlanResource, readPlanReviewPre
 
 export {
     applySharedPlanReviewDecision,
-    reviewSourceStillMatches,
     type SharedPlanReviewDecision,
     type SharedPlanReviewEvidence,
     type SharedPlanReviewActionOptions,

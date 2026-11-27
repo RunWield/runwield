@@ -11,7 +11,7 @@ import {
 import { PlanPackageError } from "@runwield/plans/file-snapshots";
 import { assertSharedPlanWriteAllowed } from "../shared/collaboration/lock.ts";
 import { hasInterruptedSequenceHistory, settleSequenceHistory } from "./transitions.ts";
-import { currentPackageProject, packageController, reopenedPackageReview } from "./workflows.ts";
+import { currentPackageProject, packageController } from "./workflows.ts";
 
 function missingPlan(): never {
     throw new Error("Plan history requires an admitted Plan.");
@@ -99,9 +99,7 @@ export async function restoreLocalPlanMilestone(
             return await withPlanPackageLocks(owner, [planId], async () => {
                 const plan = await localPlanHistory.select(owner, planId);
                 await assertHistoryRestoreAllowed(plan);
-                const restore = await localPlanHistory.prepareRestore(owner, plan, version, expectedRevision);
-                const review = restore.changed ? await reopenedPackageReview(plan) : undefined;
-                return await localPlanHistory.commitRestore(owner, restore, review);
+                return await localPlanHistory.restore(owner, plan, version, expectedRevision);
             });
         },
         missingPlan,

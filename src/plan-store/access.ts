@@ -15,13 +15,8 @@ import {
 } from "./managed.ts";
 import { hasRetainedCheckoutSource } from "@runwield/plans/retained-checkout";
 import { remoteProjectOwner } from "../shared/remote/personal-resources.ts";
-import {
-    currentPackageProject,
-    withPackageProject,
-    reviewedDefinitionChanged,
-    reopenedPackageReview,
-} from "./workflows.ts";
-import { reviewUpdateForDocumentChanges } from "./documents.ts";
+import { currentPackageProject, withPackageProject } from "./workflows.ts";
+import { projectPlanFiles } from "@runwield/plans/project-plan-files";
 import { withMissingImportedExecutionRecovery } from "./legacy.ts";
 
 interface LocalHomeStore {
@@ -249,12 +244,14 @@ export async function saveLocalHomePlan(
                 const nextValidation = options.validationMarkdown ?? documents["validation.md"];
                 const review =
                     current &&
-                    (reviewedDefinitionChanged(current, { definition, parentPlanId, dependencyPlanIds })
-                        ? await reopenedPackageReview(current)
-                        : await reviewUpdateForDocumentChanges(current, [
-                              { previous: documents["context.md"], next: parsed.body },
-                              { previous: documents["validation.md"], next: nextValidation },
-                          ]));
+                    (await projectPlanFiles.forOwner(store.identity).prepareReviewInvalidation(current, {
+                        kind: "edit",
+                        definition: { definition, parentPlanId, dependencyPlanIds },
+                        documents: [
+                            { previous: documents["context.md"], next: parsed.body },
+                            { previous: documents["validation.md"], next: nextValidation },
+                        ],
+                    }));
                 await commitPlanPackageBatch(store.identity, [
                     {
                         before: current ? { metadata: current.metadata, documents } : null,

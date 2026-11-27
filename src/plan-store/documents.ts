@@ -1,15 +1,9 @@
 import { StalePlanWriteError } from "@runwield/plans/store";
-import { sameReviewedMarkdown } from "@runwield/plans/review-markdown";
+import { projectPlanFiles } from "@runwield/plans/project-plan-files";
 import { managedPlanStoreActive, readManagedDocument, saveManagedDocument, saveManagedProse } from "./managed.ts";
 import { posix } from "node:path";
 import { decodePackageMarkdown, isEpicArtifactName } from "@runwield/plans/format";
-import {
-    currentPackageProject,
-    selectedPackage,
-    packageController,
-    packageWorkflowLocks,
-    reopenedPackageReview,
-} from "./workflows.ts";
+import { currentPackageProject, selectedPackage, packageController, packageWorkflowLocks } from "./workflows.ts";
 import { packageDocumentText, type PackageResourceRole } from "@runwield/plans/file-snapshots";
 import {
     packageWorkflowRevision,
@@ -17,7 +11,6 @@ import {
     savePlanPackageDocument,
     commitPlanPackageBatch,
     listPlanPackages,
-    type LoadedPlanPackage,
     type PlanPackageBatchWrite,
 } from "@runwield/plans/package-storage";
 import {
@@ -78,15 +71,6 @@ export async function readPlanDocuments(planId: string, name: string = "context.
     };
 }
 
-/** Derive review and execution metadata for an atomic change to the reviewed documents. */
-export async function reviewUpdateForDocumentChanges(
-    plan: LoadedPlanPackage,
-    changes: Array<{ previous: string; next: string }>,
-) {
-    if (changes.every(({ previous, next }) => sameReviewedMarkdown(previous, next))) return;
-    return await reopenedPackageReview(plan);
-}
-
 export interface PreparedPlanDocumentEdit {
     planId: string;
     resource: string;
@@ -124,7 +108,10 @@ export async function savePlanDocumentBatch(edits: PreparedPlanDocumentEdit[]) {
                     changed.push({ previous: previous[doc.name]!, next: edit.body });
                     documents[doc.name] = edit.body;
                 }
-                const review = await reviewUpdateForDocumentChanges(plan, changed);
+                const review = await projectPlanFiles.forOwner(owner).prepareReviewInvalidation(plan, {
+                    kind: "edit",
+                    documents: changed,
+                });
                 writes.push({
                     before: { metadata: plan.metadata, documents: previous },
                     metadata: { ...plan.metadata, ...review, revision: plan.metadata.revision + 1 },
@@ -159,7 +146,10 @@ export async function savePlanDocument(
             ? decodePackageMarkdown(document.bytes)
             : new TextDecoder().decode(document.bytes);
         if (previous !== body) {
-            const changed = await reviewUpdateForDocumentChanges(plan, [{ previous, next: body }]);
+            const changed = await projectPlanFiles.forOwner(selection).prepareReviewInvalidation(plan, {
+                kind: "edit",
+                documents: [{ previous, next: body }],
+            });
             if (changed) {
                 const documents = packageDocumentText(plan.documents);
                 await commitPlanPackageBatch(selection, [

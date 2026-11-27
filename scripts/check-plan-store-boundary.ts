@@ -17,6 +17,7 @@ const privateMembers = new Set([
     "packages/plans/file-snapshots.ts",
     "packages/plans/history-files.ts",
     "packages/plans/local-history.ts",
+    "packages/plans/review-input.ts",
     "packages/plans/artifact-files.ts",
     "packages/plans/publication-files.ts",
     "packages/plans/package-files.ts",
