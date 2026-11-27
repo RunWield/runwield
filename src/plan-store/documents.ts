@@ -1,3 +1,4 @@
+import { StalePlanWriteError } from "@runwield/plans/store";
 import { sameReviewedMarkdown } from "./review.ts";
 import { managedPlanStoreActive, readManagedDocument, saveManagedDocument, saveManagedProse } from "./managed.ts";
 import { posix } from "node:path";
@@ -5,25 +6,24 @@ import { decodePackageMarkdown, isEpicArtifactName } from "@runwield/plans/forma
 import {
     currentPackageProject,
     selectedPackage,
-    packageWorkflowRevision,
     packageController,
     packageWorkflowLocks,
     reopenedPackageReview,
 } from "./workflows.ts";
 import { packageDocumentText, type PackageResourceRole } from "@runwield/plans/file-snapshots";
 import {
+    packageWorkflowRevision,
     savePlanPackageDocument,
     commitPlanPackageBatch,
     listPlanPackages,
     type LoadedPlanPackage,
     type PlanPackageBatchWrite,
-} from "./packages.ts";
+} from "@runwield/plans/package-storage";
 import {
     assertSharedPlanWriteAllowed,
     isSharedPlanLocked,
     type CollaborationWriteOptions,
 } from "../shared/collaboration/lock.ts";
-import { StalePlanWriteError } from "../plan-store.ts";
 
 /** Save an edit against the exact context shown by a retained review. Storage checks stay with the owner. */
 export async function saveReviewedPlanDocument(planName: string, before: string, after: string): Promise<void> {

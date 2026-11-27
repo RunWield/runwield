@@ -1,6 +1,6 @@
 import { openWorkflow } from "@runwield/workflow";
 import { projects } from "@runwield/projects";
-import { updatePlanPackageMetadata } from "../../plan-store/packages.ts";
+import { updatePlanPackageMetadata } from "@runwield/plans/package-storage";
 import { getWorktreeRegistryPath } from "../worktree-registry.ts";
 import { settleDiscardedRecoveryAttempt } from "../../cmd/load-plan/plan-recovery-discard.ts";
 import { preparePlanWorkflow } from "../../plan-store/index.ts";

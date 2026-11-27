@@ -1,4 +1,5 @@
-import { settleSequenceOperationResult } from "./operation-receipts.ts";
+import type { PackageWorkflowInput } from "@runwield/plans/store";
+import { settleSequenceOperationResult } from "./operation-results.ts";
 import { loadPlan, loadPlanStrict, inspectPlanStrict } from "./queries.ts";
 import { inspectLocalHomeStore, withLocalProjectAction, withLocalPlanWorkflow } from "./access.ts";
 import {
@@ -12,11 +13,10 @@ import { createHash } from "node:crypto";
 import {
     planPackageJournalDirectory,
     type PlanPackageMetadata,
-    type PackageWorkflowInput,
     type PackageAttemptReference,
     readPlanPackageInput,
     updatePlanPackageMetadata,
-} from "./packages.ts";
+} from "@runwield/plans/package-storage";
 import { mkdir as fsMkdir, readdir as fsReaddir, readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
 /**
  * @module shared/workflow/state-transition

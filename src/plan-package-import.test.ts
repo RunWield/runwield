@@ -1,15 +1,15 @@
+import { importPlanPackages } from "./plan-store/import-packages.ts";
 import { test } from "node:test";
 import { deepEqual, equal, ok } from "node:assert/strict";
 import fs from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { packageFixture, read, tree, driver, create } from "./shared/testing/plan-package-fixture.ts";
 import {
-    importPlanPackages,
     listPlanPackages,
     readPlanImportEvidence,
     renamePlanPackage,
     savePlanPackageDocument,
-} from "./plan-store/packages.ts";
+} from "@runwield/plans/package-storage";
 import { loadPlan, listPlans } from "./shared/testing/plan-query-fixture.ts";
 
 async function source(root: string, name: string, markdown: string) {

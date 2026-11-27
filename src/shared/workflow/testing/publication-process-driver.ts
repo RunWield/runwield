@@ -2,7 +2,7 @@ import { holdPlanFixtureLock } from "../../testing/plan-state-fixture.ts";
 import { withRetainedPlanFixture } from "../../testing/retained-plan-fixture.ts";
 import { type PackageWorkflowSelection } from "../../../plan-store/workflows.ts";
 import { withPackageWorkflow } from "../../../plan-store/workflows.ts";
-import { readPlanPackage } from "../../../plan-store/packages.ts";
+import { readPlanPackage } from "@runwield/plans/package-storage";
 import { advancePublicationAttempt } from "@runwield/workflow/publication";
 import { openPublication } from "@runwield/workflow/publication-runtime";
 import { captureForegroundProcess } from "@runwield/resources/process";

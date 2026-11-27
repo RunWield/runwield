@@ -907,7 +907,7 @@ test("managed artifact retries replay unresolved receipts and fresh calls receiv
     const { withProcessGlobalTestLock } = await import("../testing/process-global-lock.ts");
     const { composedRemoteFixture } = await import("../shared/remote/composed-store-fixture.ts");
     const { ProjectStoreClient } = await import("../shared/remote/project-store-client.ts");
-    const { operationDigest } = await import("./operation-receipts.ts");
+    const { operationDigest } = await import("@runwield/plans/operation-receipts");
     await withProcessGlobalTestLock(async () => {
         const f = await composedRemoteFixture();
         const requests: string[] = [];
@@ -918,7 +918,7 @@ test("managed artifact retries replay unresolved receipts and fresh calls receiv
             if (operationId) requests.push(operationId);
             if (!dropReply || !response.ok) return response;
             dropReply = false;
-            const reply: import("./project-service.ts").ProjectStoreReply = await response.json();
+            const reply: import("./index.ts").ProjectStoreReply = await response.json();
             if ("revision" in reply.result) lostRevision = reply.result.revision!;
             return new Response(null, { status: 503 });
         });
@@ -1063,7 +1063,7 @@ test("managed Work Record creation recovers a lost reply with the owner's exact 
             const read = async () => {
                 const response = await send({ binding, command: { kind: "record-catalog" } });
                 equal(response.status, 200);
-                const { result }: import("./project-service.ts").ProjectStoreReply = await response.json();
+                const { result }: import("./index.ts").ProjectStoreReply = await response.json();
                 if (!("recordResources" in result)) throw new Error("Missing canonical Work Record catalog.");
                 return result.recordResources.map((record) => record.attrs.recordId);
             };
@@ -1238,7 +1238,8 @@ test("a retained publication pins its declared predecessor before the Recorder w
     try {
         const { create } = await import("../shared/testing/plan-package-fixture.ts");
         const { withWorkRecordOwner } = await import("../shared/work-records/owner.ts");
-        const { capturePlanPackageInput, retainPlanPackagePublication } = await import("./packages.ts");
+        const { capturePlanPackageInput, retainPlanPackagePublication } =
+            await import("@runwield/plans/package-storage");
         const { localConfirmRetention, localRetentionPreview } = await import("./retention.ts");
         const { recordAttrs, recordBody } = await import("../shared/work-records/test-fixtures/package-records.ts");
         const { restoreWorkRecordDocument } = await import("../shared/work-records/store.ts");

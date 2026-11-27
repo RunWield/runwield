@@ -15,7 +15,7 @@ import { basename, dirname, join } from "node:path";
 import { getHomeDir } from "../../constants.ts";
 
 import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
-import { getWorkspaceSearchRefreshMarker } from "../workspace-search-refresh.ts";
+import { getWorkspaceSearchRefreshMarker } from "@runwield/resources/workspace-search-refresh";
 import { getWorkflowMetricsFilePath } from "./metrics.ts";
 import { makeValidationCheckpoint } from "./validation-checkpoint.ts";
 import { createLedger } from "./review-ledger.ts";

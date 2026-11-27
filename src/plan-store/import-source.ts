@@ -1,5 +1,6 @@
+import type { PreparedPlanImport } from "@runwield/plans/store";
+import type { ControllerRecord } from "@runwield/plans/controller-state";
 import type { WorktreeRegistryEntry } from "@runwield/project-runtime/registry-inspection";
-import type { PackageDocuments } from "@runwield/plans/history";
 import { projects, type ProjectIdentity } from "@runwield/projects";
 import { hasRetainedCheckoutSource, withRetainedCheckoutSource } from "@runwield/plans/retained-checkout";
 /** Legacy document inventory and evidence capture. Persistence belongs to plan-package-store. */
@@ -12,78 +13,23 @@ import { plans } from "@runwield/plans";
 import { getPlanDocumentRoot } from "../plan-store.ts";
 import { PlanPackageError } from "@runwield/plans/file-snapshots";
 import { resolveWorkflowPlanLocation } from "./location.ts";
-import {
-    controllerRecordPath,
-    inspectControllerView,
-    readControllerRecord,
-    type ControllerRecord,
-} from "./controllers.ts";
-import {
-    inspectWorktreeRegistry,
-    getWorktreeRegistryPath,
-} from "../shared/worktree-registry.ts";
+import { controllerRecordPath, inspectControllerView, readControllerRecord } from "./controllers.ts";
+import { inspectWorktreeRegistry, getWorktreeRegistryPath } from "../shared/worktree-registry.ts";
 import { checkedProjectRuntimeLayout } from "@runwield/project-runtime/layout";
-import type { PlanPackageMetadata, PackageDefinition } from "./packages.ts";
 
-export interface ImportAllocation {
-    locator: string;
-    name: string;
-    idless: boolean;
-    digest: string;
-    planId: string;
-    createdAt: string;
-}
-export interface ImportFileEvidence {
-    path: string;
-    bytes: string | null;
-    digest: string | null;
-}
-export interface LegacyImportEvidence {
-    format: "legacy-markdown";
-    repositoryId: string | null;
-    repositoryRelativePath: string | null;
-    source: ImportFileEvidence;
-    authority: ImportFileEvidence;
-    authorityKind: "selected" | "registered" | "target-snapshot";
-    controller: ControllerRecord | null;
-    controllerFile: ImportFileEvidence | null;
-    registryFile: ImportFileEvidence | null;
-    attempts: WorktreeRegistryEntry[];
-    pendingControllerRepairs: string[];
-    /** Raw fields are historical provenance, never lifecycle admission or executable checks. */
-    legacyFields: FrontMatterRecord;
-    retainedFields: string[];
-}
-export interface ImportMember {
-    allocation: ImportAllocation;
-    metadata: PlanPackageMetadata;
-    documents: PackageDocuments;
-    evidence: LegacyImportEvidence;
-}
+import type {
+    ImportAllocation,
+    ImportFileEvidence,
+    LegacyImportEvidence,
+    PackageDefinition,
+    PlanPackageMetadata,
+} from "@runwield/plans/package-storage";
+
 interface SelectedImportSource {
     source: ImportFileEvidence;
     authority: ImportFileEvidence;
     authorityKind: LegacyImportEvidence["authorityKind"];
 }
-export interface PreparedPlanImport {
-    selection: string;
-    membership: string[];
-    members: ImportMember[];
-    existingPlanIds: string[];
-    allocations: ImportAllocation[];
-    observations: ImportFileEvidence[];
-}
-export interface PlanImportCommitted {
-    kind: "committed" | "existing";
-    planIds: string[];
-    importedPlanIds: string[];
-    existingPlanIds: string[];
-}
-export interface PlanImportIssue {
-    kind: "conflict" | "pending" | "unavailable" | "invalid";
-    message: string;
-}
-export type PlanImportResult = PlanImportCommitted | PlanImportIssue;
 
 const hash = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 function refused(message: string): never {

@@ -12,7 +12,8 @@ import {
     CONTROLLER_STATE_FIELDS,
     type WorkflowControllerState,
 } from "@runwield/plans/controller-state";
-import type { ControllerRecord, ControllerWriteOptions } from "./controllers.ts";
+import type { ControllerWriteOptions } from "./controllers.ts";
+import type { ControllerRecord } from "@runwield/plans/controller-state";
 import { readControllerRecordAtPath } from "./controllers.ts";
 import {
     readRetainedManagedExecution,
@@ -27,7 +28,7 @@ import {
     runReceiptedOperation,
     recoverOperationEffect,
     commitOperationEffect,
-} from "./operation-receipts.ts";
+} from "@runwield/plans/operation-receipts";
 import { openNativeFileLock } from "../shared/native-file-lock.ts";
 import type { ManagedProjectStoreLaunch } from "../shared/remote/project-store-launch.ts";
 export interface RetainedFamilyIdentity {

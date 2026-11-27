@@ -1,8 +1,8 @@
+import type { PackagePublicationManifest } from "@runwield/plans/store";
 import type { PublicationCopyEvidence } from "@runwield/plans/publication-copies";
 import {
     selectedPublicationCopies,
     withPlanPublication,
-    type PackagePublicationManifest,
     type RetainedManagedExecution,
 } from "../../src/plan-store/index.ts";
 import type { WorkRecordMnemotecaPort } from "../../src/shared/work-records/mnemoteca-port.ts";

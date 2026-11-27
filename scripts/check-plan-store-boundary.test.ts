@@ -8,14 +8,14 @@ import {
 
 test("Plan boundary catches static imports, reexports, type queries and constructed dynamic imports", () => {
     const cases = [
-        'import { readPlanPackage as hidden } from "../plan-store/packages.ts";',
+        'import { readPlanPackage as hidden } from "@runwield/plans/package-storage";',
         'export * from "../plan-store/workflows.ts";',
-        'type Hidden = import("../plan-store/packages.ts").LoadedPlanPackage;',
-        'await import("../plan-store/packages.ts");',
+        'type Hidden = import("@runwield/plans/package-storage").LoadedPlanPackage;',
+        'await import("@runwield/plans/package-storage");',
         'require("../plan-store.js");',
-        'const base = "../plan-store/"; await import(`${base}packages.ts`);',
-        'const target = "../plan-store/" + "packages.ts"; await import(target);',
-        'export { readPlanPackage as publicRead } from "../plan-store/packages.ts";',
+        'const base = "@runwield/plans/"; await import(`${base}package-storage`);',
+        'const target = "@runwield/plans/" + "package-storage"; await import(target);',
+        'export { readPlanPackage as publicRead } from "@runwield/plans/package-storage";',
     ];
     for (const source of cases) equal(inspectPlanStoreImports("src/tools/example.ts", source).length, 1, source);
 });
@@ -25,6 +25,13 @@ test("Plan boundary permits public operations, pure formatting and explicit priv
         inspectPlanStoreImports(
             "src/tools/example.ts",
             'import { openProjectPlanStore } from "../plan-store/index.ts";',
+        ).length,
+        0,
+    );
+    equal(
+        inspectPlanStoreImports(
+            "src/tools/example.ts",
+            'import type { ProjectPlanStore } from "@runwield/plans/store";',
         ).length,
         0,
     );
@@ -47,13 +54,41 @@ test("Plan boundary permits public operations, pure formatting and explicit priv
     );
 });
 
-test("only the Plan store binds its retained-input, artifact and publication filesystem drivers", () => {
-    for (const entry of ["file-snapshots", "artifact-files", "publication-files"]) {
+test("only the Plan store can use its filesystem drivers and retained evidence", () => {
+    for (const entry of [
+        "file-snapshots",
+        "artifact-files",
+        "publication-files",
+        "package-storage",
+        "operation-receipts",
+    ]) {
         const source = `import * as driver from "@runwield/plans/${entry}";`;
-        equal(inspectPlanStoreImports("src/plan-store/packages.ts", source).length, 0, entry);
+        equal(inspectPlanStoreImports("packages/plans/package-storage.ts", source).length, 0, entry);
         equal(inspectPlanStoreImports("src/tools/example.ts", source).length, 1, entry);
         equal(inspectPlanStoreImports("packages/plans/index.ts", source).length, 1, entry);
     }
+});
+
+test("tests in the Plan owner directory require exact driver qualification", () => {
+    const specifier = 'await import("@runwield/plans/package-storage");';
+    equal(inspectPlanStoreImports("src/plan-store/unqualified.test.ts", specifier).length, 1);
+    equal(inspectPlanStoreImports("src/plan-store/unqualified.integration.ts", specifier).length, 1);
+    equal(inspectPlanStoreImports("src/plan-store/testing/unqualified.ts", specifier).length, 1);
+    equal(inspectPlanStoreImports("src/plan-store/operations.test.ts", specifier).length, 0);
+});
+
+test("the public Project Plan store excludes driver values", async () => {
+    const file = "packages/plans/store.ts";
+    for (const source of [
+        'export * from "./package-storage.ts";',
+        'export { readPlanPackage as openProjectPlanStore } from "./package-storage.ts";',
+        'import { readPlanPackage } from "./package-storage.ts"; export { readPlanPackage };',
+    ]) {
+        equal(inspectPlanStoreImports(file, source).length, 1, source);
+    }
+    equal(inspectPlanStoreImports(file, 'export type { PackageWorkflowInput } from "./package-storage.ts";').length, 0);
+    const store = await import("@runwield/plans/store");
+    equal(Object.keys(store).join(","), "StalePlanWriteError");
 });
 
 test("only the Plan store can bind a Project's Plan owner", () => {

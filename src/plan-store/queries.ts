@@ -1,3 +1,4 @@
+import { StalePlanWriteError } from "@runwield/plans/store";
 import {
     loadPlan as loadLocalPlan,
     listPlans as listLocalPlans,
@@ -98,7 +99,7 @@ export async function savePlanBodyById(
     if (!managedPlanStoreActive()) return await (await import("../plan-store.ts")).savePlanBodyById(...args);
     const [cwd, planId, body, expectedBodyHash, options = {}] = args;
     const current = await loadPlanBodyById(cwd, planId);
-    const { StalePlanBodyError, StalePlanWriteError } = await import("../plan-store.ts");
+    const { StalePlanBodyError } = await import("../plan-store.ts");
     if (current.bodyHash !== expectedBodyHash) throw new StalePlanBodyError(expectedBodyHash, current.bodyHash);
     if (options.expectedRevision !== current.revision)
         throw new StalePlanWriteError(options.expectedRevision || "required", current.revision);

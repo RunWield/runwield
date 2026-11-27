@@ -1,5 +1,5 @@
 import type { WorkRecordCreationOperation } from "@runwield/plans/work-record-files";
-import { requestWorkspaceSearchRefresh } from "../shared/workspace-search-refresh.ts";
+import { requestWorkspaceSearchRefresh } from "@runwield/resources/workspace-search-refresh";
 import { requireOwnedWorkRecordFiles } from "../shared/work-records/owner.ts";
 import type { CreateProjectWorkRecord, ProjectWorkRecord } from "@runwield/plans/store";
 import { projects } from "@runwield/projects";

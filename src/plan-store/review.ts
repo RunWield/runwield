@@ -1,3 +1,5 @@
+import type { PackageWorkflowInput } from "@runwield/plans/store";
+import { StalePlanWriteError } from "@runwield/plans/store";
 import { managedPlanStoreActive, applyManagedReview } from "./managed.ts";
 import { withPlanAccess, type PlanAccess } from "./handles.ts";
 import { selectPlanAccess } from "./handles.ts";
@@ -11,7 +13,6 @@ import {
 } from "./workflows.ts";
 import { currentPackageSelection } from "./workflows.ts";
 import { savePlanDocument } from "./index.ts";
-import type { PackageWorkflowInput } from "./packages.ts";
 import { preparePlanWorkflow } from "./index.ts";
 import { resolvePlanQuestions, type PlanQuestionAnswer } from "../shared/plan-questions.ts";
 import {
@@ -24,7 +25,7 @@ import {
 import { resolve } from "node:path";
 import quikdown from "quikdown";
 import { getStoredPlanPath, loadPlanFileStrict, writePlanMarkdownWithRevision } from "../plan-store.ts";
-import { StalePlanWriteError } from "./index.ts";
+
 import { loadPlan } from "./queries.ts";
 import { buildPlanEventUpdates, isPlanReviewableWithoutReopen } from "@runwield/plans/lifecycle";
 import { recordPlanEvent } from "./index.ts";

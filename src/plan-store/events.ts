@@ -502,7 +502,7 @@ export async function recordPlanEvent({
         if (!details.pendingPublication && !receipt)
             throw new Error("Package completion requires applicable publication evidence.");
         if (receipt && !details.pendingPublication) {
-            const { readPlanPackagePublication } = await import("./packages.ts");
+            const { readPlanPackagePublication } = await import("@runwield/plans/package-storage");
             const selection = currentPackageSelection();
             if (!selection) throw new Error("Package completion requires explicit admission.");
             const retained = await readPlanPackagePublication(selection.identity, receipt.source);

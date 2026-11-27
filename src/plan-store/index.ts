@@ -19,7 +19,6 @@ export {
     createPulledCollaborationPlan,
     updatePlanCollaborationMetadata,
     clearPlanCollaborationMetadata,
-    StalePlanWriteError,
     StalePlanBodyError,
     PlanNotFoundError,
     PlanFileIssueError,
@@ -75,7 +74,6 @@ export {
     readPublishedDeliverySources,
     verifyPackageRecordingDelivery,
 } from "./published-source.ts";
-export type { PackageAttemptContinuation, PackagePublicationManifest, PackageWorkflowInput } from "./packages.ts";
 
 export {
     savePlanDefinition,
@@ -353,11 +351,7 @@ export {
 
 export { ensurePlanIdentity } from "./queries.ts";
 
-export {
-    inspectManagedImportSource,
-    type ManagedImportPreparationRequest,
-    type PreparedPlanImport,
-} from "./import-source.ts";
+export { inspectManagedImportSource, type ManagedImportPreparationRequest } from "./import-source.ts";
 
 export { archivePlansByStatus } from "./archiving.ts";
 

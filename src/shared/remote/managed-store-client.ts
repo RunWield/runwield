@@ -1,3 +1,4 @@
+import { StalePlanWriteError } from "@runwield/plans/store";
 import { openWorkflow } from "@runwield/workflow";
 /** Separate execution process exercising production bootstrap and the public Plan owner. */
 import { projects } from "@runwield/projects";
@@ -109,7 +110,6 @@ async function executeManagedFixture() {
         const {
             authorLocalPlan,
             openPlanStoreForCheckout,
-            StalePlanWriteError,
             recordPlanEvent,
             withLocalPlanWorkflow,
             reservePlanExecution,

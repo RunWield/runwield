@@ -760,7 +760,7 @@ function findFixturePlanLifecycle(directory: string, expectedStatus: string): Fi
                 if (nested.status === expectedStatus) return nested;
             } else if (entry.isFile() && entry.name === "plan.wld.json") {
                 const metadata =
-                    /** @type {import('../../../plan-store/packages.ts').PlanPackageMetadata} */ JSON.parse(
+                    /** @type {import('@runwield/plans/package-storage').PlanPackageMetadata} */ JSON.parse(
                         fsReadFileSync(path, "utf8"),
                     );
                 if (metadata.definition.status === expectedStatus)

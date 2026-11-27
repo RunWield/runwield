@@ -4,7 +4,7 @@ import { equal, ok } from "node:assert/strict";
 import fs from "node:fs/promises";
 import { join } from "node:path";
 import { create, read, packageFixture, startDriver } from "./shared/testing/plan-package-fixture.ts";
-import { listPlanPackages } from "./plan-store/packages.ts";
+import { listPlanPackages } from "@runwield/plans/package-storage";
 import { git } from "./shared/git-test-fixture.ts";
 
 for (const command of ["metadata", "document"] as const)

@@ -552,7 +552,7 @@ test("Epic publication keeps only the Markdown retained by its integration gate"
 
 test("another review can reconcile the journal only after its live owner releases the Plan", async () => {
     const { create, startDriver } = await import("../shared/testing/plan-package-fixture.ts");
-    const { planPackageJournalDirectory } = await import("./packages.ts");
+    const { planPackageJournalDirectory } = await import("@runwield/plans/package-storage");
     const { withPackageWorkflow } = await import("./workflows.ts");
     const fs = await import("node:fs/promises");
     const f = await packageFixture();

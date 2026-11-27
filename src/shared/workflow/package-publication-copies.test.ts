@@ -114,7 +114,7 @@ for (const plans of [false, true]) {
 
 test("sealed copy policy and destination survive reused name, live edits and target advancement", async () => {
     const { publicationFixture } = await import("./testing/package-publication-fixture.ts");
-    const { renamePlanPackage } = await import("../../plan-store/packages.ts");
+    const { renamePlanPackage } = await import("@runwield/plans/package-storage");
     const f = await publicationFixture(true);
     try {
         equal((await f.drive("candidate_receipt")).code, 86);

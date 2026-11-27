@@ -3,7 +3,7 @@ import { projects } from "@runwield/projects";
 import { readFile } from "node:fs/promises";
 import { createInterface } from "node:readline";
 import { ok as assert, strictEqual as equal } from "node:assert/strict";
-import { readPlanPackage } from "../../plan-store/packages.ts";
+import { readPlanPackage } from "@runwield/plans/package-storage";
 import { withPackageWorkflow } from "../../plan-store/workflows.ts";
 import { runAttachedMcpServer } from "../../attached/mcp.ts";
 import type { AttachedReadResult } from "./coordinator.ts";

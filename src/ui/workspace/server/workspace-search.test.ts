@@ -33,7 +33,7 @@ import { replaceWorkRecord, restoreWorkRecordDocument } from "../../../shared/wo
 import {
     getWorkspaceSearchRefreshMarker,
     requestWorkspaceSearchRefresh,
-} from "../../../shared/workspace-search-refresh.ts";
+} from "@runwield/resources/workspace-search-refresh";
 import { makeManagedSessionFixture, readTranscriptEvidence } from "../../../testing/managed-session-fixture.ts";
 import { readProjectArtifact } from "./project-artifacts.ts";
 import { loadWorkspaceDetail } from "./plan-adapter.ts";

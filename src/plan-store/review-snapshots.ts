@@ -1,3 +1,4 @@
+import { StalePlanWriteError } from "@runwield/plans/store";
 import {
     managedPlanStoreActive,
     captureManagedReview,
@@ -6,7 +7,7 @@ import {
     readManagedPlan,
 } from "./managed.ts";
 /** Coherent review documents and retained inputs; surfaces never assemble package snapshots. */
-import { loadPlanFileStrict, loadPlan, StalePlanWriteError } from "../plan-store.ts";
+import { loadPlanFileStrict, loadPlan } from "../plan-store.ts";
 import { withLocalPlanWorkflow } from "./access.ts";
 import { capturePlanAccess } from "./handles.ts";
 import {

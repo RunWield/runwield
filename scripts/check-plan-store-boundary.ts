@@ -9,13 +9,17 @@ import { PLAN_STORE_QUALIFICATIONS, PLAN_TEST_SUPPORT } from "./plan-store-bound
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const configuration = ts.readConfigFile(resolve(root, "tsconfig.bun.json"), ts.sys.readFile);
 const compilerOptions = ts.parseJsonConfigFileContent(configuration.config, ts.sys, root).options;
+const projectStoreSurface = "packages/plans/store.ts";
 const privateMembers = new Set([
+    projectStoreSurface,
     "src/plan-store.ts",
     "packages/plans/file-snapshots.ts",
     "packages/plans/history-files.ts",
     "packages/plans/artifact-files.ts",
     "packages/plans/publication-files.ts",
     "packages/plans/package-files.ts",
+    "packages/plans/package-storage.ts",
+    "packages/plans/operation-receipts.ts",
     "packages/plans/project-store-binding.ts",
     "packages/plans/managed-project-binding.ts",
     "packages/plans/retained-checkout.ts",
@@ -36,6 +40,32 @@ function ownerMember(path: string): boolean {
 }
 function relativeName(path: string): string {
     return relative(root, path).replaceAll("\\", "/");
+}
+
+function isAllowedStoreExport(statement: ts.Statement): boolean {
+    if (ts.isExportDeclaration(statement)) {
+        if (statement.isTypeOnly) return true;
+        if (!statement.exportClause || !ts.isNamedExports(statement.exportClause)) return false;
+        return statement.exportClause.elements.every(
+            (entry) =>
+                entry.isTypeOnly ||
+                (entry.name.text === "StalePlanWriteError" &&
+                    !entry.propertyName &&
+                    statement.moduleSpecifier &&
+                    ts.isStringLiteral(statement.moduleSpecifier) &&
+                    statement.moduleSpecifier.text === "./store-errors.ts"),
+        );
+    }
+    if (ts.isExportAssignment(statement)) return false;
+    if (!ts.canHaveModifiers(statement)) return true;
+    const modifiers = ts.getModifiers(statement) ?? [];
+    if (!modifiers.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)) return true;
+    if (modifiers.some((modifier) => modifier.kind === ts.SyntaxKind.DefaultKeyword)) return false;
+    return (
+        ts.isInterfaceDeclaration(statement) ||
+        ts.isTypeAliasDeclaration(statement) ||
+        (ts.isFunctionDeclaration(statement) && statement.name?.text === "openProjectPlanStore")
+    );
 }
 
 /** Resolve real static/dynamic imports and reexports, including aliases from the repository TypeScript config. */
@@ -74,6 +104,16 @@ export function inspectPlanStoreImports(file: string, source: string): PlanStore
         return undefined;
     };
     const violations: PlanStoreBoundaryViolation[] = [];
+    if (file === projectStoreSurface) {
+        for (const statement of parsed.statements) {
+            if (!isAllowedStoreExport(statement))
+                violations.push({
+                    file,
+                    line: parsed.getLineAndCharacterOfPosition(statement.getStart(parsed)).line + 1,
+                    message: "The public Project Plan store must expose only its named operations and types.",
+                });
+        }
+    }
     const check = (node: ts.Node): void => {
         const reference = literal(node);
         if (!reference) return;
@@ -97,15 +137,16 @@ export function inspectPlanStoreImports(file: string, source: string): PlanStore
                 line: parsed.getLineAndCharacterOfPosition(node.getStart(parsed)).line + 1,
                 message: `The Plans package cannot depend on an application module (${specifier}).`,
             });
-        if ((PLAN_TEST_SUPPORT.has(target) || /\.(?:test|integration)\.[^.]+$/.test(target)) && !isTestCaller(file))
+        if (isTestCaller(target) && !isTestCaller(file))
             violations.push({
                 file,
                 line: parsed.getLineAndCharacterOfPosition(node.getStart(parsed)).line + 1,
                 message: `Production code imports test-only Plan support ${specifier}.`,
             });
         if (
-            !ownerMember(file) &&
+            !(ownerMember(file) && !isTestCaller(file)) &&
             target !== publicSurface &&
+            target !== projectStoreSurface &&
             target !== pureSurface &&
             ownerMember(target) &&
             !PLAN_STORE_QUALIFICATIONS[file]?.modules.includes(target)
@@ -214,7 +255,11 @@ export function inspectPlanFormatGraph(sources: ReadonlyMap<string, string>): Pl
 }
 
 function isTestCaller(file: string): boolean {
-    return /\.(?:test|integration)\.[^.]+$/.test(file) || PLAN_TEST_SUPPORT.has(file);
+    return (
+        /\.(?:test|integration)\.[^.]+$/.test(file) ||
+        file.startsWith("src/plan-store/testing/") ||
+        PLAN_TEST_SUPPORT.has(file)
+    );
 }
 
 /** Guard recognizable Plan paths, including destination paths; this is not general semantic taint analysis. */

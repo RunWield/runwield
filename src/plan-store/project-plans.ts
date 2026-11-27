@@ -1,3 +1,4 @@
+import { StalePlanWriteError } from "@runwield/plans/store";
 import { projectPlanDocuments } from "./checkout-documents.ts";
 import { projectPlanArtifacts } from "./artifacts.ts";
 
@@ -19,7 +20,7 @@ import {
 } from "./project-work-records.ts";
 import { bindProjectPlanStore, checkoutPlanIdentity } from "./project-binding.ts";
 import { packagePublicationInput } from "./publication.ts";
-import { PlanNotFoundError, StalePlanWriteError, type PlanResource } from "../plan-store.ts";
+import { PlanNotFoundError, type PlanResource } from "../plan-store.ts";
 import {
     createSavedPlan,
     reviseSavedPlan,

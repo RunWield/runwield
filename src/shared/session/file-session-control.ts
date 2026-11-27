@@ -10,7 +10,7 @@ import { dirname } from "node:path";
 import { openNativeFileLock } from "../native-file-lock.ts";
 import { requireLocalSessionWriter } from "../remote/personal-resources.ts";
 import { inspectRecoverableSessionTranscript } from "../remote/session-protocol.ts";
-import { requestWorkspaceSearchRefresh } from "../workspace-search-refresh.ts";
+import { requestWorkspaceSearchRefresh } from "@runwield/resources/workspace-search-refresh";
 import {
     activationView,
     assertProof,

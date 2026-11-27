@@ -1,8 +1,9 @@
+import { StalePlanWriteError } from "@runwield/plans/store";
 import { managedPlanStoreActive, renameManagedPlan } from "./managed.ts";
-import { loadPlan, StalePlanWriteError } from "../plan-store.ts";
+import { loadPlan } from "../plan-store.ts";
 import { withLocalPlanWorkflow } from "./access.ts";
 import { currentPackageProject, currentPackageSelection, packageWorkflowLocks, selectedPackage } from "./workflows.ts";
-import { renamePlanPackage } from "./packages.ts";
+import { renamePlanPackage } from "@runwield/plans/package-storage";
 import { assertSharedPlanWriteAllowed } from "../shared/collaboration/lock.ts";
 
 /** Rename a live package without changing its durable identity or choosing a physical destination in the caller. */

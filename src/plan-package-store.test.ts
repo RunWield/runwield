@@ -1,3 +1,4 @@
+import { StalePlanWriteError } from "@runwield/plans/store";
 import { projects, type ProjectLaunchContext } from "@runwield/projects";
 import { tmpdir } from "node:os";
 import { seedPlan } from "./shared/testing/plan-state-fixture.ts";
@@ -16,8 +17,8 @@ import {
     renamePlanPackage,
     archivePlanPackage,
     restorePlanPackage,
-} from "./plan-store/packages.ts";
-import { StalePlanWriteError } from "./plan-store/index.ts";
+} from "@runwield/plans/package-storage";
+
 import { loadPlan, listPlans } from "./shared/testing/plan-query-fixture.ts";
 
 test("packages persist plain documents and separate versioned metadata across processes", async () => {
@@ -362,7 +363,7 @@ test("physical and symbolic account homes select one owner and pin its location"
         deepEqual(first.personalOwner, second.personalOwner);
         equal(first.projectId, second.projectId);
         equal(first.repositoryId, second.repositoryId);
-        const { recoverPlanPackages, withPlanPackageLocks } = await import("./plan-store/packages.ts");
+        const { recoverPlanPackages, withPlanPackageLocks } = await import("@runwield/plans/package-storage");
         await rejects(
             withPlanPackageLocks(first, [], async () => {
                 await fs.rm(alias);

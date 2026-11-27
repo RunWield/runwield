@@ -1,6 +1,7 @@
+import { StalePlanWriteError } from "@runwield/plans/store";
 import { packageDocumentText } from "@runwield/plans/file-snapshots";
 import { managedPlanStoreActive, authorManagedChildren } from "./managed.ts";
-import { retainChildAuthoringResult } from "./operation-receipts.ts";
+import { retainChildAuthoringResult } from "./operation-results.ts";
 import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import {
@@ -13,15 +14,19 @@ import {
 import {
     loadPlan,
     resolveChildPlanNames,
-    StalePlanWriteError,
     type ChildFeaturePlanDescriptor,
     type PlanWriteOptions,
     type SavedChildFeaturePlan,
 } from "../plan-store.ts";
 import { authoredPackageDefinition, withLocalProjectAction } from "./access.ts";
 import { assertSharedPlanWriteAllowed } from "../shared/collaboration/lock.ts";
-import { commitPlanPackageBatch, listPlanPackages, type PlanPackageBatchWrite } from "./packages.ts";
-import { currentPackageProject, packageController, packageWorkflowRevision } from "./workflows.ts";
+import {
+    packageWorkflowRevision,
+    commitPlanPackageBatch,
+    listPlanPackages,
+    type PlanPackageBatchWrite,
+} from "@runwield/plans/package-storage";
+import { currentPackageProject, packageController } from "./workflows.ts";
 import { buildPlanEventUpdates } from "@runwield/plans/lifecycle";
 import { pickControllerState } from "@runwield/plans/controller-state";
 import { writePackageControllerEvidence } from "./controllers.ts";

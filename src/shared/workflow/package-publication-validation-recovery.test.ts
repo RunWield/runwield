@@ -9,7 +9,7 @@ import { git } from "../git-test-fixture.ts";
 import { setExactProjectCustomSetting } from "../settings.ts";
 import { recordPlanEvent } from "../../plan-store/index.ts";
 import { openPublication } from "@runwield/workflow/publication-runtime";
-import { readPlanPackage, readPlanPackagePublication } from "../../plan-store/packages.ts";
+import { readPlanPackage, readPlanPackagePublication } from "@runwield/plans/package-storage";
 import { readPublishedDeliverySources } from "../../plan-store/index.ts";
 
 for (const boundary of ["artifact_effect", "copy_write"]) {

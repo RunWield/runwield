@@ -5,8 +5,8 @@ import { join, dirname } from "node:path";
 import fs from "node:fs/promises";
 import type { ManagedRuntimeTransfer } from "../shared/project-runtime-managed.ts";
 import { assertManagedRuntimePath } from "../shared/project-runtime-managed.ts";
-import { operationHash } from "./operation-receipts.ts";
-import type { ControllerRecord } from "./controllers.ts";
+import { operationHash } from "@runwield/plans/operation-receipts";
+import type { ControllerRecord } from "@runwield/plans/controller-state";
 import { ensurePrivateDir, writeJsonAtomically, writeTextAtomically } from "../shared/private-json-file.ts";
 import { assertPublicationAttempt, type PublicationAttempt } from "@runwield/workflow/publication";
 import { recoverLegacyPlanControllers } from "@runwield/project-runtime/controller-recovery";
@@ -272,7 +272,7 @@ export async function checkpointRetainedManagedExecution(
 ) {
     const { openNativeFileLock } = await import("../shared/native-file-lock.ts");
     const { recoverOperationEffect, runReceiptedOperation, operationDigest, commitOperationEffect } =
-        await import("./operation-receipts.ts");
+        await import("@runwield/plans/operation-receipts");
     const { pickControllerState, CONTROLLER_STATE_FIELDS } = await import("@runwield/plans/controller-state");
     const { StaleControllerWriteError } = await import("./controllers.ts");
     const directory = root(owner);
@@ -487,7 +487,7 @@ export async function settleRetainedManagedCleanup(
 ) {
     const { openNativeFileLock } = await import("../shared/native-file-lock.ts");
     const { recoverOperationEffect, runReceiptedOperation, operationDigest, commitOperationEffect } =
-        await import("./operation-receipts.ts");
+        await import("@runwield/plans/operation-receipts");
     const directory = root(owner);
     await assertManagedRuntimePath(directory, owner.executionAccountHome);
     ensurePrivateDir(directory);
@@ -543,7 +543,7 @@ export async function settleRetainedManagedAbandonment(
 ) {
     const { openNativeFileLock } = await import("../shared/native-file-lock.ts");
     const { recoverOperationEffect, runReceiptedOperation, operationDigest, commitOperationEffect } =
-        await import("./operation-receipts.ts");
+        await import("@runwield/plans/operation-receipts");
     const directory = root(owner);
     await assertManagedRuntimePath(directory, owner.executionAccountHome);
     ensurePrivateDir(directory);

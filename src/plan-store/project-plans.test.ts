@@ -1,3 +1,4 @@
+import { StalePlanWriteError } from "@runwield/plans/store";
 import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import { lstat, unlink } from "node:fs/promises";
 import { join } from "node:path";
@@ -15,7 +16,7 @@ import { test } from "node:test";
 import { packageFixture } from "../shared/testing/plan-package-fixture.ts";
 import { seedPlan } from "../shared/testing/plan-state-fixture.ts";
 import { withRetainedPlanFixture } from "../shared/testing/retained-plan-fixture.ts";
-import { archiveSavedPlan, openProjectPlanStore, restoreSavedPlan, StalePlanWriteError } from "./index.ts";
+import { archiveSavedPlan, openProjectPlanStore, restoreSavedPlan } from "./index.ts";
 
 test("a project-bound store preserves Plan identity and guards each write across independent opens", async () => {
     const fixture = await packageFixture();

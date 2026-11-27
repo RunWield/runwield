@@ -1,3 +1,4 @@
+import { StalePlanWriteError } from "@runwield/plans/store";
 import { withRetainedPlanFixture } from "./shared/testing/retained-plan-fixture.ts";
 import { enterProjectRuntime } from "./shared/project-runtime-layout.ts";
 import { defineCommittedGitFixture, git } from "./shared/git-test-fixture.ts";
@@ -55,7 +56,6 @@ import {
     onboardExternalPlan,
     saveChildFeaturePlans,
     savePlanBodyById,
-    StalePlanWriteError,
     updatePlanCollaborationMetadata,
 } from "./plan-store/index.ts";
 import {

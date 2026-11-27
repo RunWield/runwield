@@ -1,3 +1,4 @@
+import type { PackageWorkflowInput } from "@runwield/plans/store";
 import { planHistoryFiles } from "@runwield/plans/history-files";
 import { projects, type ProjectStoreIdentity as ProjectIdentity } from "@runwield/projects";
 import {
@@ -7,7 +8,7 @@ import {
     captureManagedExecution,
     readManagedExecutionDocuments,
 } from "./managed.ts";
-import { packageWorkflowRevision, type PackageAttemptReference } from "./packages.ts";
+import { packageWorkflowRevision, type PackageAttemptReference } from "@runwield/plans/package-storage";
 import { retainPlanAccess, retainManagedPlanAccess, type PlanAccess } from "./handles.ts";
 import { continueImportedPackage, readImportedExecutionPlan } from "./legacy.ts";
 import { currentRetainedCheckoutSource } from "@runwield/plans/retained-checkout";
@@ -34,11 +35,10 @@ import {
     packageControllerNumbers,
     packageControllerEnums,
     type LoadedPlanPackage,
-    type PackageWorkflowInput,
     type PackageDefinition,
     type PackageControllerState,
     type PackageWorkflowEvidence,
-} from "./packages.ts";
+} from "@runwield/plans/package-storage";
 import { readPackageControllerEvidence, writePackageControllerEvidence } from "./controllers.ts";
 import {
     CONTROLLER_STATE_FIELDS,
@@ -241,7 +241,7 @@ export async function withPackageWorkflow<T>(
     if (projects.home.isOwner(selection.identity)) {
         if (selected.metadata.references.legacyImport && !selected.metadata.workflow?.legacySettlement) {
             const evidence = await (
-                await import("./packages.ts")
+                await import("@runwield/plans/package-storage")
             ).readPlanImportEvidence(selection.identity, selected.metadata.references.legacyImport);
             const unfinished = evidence.attempts.some(
                 (attempt) => !["validated", "abandoned"].includes(attempt.status),
@@ -501,7 +501,6 @@ export async function packageController(plan: LoadedPlanPackage): Promise<Workfl
     const evidence = ref ? await readPackageControllerEvidence(currentPackageProject()!, ref) : {};
     return { ...evidence, ...plan.metadata.controller };
 }
-export { packageWorkflowRevision } from "./packages.ts";
 
 export async function loadPackageWorkflowPlan(
     planName: PackageWorkflowTarget,
@@ -774,7 +773,9 @@ export async function updatePackageWorkflowMetadata(
 }
 
 export class PackageExecutionContinuation extends Error {
-    constructor(readonly binding: NonNullable<import("./packages.ts").PackageWorkflowEvidence["attempt"]>) {
+    constructor(
+        readonly binding: NonNullable<import("@runwield/plans/package-storage").PackageWorkflowEvidence["attempt"]>,
+    ) {
         super(`Continue attempt ${binding.attemptId} in its recorded repository.`);
         this.name = "PackageExecutionContinuation";
     }
@@ -988,7 +989,8 @@ export async function saveGeneratedManualQaArtifact(
                 ...child.metadata.workflow,
                 generatedArtifact: {
                     attemptId: attempt.attemptId,
-                    operationId: (await import("./operation-receipts.ts")).captureBatchOperation()?.operationId,
+                    operationId: (await import("@runwield/plans/operation-receipts")).captureBatchOperation()
+                        ?.operationId,
                     planId: parent.metadata.planId,
                     name: "manual-qa.md",
                     beforeHash,

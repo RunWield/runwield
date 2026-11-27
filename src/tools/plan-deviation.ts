@@ -1,3 +1,4 @@
+import { StalePlanWriteError } from "@runwield/plans/store";
 /**
  * @module plan-deviation
  * Confirmation tool for durable Plan requirement replacements.
@@ -12,7 +13,7 @@ import {
     supportsHostedSessionInteraction,
     type HostedSession,
 } from "@runwield/session-runtime/host";
-import { recordPlanDeviation, StalePlanWriteError, planDocumentsForCheckout } from "../plan-store/index.ts";
+import { recordPlanDeviation, planDocumentsForCheckout } from "../plan-store/index.ts";
 import { syncEpicChildPlanDeviations } from "../plan-store/index.ts";
 import { formatPlanDeviationForPrompt, type PlanDeviation } from "@runwield/plans/format";
 import { RuntimeInteractionOutcomes, RuntimeInteractionTypes } from "@runwield/session-runtime/interactions";

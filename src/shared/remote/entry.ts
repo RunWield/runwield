@@ -255,7 +255,7 @@ export async function runRemotePublicationProof(): Promise<void> {
     const input: {
         cwd: string;
         ownerIdentity: string;
-        manifest?: import("../../plan-store/index.ts").PackagePublicationManifest;
+        manifest?: import("@runwield/plans/store").PackagePublicationManifest;
         execution?: import("../../plan-store/index.ts").RetainedManagedExecution;
         family?: import("../../plan-store/index.ts").RetainedFamilyIdentity;
         recovery?: import("../workflow/execution-recovery-proof.ts").ExecutionRecoveryRequest;

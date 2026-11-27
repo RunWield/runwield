@@ -1,10 +1,11 @@
+import type { PackageWorkflowInput } from "@runwield/plans/store";
 import {
     managedPlanStoreActive,
     prepareManagedSequence,
     snapshotManagedSequence,
     applyManagedSequenceDecision,
 } from "./managed.ts";
-import { retainSequenceOperationResult } from "./operation-receipts.ts";
+import { retainSequenceOperationResult } from "./operation-results.ts";
 import { requiresPlanWorkflow } from "./index.ts";
 
 import { withLocalPlanWorkflow } from "./index.ts";
@@ -17,7 +18,6 @@ import {
 } from "./workflows.ts";
 import { currentPackageSelection } from "./workflows.ts";
 import { saveReviewedPlanDocument } from "./index.ts";
-import type { PackageWorkflowInput } from "./packages.ts";
 import { withProjectRuntimeReadScope } from "@runwield/project-runtime/layout";
 import { resolvePlanQuestions, type PlanQuestionAnswer } from "../shared/plan-questions.ts";
 import { loadReviewFeedbackImages, type ReviewImageDecision } from "../shared/workflow/review-feedback-images.ts";

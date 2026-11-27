@@ -1,3 +1,4 @@
+import type { PackagePublicationManifest } from "@runwield/plans/store";
 import { projects, type ProjectStoreIdentity } from "@runwield/projects";
 import {
     SYSTEM_WORK_RECORD_MNEMOTECA_PORT,
@@ -32,8 +33,7 @@ import {
     withPlanPackageLocks,
     prunePackageFamily,
     type LoadedPlanPackage,
-    type PackagePublicationManifest,
-} from "./packages.ts";
+} from "@runwield/plans/package-storage";
 import { managedPersonalStoreActive, requestManagedRetention } from "./managed.ts";
 
 export type RetentionKind = "plans" | "records";

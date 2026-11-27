@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import { equal, deepEqual, rejects } from "node:assert/strict";
 import { create, packageFixture, tree } from "../testing/plan-package-fixture.ts";
-import { listPlanPackages } from "../../plan-store/packages.ts";
+import { listPlanPackages } from "@runwield/plans/package-storage";
 import { currentWorkRecordOwner } from "../work-records/owner.ts";
 import { loadPackageWorkflowPlan } from "../../plan-store/workflows.ts";
 import { currentPackageProject, withPackageProject } from "../../plan-store/workflows.ts";

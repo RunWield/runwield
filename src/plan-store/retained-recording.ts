@@ -8,7 +8,7 @@ import fs from "node:fs/promises";
 import type { ManagedProjectStoreLaunch } from "../shared/remote/project-store-launch.ts";
 import { readManagedRetainedRecordingProof } from "../shared/remote/project-store-launch.ts";
 import { readRetainedManagedExecution, type RetainedManagedExecution } from "./retained-managed-execution.ts";
-import { operationHash } from "./operation-receipts.ts";
+import { operationHash } from "@runwield/plans/operation-receipts";
 import { assertManagedRuntimePath } from "../shared/project-runtime-managed.ts";
 import { writeJsonAtomically } from "../shared/private-json-file.ts";
 import { withWorkRecordMutation } from "../shared/work-records/owner.ts";

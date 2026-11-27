@@ -1,3 +1,4 @@
+import { StalePlanWriteError } from "@runwield/plans/store";
 import { packageDocumentText } from "@runwield/plans/file-snapshots";
 import { plans, type PlanId } from "@runwield/plans";
 import type { ProjectStoreIdentity } from "@runwield/projects";
@@ -6,17 +7,17 @@ import { planHistoryFiles } from "@runwield/plans/history-files";
 import { buildPlanEventUpdates } from "@runwield/plans/lifecycle";
 import { sameReviewedMarkdown } from "./review.ts";
 import { settleSequenceHistory } from "./transitions.ts";
-import { StalePlanWriteError } from "../plan-store.ts";
+
 import { assertSharedPlanWriteAllowed } from "../shared/collaboration/lock.ts";
 import {
+    packageWorkflowRevision,
     commitPlanPackageBatch,
     listPlanPackages,
-    packageWorkflowRevision,
     withPlanPackageCatalogDiscovery,
     withPlanPackageLocks,
     type LoadedPlanPackage,
     type PackageMetadataUpdate,
-} from "./packages.ts";
+} from "@runwield/plans/package-storage";
 import {
     currentPackageProject,
     packageController,

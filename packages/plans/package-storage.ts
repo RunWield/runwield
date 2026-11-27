@@ -1,11 +1,13 @@
+import type { FrontMatterRecord } from "@runwield/parsing/front-matter";
+import type { WorktreeRegistryEntry } from "@runwield/project-runtime/registry-inspection";
 import {
     assertDeliveryCopies,
     assertPackagePublicationReference,
     type DeliveryCopy,
     type ExecutionPublicationPolicy,
     type PackagePublicationReference,
-} from "@runwield/plans/publication-copies";
-import { workRecords } from "@runwield/plans/work-records";
+} from "./publication-copies.ts";
+import { workRecords } from "./work-records.ts";
 import { projects, type ProjectStoreIdentity as ProjectIdentity } from "@runwield/projects";
 import {
     commitOperationEffect,
@@ -14,16 +16,21 @@ import {
     settleBatchOperation,
     type BatchOperationIntent,
 } from "./operation-receipts.ts";
-import { requestWorkspaceSearchRefresh } from "../shared/workspace-search-refresh.ts";
+import { requestWorkspaceSearchRefresh } from "@runwield/resources/workspace-search-refresh";
 /** Explicit personal Plan packages. Legacy discovery and lifecycle admission remain separate. */
 import fs from "node:fs/promises";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, randomUUID } from "node:crypto";
 import { isAbsolute, join, relative } from "node:path";
-import { openNativeFileLock, type NativeFileLock } from "../shared/native-file-lock.ts";
-import { assertContainedPath } from "@runwield/resources/fs";
-import { syncParentDirectory, writeJsonAtomically, writeTextAtomically } from "../shared/private-json-file.ts";
-import { plans, type PlanId, type PlanFrontMatter } from "@runwield/plans";
+import {
+    assertContainedPath,
+    openNativeFileLock,
+    syncParentDirectory,
+    writeJsonAtomically,
+    writeTextAtomically,
+    type NativeFileLock,
+} from "@runwield/resources/fs";
+import { plans, type PlanId, type PlanFrontMatter } from "./index.ts";
 import {
     ensurePackageDirectory,
     localPackageLayout,
@@ -43,31 +50,18 @@ import {
     type PackageInputReference,
     type PackageIssueKind,
     type PackageResource,
-} from "@runwield/plans/file-snapshots";
+} from "./file-snapshots.ts";
 import {
     type TicketReference,
     normalizePlanDeviations,
     type PlanDeviation,
     canonicalPlanStatus,
     decodePackageMarkdown,
-} from "@runwield/plans/format";
-import { StalePlanWriteError } from "../plan-store.ts";
-import {
-    preparePlanPackageImport,
-    revalidatePlanImport,
-    type ImportAllocation,
-    type LegacyImportEvidence,
-    type PlanImportResult,
-    type PreparedPlanImport,
-} from "./import-source.ts";
-import { CONTROLLER_STATE_FIELDS, type WorkflowControllerState } from "@runwield/plans/controller-state";
-import {
-    isPlanMilestone,
-    isPlanMilestoneVersion,
-    type PackageDocuments,
-    type PlanMilestone,
-} from "@runwield/plans/history";
-import { planHistoryFiles } from "@runwield/plans/history-files";
+} from "./format.ts";
+import { StalePlanWriteError } from "./store-errors.ts";
+import { CONTROLLER_STATE_FIELDS, type ControllerRecord, type WorkflowControllerState } from "./controller-state.ts";
+import { isPlanMilestone, isPlanMilestoneVersion, type PackageDocuments, type PlanMilestone } from "./history.ts";
+import { planHistoryFiles } from "./history-files.ts";
 
 /** Version 1 stores continuation references, not copies of execution registries/checkpoints. */
 export interface PackageReferences {
@@ -305,6 +299,62 @@ interface PackageLayout {
     batch: string;
     allocations: string;
 }
+/** Evidence retained by the canonical package store for an explicit legacy import. */
+export interface ImportAllocation {
+    locator: string;
+    name: string;
+    idless: boolean;
+    digest: string;
+    planId: string;
+    createdAt: string;
+}
+export interface ImportFileEvidence {
+    path: string;
+    bytes: string | null;
+    digest: string | null;
+}
+export interface LegacyImportEvidence {
+    format: "legacy-markdown";
+    repositoryId: string | null;
+    repositoryRelativePath: string | null;
+    source: ImportFileEvidence;
+    authority: ImportFileEvidence;
+    authorityKind: "selected" | "registered" | "target-snapshot";
+    controller: ControllerRecord | null;
+    controllerFile: ImportFileEvidence | null;
+    registryFile: ImportFileEvidence | null;
+    attempts: WorktreeRegistryEntry[];
+    pendingControllerRepairs: string[];
+    /** Raw fields are historical provenance, never lifecycle admission or executable checks. */
+    legacyFields: FrontMatterRecord;
+    retainedFields: string[];
+}
+interface ImportMember {
+    allocation: ImportAllocation;
+    metadata: PlanPackageMetadata;
+    documents: PackageDocuments;
+    evidence: LegacyImportEvidence;
+}
+export interface PreparedPlanImport {
+    selection: string;
+    membership: string[];
+    members: ImportMember[];
+    existingPlanIds: string[];
+    allocations: ImportAllocation[];
+    observations: ImportFileEvidence[];
+}
+export interface PlanImportCommitted {
+    kind: "committed" | "existing";
+    planIds: string[];
+    importedPlanIds: string[];
+    existingPlanIds: string[];
+}
+interface PlanImportIssue {
+    kind: "conflict" | "pending" | "unavailable" | "invalid";
+    message: string;
+}
+export type PlanImportResult = PlanImportCommitted | PlanImportIssue;
+
 interface ImportRecord {
     version: 1;
     recordId: string;
@@ -1916,108 +1966,99 @@ export async function commitPlanPackageBatch(
     );
 }
 
-/** Explicit internal import; ordinary load/save/discovery never calls this operation. */
-interface ManagedImportTransport {
-    launch: import("../shared/remote/project-store-launch.ts").ManagedProjectStoreLaunch;
-    operationId: string;
-    signal?: AbortSignal;
+interface PackageImportState {
+    allocations: ImportAllocation[];
+    catalog: LoadedPlanPackage[];
 }
-export async function importPlanPackages(identity: ProjectIdentity, selection: string): Promise<PlanImportResult> {
-    return await importObservedPlanPackages(identity, selection);
-}
-export async function importManagedPlanPackages(
+
+/** Observe the catalog and retry evidence while the caller holds the catalog lock for the import. */
+export async function readPlanPackageImportState(
     identity: ProjectIdentity,
     selection: string,
-    transport: ManagedImportTransport,
-): Promise<PlanImportResult> {
-    if (!projects.home.isOwner(identity)) throw new Error("Managed import requires the personal home owner.");
-    return await importObservedPlanPackages(identity, selection, transport);
+    operationId?: string,
+): Promise<PackageImportState | PlanImportCommitted> {
+    const paths = layout(identity);
+    const catalog = await scan(paths);
+    if (catalog.issues.length) fail(catalog.issues[0].kind, catalog.issues[0].message);
+    const allocations = await readAllocations(paths);
+    if (operationId && (await file(paths.home, join(paths.imports, operationId, "record.json")))) {
+        const recorded = await importRecord(paths, operationId);
+        if (recorded.prepared.selection !== selection) throw new Error("Import operation selection changed.");
+        return committedImportResult(recorded.prepared);
+    }
+    return { allocations, catalog: catalog.packages };
 }
-async function importObservedPlanPackages(
+
+export async function findImportedPlansForMissingSource(
     identity: ProjectIdentity,
     selection: string,
-    transport?: ManagedImportTransport,
-): Promise<PlanImportResult> {
-    try {
-        return await mutate(identity, null, async (paths) => {
-            const catalog = await scan(paths);
-            if (catalog.issues.length) fail(catalog.issues[0].kind, catalog.issues[0].message);
-            const allocations = await readAllocations(paths);
-            if (transport && (await file(paths.home, join(paths.imports, transport.operationId, "record.json")))) {
-                const recorded = await importRecord(paths, transport.operationId);
-                if (recorded.prepared.selection !== selection) throw new Error("Import operation selection changed.");
-                const importedPlanIds = recorded.prepared.members.map((member) => member.metadata.planId);
-                return {
-                    kind: "committed",
-                    planIds: [...new Set([...importedPlanIds, ...recorded.prepared.existingPlanIds])],
-                    importedPlanIds,
-                    existingPlanIds: recorded.prepared.existingPlanIds,
-                };
+    catalog: LoadedPlanPackage[],
+): Promise<PlanImportCommitted | undefined> {
+    const paths = layout(identity);
+    const recordedIds = new Set<string>();
+    if (await stat(paths.imports)) {
+        await safe(paths.home, paths.imports);
+        for (const id of await fs.readdir(paths.imports)) {
+            const record = await importRecord(paths, id);
+            if (record.prepared.selection === selection) {
+                for (const member of record.prepared.members) recordedIds.add(member.metadata.planId);
+                for (const planId of record.prepared.existingPlanIds) recordedIds.add(planId);
+            } else {
+                for (const member of record.prepared.members)
+                    if (member.evidence.source.path === selection) recordedIds.add(member.metadata.planId);
             }
-            if (!transport && !(await stat(selection))) {
-                const recordedIds = new Set<string>();
-                if (await stat(paths.imports)) {
-                    await safe(paths.home, paths.imports);
-                    for (const id of await fs.readdir(paths.imports)) {
-                        const record = await importRecord(paths, id);
-                        if (record.prepared.selection === selection) {
-                            for (const member of record.prepared.members) recordedIds.add(member.metadata.planId);
-                            for (const planId of record.prepared.existingPlanIds) recordedIds.add(planId);
-                        } else {
-                            for (const member of record.prepared.members)
-                                if (member.evidence.source.path === selection) recordedIds.add(member.metadata.planId);
-                        }
-                    }
-                }
-                if (recordedIds.size) {
-                    const planIds = [...recordedIds];
-                    if (planIds.some((id) => !catalog.packages.some((p) => p.metadata.planId === id)))
-                        fail("pending_recovery", "A previously imported package is unavailable.");
-                    return { kind: "existing", planIds, importedPlanIds: [], existingPlanIds: planIds };
-                }
-            }
-            const request = {
-                projectId: identity.projectId,
-                repositoryId: identity.repositoryId,
-                personalOwner: identity.personalOwner.identity,
-                selection,
-                allocations,
-                catalog: catalog.packages.map((plan) => ({
-                    metadata: {
-                        planId: plan.metadata.planId,
-                        name: plan.metadata.name,
-                        definition: plan.metadata.definition,
-                    },
-                })),
-                createdAt: new Date().toISOString(),
-            };
-            const prepared = transport
-                ? await (
-                      await import("../shared/remote/project-store-launch.ts")
-                  ).readManagedImportSource(transport.launch, request, transport.signal)
-                : await preparePlanPackageImport(
-                      projects.home.requireCheckout(identity),
-                      selection,
-                      allocations,
-                      catalog.packages,
-                      request.createdAt,
-                  );
+        }
+    }
+    if (recordedIds.size) {
+        const planIds = [...recordedIds];
+        if (planIds.some((id) => !catalog.some((plan) => plan.metadata.planId === id)))
+            fail("pending_recovery", "A previously imported package is unavailable.");
+        return { kind: "existing", planIds, importedPlanIds: [], existingPlanIds: planIds };
+    }
+}
+
+export async function validatePlanPackageImportDestinations(
+    identity: ProjectIdentity,
+    prepared: PreparedPlanImport,
+): Promise<void> {
+    const paths = layout(identity);
+    for (const member of prepared.members) {
+        metadataFrom(member.metadata);
+        await assertDestination(paths, member.metadata.name);
+    }
+}
+
+function committedImportResult(prepared: PreparedPlanImport): PlanImportCommitted {
+    const importedPlanIds = prepared.members.map((member) => member.metadata.planId);
+    return {
+        kind: "committed",
+        planIds: [...new Set([...importedPlanIds, ...prepared.existingPlanIds])],
+        importedPlanIds,
+        existingPlanIds: prepared.existingPlanIds,
+    };
+}
+
+/** Commit a revalidated import under the catalog and imported Plan locks. */
+export async function commitPlanPackageImport(
+    identity: ProjectIdentity,
+    prepared: PreparedPlanImport,
+    operationId?: string,
+): Promise<PlanImportCommitted> {
+    return await mutate(
+        identity,
+        prepared.members.map((member) => member.metadata.planId),
+        async (paths) => {
             if (!prepared.members.length) {
-                if (transport) {
-                    await (
-                        await import("../shared/remote/project-store-launch.ts")
-                    ).readManagedImportSource(transport.launch, { ...request, prepared }, transport.signal);
-                    const resultRoot = join(paths.imports, transport.operationId);
+                if (operationId) {
+                    const record = validateImportRecord({
+                        version: 1,
+                        recordId: operationId,
+                        projectId: identity.projectId,
+                        prepared,
+                    });
+                    const resultRoot = join(paths.imports, operationId);
                     await directory(paths, resultRoot);
-                    writeJsonAtomically(
-                        join(resultRoot, "record.json"),
-                        validateImportRecord({
-                            version: 1,
-                            recordId: transport.operationId,
-                            projectId: identity.projectId,
-                            prepared,
-                        }),
-                    );
+                    writeJsonAtomically(join(resultRoot, "record.json"), record);
                 }
                 return {
                     kind: "existing",
@@ -2026,76 +2067,30 @@ async function importObservedPlanPackages(
                     existingPlanIds: prepared.existingPlanIds,
                 };
             }
-            const locks: NativeFileLock[] = [];
-            try {
-                for (const id of prepared.members.map((member) => member.metadata.planId).sort()) {
-                    const path = join(paths.locks, `${digest(new TextEncoder().encode(id))}.lock`);
-                    await safe(paths.home, path);
-                    const lock = openNativeFileLock(path);
-                    locks.push(lock);
-                    await lock.lock(true);
-                }
-                for (const member of prepared.members) {
-                    metadataFrom(member.metadata);
-                    await assertDestination(paths, member.metadata.name);
-                }
-                if (transport)
-                    await (
-                        await import("../shared/remote/project-store-launch.ts")
-                    ).readManagedImportSource(transport.launch, { ...request, prepared }, transport.signal);
-                else
-                    await revalidatePlanImport(
-                        projects.home.requireCheckout(identity),
-                        prepared,
-                        catalog.packages,
-                        allocations,
-                    );
-                const recordId = transport?.operationId || randomUUID();
-                for (const member of prepared.members)
-                    member.metadata.references.legacyImport = {
-                        recordId,
-                        locator: member.allocation.locator,
-                        format: "legacy-markdown",
-                    };
-                const record = validateImportRecord({ version: 1, recordId, projectId: identity.projectId, prepared });
-                writeJsonAtomically(paths.batch, {
-                    version: 1,
+            const recordId = operationId || randomUUID();
+            for (const member of prepared.members)
+                member.metadata.references.legacyImport = {
                     recordId,
-                    phase: "pending",
-                    members: prepared.members.map((member) => ({
-                        planId: member.metadata.planId,
-                        name: member.metadata.name,
-                    })),
-                    record,
-                } satisfies ImportBatch);
-                await recoverImportBatch(paths);
-                const importedPlanIds = prepared.members.map((member) => member.metadata.planId);
-                return {
-                    kind: "committed",
-                    planIds: [...new Set([...importedPlanIds, ...prepared.existingPlanIds])],
-                    importedPlanIds,
-                    existingPlanIds: prepared.existingPlanIds,
+                    locator: member.allocation.locator,
+                    format: "legacy-markdown",
                 };
-            } finally {
-                for (const lock of locks.reverse()) lock.close();
-            }
-        });
-    } catch (error) {
-        return {
-            kind:
-                error instanceof PlanPackageError
-                    ? error.kind === "collision"
-                        ? "conflict"
-                        : ["pending_recovery", "changed_input"].includes(error.kind)
-                          ? "pending"
-                          : ["malformed_metadata", "unsupported_metadata", "unsafe_path"].includes(error.kind)
-                            ? "invalid"
-                            : "unavailable"
-                    : "unavailable",
-            message: error instanceof Error ? error.message : String(error),
-        };
-    }
+            const record = validateImportRecord({ version: 1, recordId, projectId: identity.projectId, prepared });
+            writeJsonAtomically(paths.batch, {
+                version: 1,
+                recordId,
+                phase: "pending",
+                members: prepared.members.map((member) => ({
+                    planId: member.metadata.planId,
+                    name: member.metadata.name,
+                })),
+                record,
+            } satisfies ImportBatch);
+            await recoverImportBatch(paths);
+            return committedImportResult(prepared);
+        },
+    );
 }
+
 /** Resolve immutable evidence independently of source availability or later package edits/renames. */
 export async function readPlanImportEvidence(
     identity: ProjectIdentity,
@@ -2400,15 +2395,9 @@ export function packageWorkflowRevision(plan: LoadedPlanPackage): string {
 export async function readManagedPlanImportResult(
     identity: ProjectIdentity,
     operationId: string,
-): Promise<import("./import-source.ts").PlanImportCommitted> {
+): Promise<PlanImportCommitted> {
     const record = await importRecord(layout(identity), operationId);
-    const importedPlanIds = record.prepared.members.map((member) => member.metadata.planId);
-    return {
-        kind: "committed",
-        planIds: [...new Set([...importedPlanIds, ...record.prepared.existingPlanIds])],
-        importedPlanIds,
-        existingPlanIds: record.prepared.existingPlanIds,
-    };
+    return committedImportResult(record.prepared);
 }
 
 interface PruneMember {

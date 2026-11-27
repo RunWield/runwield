@@ -1,3 +1,4 @@
+import { StalePlanWriteError } from "@runwield/plans/store";
 import { packageDocumentContent } from "./documents.ts";
 import { join, dirname, relative } from "node:path";
 import { createHash } from "node:crypto";
@@ -31,13 +32,12 @@ import {
     currentPackageProject,
     currentPackageSelection,
     packageWorkflowLocks,
-    packageWorkflowRevision,
     selectedPackage,
     saveGeneratedManualQaArtifact,
 } from "./workflows.ts";
-import { savePlanPackageDocument } from "./packages.ts";
+import { packageWorkflowRevision, savePlanPackageDocument } from "@runwield/plans/package-storage";
 import { findPlanById, loadPlan } from "./queries.ts";
-import { PlanNotFoundError, StalePlanWriteError, withPlanLock } from "../plan-store.ts";
+import { PlanNotFoundError, withPlanLock } from "../plan-store.ts";
 import { withOrderedTransitionResources } from "./transitions.ts";
 import type { bindProjectPlanStore } from "./project-binding.ts";
 

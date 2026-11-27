@@ -79,7 +79,7 @@ const operations = {
     },
 };
 mock.module("node:fs/promises", () => ({ ...operations, default: operations }));
-const { readPlanPackage } = await import("../../../plan-store/packages.ts");
+const { readPlanPackage } = await import("@runwield/plans/package-storage");
 const { withPackageWorkflow } = await import("../../../plan-store/workflows.ts");
 const { runHostValidation } = await import("./run-host-validation.ts");
 const current = await readPlanPackage(config.selection.identity, { planId: config.selection.planId });

@@ -1,3 +1,4 @@
+import { importPlanPackages } from "./plan-store/import-packages.ts";
 import { planFixtureControllerPath } from "./shared/testing/plan-state-fixture.ts";
 import { seedPlanController } from "./shared/testing/plan-state-fixture.ts";
 import { withRetainedCheckoutSource } from "@runwield/plans/retained-checkout";
@@ -7,12 +8,11 @@ import fs from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { packageFixture, read, tree, driver } from "./shared/testing/plan-package-fixture.ts";
 import {
-    importPlanPackages,
     listPlanPackages,
     readPlanImportEvidence,
     renamePlanPackage,
     savePlanPackageDocument,
-} from "./plan-store/packages.ts";
+} from "@runwield/plans/package-storage";
 import { archivePlan } from "./plan-store/index.ts";
 import { git } from "./shared/git-test-fixture.ts";
 import { enterProjectRuntime } from "./shared/project-runtime-layout.ts";

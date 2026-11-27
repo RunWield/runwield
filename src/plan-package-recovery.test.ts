@@ -7,7 +7,7 @@ import {
     readPlanPackage,
     listPlanPackages,
     updatePlanPackageMetadata,
-} from "./plan-store/packages.ts";
+} from "@runwield/plans/package-storage";
 
 for (const boundary of ["staged-package", "intent", "moved-resource", "metadata"] as const)
     test(`creation interrupted at ${boundary} never exposes a partial successful package`, async () => {

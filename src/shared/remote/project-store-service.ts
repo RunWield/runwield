@@ -1,6 +1,7 @@
+import { StalePlanWriteError } from "@runwield/plans/store";
 import { type HomeProjectOwner } from "@runwield/projects";
 import type { ManagedProjectStoreLaunch } from "./project-store-launch.ts";
-import { PreparedProjectStore, StalePlanWriteError, type PlanExecutionHost } from "../../plan-store/index.ts";
+import { PreparedProjectStore, type PlanExecutionHost } from "../../plan-store/index.ts";
 import {
     readProjectStoreBody,
     sameProjectStoreBinding,

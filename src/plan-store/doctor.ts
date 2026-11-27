@@ -7,7 +7,7 @@ import {
 import { managedPlanStoreActive, inspectManagedOwner, readManagedRetainedExecution } from "./managed.ts";
 import { currentPackageProject } from "./workflows.ts";
 import { readLocalHomeStore, withLocalProjectAction } from "./index.ts";
-import { listPlanPackages, recoverPlanPackages } from "./packages.ts";
+import { listPlanPackages, recoverPlanPackages } from "@runwield/plans/package-storage";
 import { listArchivedPlans } from "./queries.ts";
 import { inspectControllerDocumentWorktrees } from "./controllers.ts";
 import { hasApplicablePublicationReceipt, effectiveDeliveryBranch } from "@runwield/workflow/publication";
@@ -51,11 +51,7 @@ import { inspectPlanIdentityDocuments } from "./index.ts";
 import { getTransitionJournalDir } from "./transitions.ts";
 import { reconcileTransitionRecoveryRecords, type TransitionReconciliation } from "./index.ts";
 import { buildEffectProver, listGitWorktreePaths, runGitLines } from "../shared/workflow/transition-recovery.ts";
-import {
-    prepareWorktreeRegistry,
-    pruneEntry,
-    reconcileEntryIdentity,
-} from "../shared/worktree-registry.ts";
+import { prepareWorktreeRegistry, pruneEntry, reconcileEntryIdentity } from "../shared/worktree-registry.ts";
 import {
     inspectTargetBranchPlansByParent,
     prepareTargetBranchPlansByParent,

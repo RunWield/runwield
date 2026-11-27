@@ -1,5 +1,5 @@
 import { projects } from "@runwield/projects";
-import { markCollaborationNetworkEffect, retainCollaborationMutation } from "../operation-receipts.ts";
+import { markCollaborationNetworkEffect, retainCollaborationMutation } from "../operation-results.ts";
 import { managedPersonalStoreActive, shareManagedPlan } from "../managed.ts";
 import { prepareCollaborationPlan as preparePlanWorkflow } from "./operations.ts";
 import { prepareWorktreeRegistry } from "../../shared/worktree-registry.ts";

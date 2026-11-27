@@ -188,3 +188,11 @@ export interface ProjectPlanStore {
     archive(planId: PlanId, options: ArchiveProjectPlan): Promise<ProjectPlanDocument>;
     restore(planId: PlanId, expectedRevision: string): Promise<ProjectPlanDocument>;
 }
+
+export { StalePlanWriteError } from "./store-errors.ts";
+export type {
+    PackageAttemptContinuation,
+    PackagePublicationManifest,
+    PackageWorkflowInput,
+    PreparedPlanImport,
+} from "./package-storage.ts";

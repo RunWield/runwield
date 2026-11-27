@@ -147,3 +147,13 @@ export function stripRuntimeFields<T extends WorkflowControllerState & WorkflowW
     for (const key of PLAN_RUNTIME_FIELDS) delete result[key];
     return result;
 }
+
+export interface ControllerRecord {
+    version: 1;
+    revision: number;
+    planId?: string;
+    planName: string;
+    state: WorkflowControllerState;
+    /** Imported only when the old registry is missing; removed after registry recovery. */
+    recovery?: WorkflowWorktreeContext;
+}

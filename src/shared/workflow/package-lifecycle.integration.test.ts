@@ -9,7 +9,7 @@ import {
     readPlanPackageInput,
     readPlanPackage,
     renamePlanPackage,
-} from "../../plan-store/packages.ts";
+} from "@runwield/plans/package-storage";
 import { findPlansByParent } from "../testing/plan-query-fixture.ts";
 import { workflowEpicArtifacts } from "../../plan-store/index.ts";
 import { prepareSequenceReview, applySequenceReviewDecision } from "../../plan-store/index.ts";
