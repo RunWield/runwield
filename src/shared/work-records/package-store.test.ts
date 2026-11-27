@@ -169,29 +169,27 @@ test("admitted edits and deletes reject a stale canonical snapshot", async () =>
 test("the owner settles interrupted creation before deletion and replays the original result", async () => {
     const f = await packageFixture();
     try {
-        await withWorkRecordOwner(f.root, f.identity, async () => {
-            const files = workRecordFiles.forOwner(f.identity);
-            const { recordId: _id, kind: _kind, ...metadata } = recordAttrs();
-            const input = { ...metadata, body: recordBody };
-            const operation = { operationId: crypto.randomUUID(), digest: "a".repeat(64) };
-            const created = await files.createRecord(input);
-            await fs.writeFile(
-                join(files.layout.internal, "pending-creation.json"),
-                JSON.stringify({
-                    version: 1,
-                    ...operation,
-                    fileName: basename(created.path),
-                    markdown: created.markdown,
-                }),
-            );
-            await files.delete(created);
-            deepEqual(await files.createOperationRecord(input, operation), created);
-            deepEqual(await files.list(), []);
-            await rejects(
-                () => files.createOperationRecord(input, { ...operation, digest: "b".repeat(64) }),
-                /already bound to a different Work Record creation request/,
-            );
-        });
+        const files = workRecordFiles.forOwner(f.identity);
+        const { recordId: _id, kind: _kind, ...metadata } = recordAttrs();
+        const input = { ...metadata, body: recordBody };
+        const operation = { operationId: crypto.randomUUID(), digest: "a".repeat(64) };
+        const created = await files.workRecords.create(input);
+        await fs.writeFile(
+            join(files.layout.internal, "pending-creation.json"),
+            JSON.stringify({
+                version: 1,
+                ...operation,
+                fileName: basename(created.relativePath),
+                markdown: created.markdown,
+            }),
+        );
+        await files.delete(await files.read(basename(created.relativePath)));
+        deepEqual(await files.workRecords.createOperationRecord(input, operation), created);
+        deepEqual(await files.workRecords.list(), []);
+        await rejects(
+            () => files.workRecords.createOperationRecord(input, { ...operation, digest: "b".repeat(64) }),
+            /already bound to a different Work Record creation request/,
+        );
     } finally {
         await f.cleanup();
     }
@@ -200,28 +198,27 @@ test("the owner settles interrupted creation before deletion and replays the ori
 test("managed creation retains the assigned identity before a failed publication", async () => {
     const f = await packageFixture();
     try {
-        await withWorkRecordOwner(f.root, f.identity, async () => {
-            const files = workRecordFiles.forOwner(f.identity);
-            const { recordId: _id, kind: _kind, ...metadata } = recordAttrs();
-            const input = { ...metadata, body: recordBody };
-            const operation = { operationId: crypto.randomUUID(), digest: "a".repeat(64) };
-            const locations = join(files.layout.internal, "locations");
-            await fs.mkdir(files.layout.internal, { recursive: true });
-            await fs.symlink(f.root, locations, "junction");
-            await rejects(() => files.createOperationRecord(input, operation), /symbolic link/);
-            deepEqual(await files.list({ createDir: false }), []);
-            equal(await files.readOperationRecord(operation), null);
+        const files = workRecordFiles.forOwner(f.identity);
+        const { recordId: _id, kind: _kind, ...metadata } = recordAttrs();
+        const input = { ...metadata, body: recordBody };
+        const operation = { operationId: crypto.randomUUID(), digest: "a".repeat(64) };
+        const locations = join(files.layout.internal, "locations");
+        await fs.mkdir(files.layout.internal, { recursive: true });
+        await fs.symlink(f.root, locations, "junction");
+        await rejects(() => files.workRecords.createOperationRecord(input, operation), /symbolic link/);
+        deepEqual(await files.workRecords.list(), []);
+        equal(await files.workRecords.readOperationRecord(operation), null);
 
-            const pending: { markdown: string } = JSON.parse(
-                await fs.readFile(join(files.layout.internal, "pending-creation.json"), "utf8"),
-            );
-            const intended = workRecords.documents.parse(pending.markdown);
-            await fs.unlink(locations);
-            const created = await files.createOperationRecord(input, operation);
-            equal(created.attrs.recordId, intended.attrs.recordId);
-            deepEqual(await files.list({ createDir: false }), [created]);
-            deepEqual(await files.readOperationRecord(operation), created);
-        });
+        const pending: { markdown: string } = JSON.parse(
+            await fs.readFile(join(files.layout.internal, "pending-creation.json"), "utf8"),
+        );
+        const intended = workRecords.documents.parse(pending.markdown);
+        await fs.unlink(locations);
+        const created = await files.workRecords.createOperationRecord(input, operation);
+        ok(!("path" in created));
+        equal(created.attrs.recordId, intended.attrs.recordId);
+        deepEqual(await files.workRecords.list(), [created]);
+        deepEqual(await files.workRecords.readOperationRecord(operation), created);
     } finally {
         await f.cleanup();
     }

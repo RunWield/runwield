@@ -122,6 +122,9 @@ export interface WorkRecordResource {
     relativePath: string;
 }
 
+/** A stored document with its relative path and content. */
+export type ProjectWorkRecord = Omit<WorkRecordResource, "path">;
+
 type ParseWorkRecordOptions = Partial<Pick<WorkRecordResource, "path" | "relativePath">>;
 
 function isFrontMatterList(value: FrontMatterValue | undefined): value is readonly FrontMatterValue[] {
@@ -426,7 +429,22 @@ function parseWorkRecordMarkdown(markdown: string, options: ParseWorkRecordOptio
     };
 }
 
+/** Keep the document fields that can cross the store boundary. */
+function toProjectDocument({ path: _ownerPath, ...document }: WorkRecordResource): ProjectWorkRecord {
+    return document;
+}
+
+/** Read a case-insensitive ID and reject ambiguous catalogs. */
+function findById(records: readonly ProjectWorkRecord[], recordId: string): ProjectWorkRecord | null {
+    const id = recordId.toLowerCase();
+    const matches = records.filter((record) => record.attrs.recordId.toLowerCase() === id);
+    if (matches.length > 1) throw new Error(`Ambiguous Work Record ID: ${recordId}`);
+    return matches[0] ?? null;
+}
+
 export const documents = {
+    toProjectDocument,
+    findById,
     parse: parseWorkRecordMarkdown,
     format: formatWorkRecordMarkdown,
 } as const;

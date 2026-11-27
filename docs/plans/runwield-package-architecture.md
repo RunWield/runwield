@@ -253,7 +253,7 @@ Opening the Plan Store binds its `workRecords` collection to the same Project ID
 
 A document includes its typed front matter, title, summary, sections, body, original Markdown, and a relative document path. Absolute owner locations stay in the filesystem driver. Workspace applies its own visibility rules when displaying and indexing records. The agent memory tools retain their current-only policy and Mnemoteca search behavior.
 
-The `@runwield/plans/work-records` entry point owns the Markdown format. The Markdown/filesystem driver in `@runwield/plans/work-record-files` owns the personal and retained checkout layouts and durable file operations. The host admits the Project, routes managed reads and writes to its owner, and coordinates publication and secondary indexing. A future PostgreSQL driver can expose the same Project-bound collection.
+`@runwield/plans/work-records` owns the Markdown format, projects each record into its public document shape, and looks up records by ID. Both the filesystem driver and the managed host adapter use those document operations. `@runwield/plans/work-record-files` supplies the Project-bound filesystem collection and owns its creation receipts and durable files. The host admits the Project, routes managed reads and writes to its owner, and coordinates publication and secondary indexing. A future PostgreSQL driver can expose the same Project-bound collection.
 
 ### Plan milestone history
 
