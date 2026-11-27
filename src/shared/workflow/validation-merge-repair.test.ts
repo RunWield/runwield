@@ -94,6 +94,32 @@ test("completed merge repair refuses deleted runtime history before committing f
     }
 });
 
+test("merge repair finalization refuses staged conflict markers before committing", async () => {
+    const cwd = await makeRepairRepo();
+    try {
+        await git(cwd, ["checkout", "-b", "execution"]);
+        await fsWriteFile(join(cwd, "README.md"), "execution\n");
+        await git(cwd, ["commit", "-am", "execution work"]);
+        await git(cwd, ["checkout", "main"]);
+        await fsWriteFile(join(cwd, "README.md"), "target\n");
+        await git(cwd, ["commit", "-am", "target work"]);
+        const headBefore = await git(cwd, ["rev-parse", "HEAD"]);
+        await assertRejects(() => git(cwd, ["merge", "--no-ff", "execution"]), Error, "CONFLICT");
+        await git(cwd, ["add", "README.md"]);
+        assertEquals(await git(cwd, ["ls-files", "-u"]), "");
+
+        await assertRejects(() => finalizeMergeRepair(cwd), Error, "README.md:1: leftover conflict marker");
+        assertEquals(await git(cwd, ["rev-parse", "HEAD"]), headBefore);
+
+        await fsWriteFile(join(cwd, "README.md"), "target and execution\n");
+        await git(cwd, ["add", "README.md"]);
+        assertEquals(await finalizeMergeRepair(cwd), true);
+        assertEquals(await git(cwd, ["show", "HEAD:README.md"]), "target and execution");
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
 test("merge repair finalization does not stage untracked runtime state", async () => {
     const cwd = await makeRepairRepo();
     try {

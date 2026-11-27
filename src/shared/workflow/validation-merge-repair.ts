@@ -69,6 +69,22 @@ async function runRepairGit(cwd: string, args: string[]): Promise<GitCommandResu
     };
 }
 
+async function assertNoStagedConflictMarkers(cwd: string): Promise<void> {
+    // Check conflict markers without enforcing Git's default whitespace rules.
+    const result = await runRepairGit(cwd, [
+        "-c",
+        "core.whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab",
+        "diff",
+        "--cached",
+        "--check",
+    ]);
+    if (result.code !== 0) {
+        throw new Error(
+            `Could not verify staged merge resolutions (Git exit ${result.code}):\n${result.stdout || result.stderr}`,
+        );
+    }
+}
+
 export async function finalizeMergeRepair(repairCwd: string): Promise<boolean> {
     const unresolved = await runRepairGit(repairCwd, ["diff", "--name-only", "--diff-filter=U"]);
     if (unresolved.code !== 0 || unresolved.stdout) return false;
@@ -81,6 +97,7 @@ export async function finalizeMergeRepair(repairCwd: string): Promise<boolean> {
         await assertNoRuntimePathsInNewHistory(repairCwd, repairHead.stdout, mergeHead.stdout);
         await stageGitChangesExcludingRuntime(repairCwd);
         await assertNoTrackedOrIndexedRuntimePaths(repairCwd);
+        await assertNoStagedConflictMarkers(repairCwd);
         const committed = await runRepairGit(repairCwd, ["commit", "--no-edit"]);
         if (committed.code !== 0) {
             await logValidationFailure(new Error(committed.stderr || committed.stdout), "merge_repair_commit");
@@ -101,6 +118,7 @@ export async function finalizeMergeRepair(repairCwd: string): Promise<boolean> {
     await assertNoTrackedOrIndexedRuntimePaths(repairCwd);
     const pending = await runRepairGit(repairCwd, ["diff", "--cached", "--quiet"]);
     if (pending.code === 1) {
+        await assertNoStagedConflictMarkers(repairCwd);
         const committed = await runRepairGit(repairCwd, ["commit", "-m", "Complete RunWield publication repair"]);
         if (committed.code !== 0) {
             await logValidationFailure(new Error(committed.stderr || committed.stdout), "merge_repair_commit");
@@ -253,7 +271,7 @@ export async function dispatchMergeRepair(
         worktreeBaseBranch: context.worktreeBaseBranch,
         repairsNeeded: `Worktree merge failed while publishing ${args.planName}. Repair the merge or integration failure.\n\n${reason}`,
         authorityNote:
-            "This checkout contains RunWield's in-progress publication merge. Resolve only the files Git marks as conflicted and stage each resolution. Do not commit, merge, rebase, reset, or publish; RunWield owns those steps and will continue automatically.",
+            "This checkout contains RunWield's in-progress publication merge. Follow the resolving-merge-conflicts skill. Resolve only the files Git marks as conflicted and stage each resolution. Do not commit, merge, rebase, reset, or publish; RunWield owns those steps and will continue automatically.",
         completionInstruction:
             "After all conflict resolutions are staged and no unmerged paths remain, call task_completed. Do not create a commit. If a conflict cannot be resolved here, leave the rest staged and end your turn in plain text naming the file and what stopped you, rather than calling task_completed.",
     });
