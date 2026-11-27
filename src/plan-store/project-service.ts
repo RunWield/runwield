@@ -1,6 +1,10 @@
-import type { ExecutionRecoveryAction, ProjectStoreBinding } from "@runwield/plans/project-store-wire";
+import type {
+    ExecutionRecoveryAction,
+    LegacyManagedPlanAuthoring,
+    ProjectStoreBinding,
+} from "@runwield/plans/project-store-wire";
 import { adoptManagedExecutionReplacement, withManagedExecutionRecovery } from "@runwield/plans/managed-store-host";
-import { StalePlanWriteError } from "@runwield/plans/store";
+import { PlanNotFoundError, StalePlanWriteError } from "@runwield/plans/store";
 import type { ExecutionPublicationPolicy, PackagePublicationReference } from "@runwield/plans/publication-copies";
 import { projects, type HomeProjectOwner } from "@runwield/projects";
 import { plans } from "@runwield/plans";
@@ -12,10 +16,12 @@ import { projectPlanFiles } from "@runwield/plans/project-plan-files";
 import type { RetainedFamilyRequest, RetainedFamilyCheckpoint } from "./retained-family.ts";
 import { readPlanRecordingContext, type PlanRecordingContext } from "./recording.ts";
 import type {
+    CreateProjectPlan,
     CreateProjectWorkRecord,
     PackagePublicationManifest,
     PackageWorkflowInput,
     ProjectWorkRecord,
+    ReviseProjectPlan,
 } from "@runwield/plans/store";
 import type { GeneratedWorkRecordSections } from "@runwield/plans/work-records";
 import type { PublishedDeliverySources } from "./published-source.ts";
@@ -71,6 +77,7 @@ import {
 import {
     readPlanPackageInput,
     readPlanPackagePublication,
+    readPlanPackage,
     withPlanPackageCatalogDiscovery,
     type PlanImportCommitted,
 } from "@runwield/plans/package-storage";
@@ -86,6 +93,7 @@ import {
     operationHash,
     planOperationReceiptDirectory,
     runReceiptedOperation,
+    runReceiptedPlanAuthoring,
     type OperationOutcome,
 } from "@runwield/plans/operation-receipts";
 
@@ -125,11 +133,14 @@ export interface ProjectStoreExecution {
 export interface ProjectStoreExecutionDocuments {
     documents: FrozenPlanExecutionDocuments;
 }
-export interface ProjectStoreAuthor {
-    kind: "author-plan";
+export interface ProjectStoreCreatePlan {
+    kind: "create-plan";
     operationId: string;
-    planId: string;
-    input: PlanAuthoringInput;
+    input: CreateProjectPlan;
+}
+export interface ProjectStoreRevisePlan extends PlanMutation {
+    kind: "revise-plan";
+    input: Omit<ReviseProjectPlan, "expectedRevision">;
 }
 export interface ProjectStoreResolve {
     kind: "resolve-plan";
@@ -583,7 +594,9 @@ export type ProjectStoreCommand =
     | ProjectStorePublicationRead
     | ProjectStoreExecutionRead
     | ProjectStoreExecutionDocumentsRead
-    | ProjectStoreAuthor
+    | LegacyManagedPlanAuthoring
+    | ProjectStoreCreatePlan
+    | ProjectStoreRevisePlan
     | ProjectStoreResolve
     | ProjectStoreList
     | ProjectStoreCollaborationRead
@@ -961,17 +974,37 @@ export class PreparedProjectStore {
                             true,
                         ),
                     );
-                if (command.kind === "author-plan") {
+                if (
+                    command.kind === "create-plan" ||
+                    command.kind === "revise-plan" ||
+                    command.kind === "author-plan"
+                ) {
                     return await withPlanPackageCatalogDiscovery(owner, () =>
-                        runReceiptedOperation(
+                        runReceiptedPlanAuthoring(
                             directory,
                             command.operationId,
                             operationDigest(JSON.stringify({ binding: this.binding, command })),
-                            command.planId,
-                            async () => {
-                                await authorPackagePlan(this.cwd, command.input, command.planId);
-                                const document = await readPlanDocuments(command.planId);
-                                return { revision: document.revision, planId: command.planId };
+                            command.kind === "create-plan" ? undefined : command.planId,
+                            async (planId) => {
+                                let input: PlanAuthoringInput;
+                                if (command.kind === "revise-plan") {
+                                    const target = await readPlanPackage(owner, { planId });
+                                    if (target.kind === "missing") throw new PlanNotFoundError(planId);
+                                    if (target.kind !== "loaded") throw new Error(target.message);
+                                    if (target.metadata.archive && !target.metadata.archive.restoredAt)
+                                        throw new PlanNotFoundError(planId);
+                                    input = {
+                                        ...command.input,
+                                        planName: target.metadata.name,
+                                        expectedRevision: command.expectedRevision,
+                                    };
+                                } else if (command.kind === "create-plan") {
+                                    input = { ...command.input, expectedRevision: undefined };
+                                } else {
+                                    input = command.input;
+                                }
+                                await authorPackagePlan(this.cwd, input, planId);
+                                return (await readPlanDocuments(planId)).revision;
                             },
                         ),
                     );

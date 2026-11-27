@@ -15,6 +15,7 @@ import { startRemoteControlService } from "./control.ts";
 import { writeManagedStoreSshFixture } from "./managed-store-ssh-fixture.ts";
 import { ProjectStoreClient } from "./project-store-client.ts";
 import type { ProjectStoreBinding } from "@runwield/plans/project-store-wire";
+import type { ProjectStoreCommand } from "../../plan-store/index.ts";
 
 const gitFixture = defineCommittedGitFixture({ "README.md": "Remote source\n" });
 
@@ -209,18 +210,21 @@ export async function qualifyManagedStoreActivation(
             await rejects(stat(join(remoteHome, ".wld", "projects", binding.projectId, "internal", "work-records")), {
                 code: "ENOENT",
             });
-            const planId = randomUUID();
-            const authored = await client.execute({
-                kind: "author-plan",
-                operationId: randomUUID(),
-                planId,
+            const operationId = randomUUID();
+            const creation: ProjectStoreCommand = {
+                kind: "create-plan",
+                operationId,
                 input: {
                     planName: "managed",
                     contextMarkdown: "# Laptop Plan\n",
                     definition: { targetBranch: "main" },
                 },
-            });
-            equal("status" in authored.result && authored.result.status, "completed");
+            };
+            const [authored, duplicate] = await Promise.all([client.execute(creation), client.execute(creation)]);
+            deepEqual(duplicate, authored);
+            ok("status" in authored.result && authored.result.status === "completed");
+            const { planId } = authored.result;
+            ok(planId && planId !== operationId);
             const listed = await client.execute({ kind: "list-plans" });
             ok("plans" in listed.result);
             const expectedActive = [

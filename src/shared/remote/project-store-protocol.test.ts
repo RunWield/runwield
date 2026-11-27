@@ -2,7 +2,7 @@ import { PROJECT_STORE_MAX_BYTES, readProjectStoreBody } from "@runwield/plans/p
 import { parseProjectId } from "@runwield/projects";
 import { test } from "node:test";
 import { equal, throws, rejects } from "node:assert/strict";
-import { validateProjectStoreRequest, parseHistoryList } from "./project-store-protocol.ts";
+import { validateProjectStoreRequest, validateProjectStoreReply, parseHistoryList } from "./project-store-protocol.ts";
 const binding = {
     projectId: parseProjectId(crypto.randomUUID())!,
     repositoryId: "repository-one",
@@ -30,6 +30,57 @@ test("streamed request bounds apply without Content-Length", async () => {
         },
     });
     await rejects(readProjectStoreBody(new Response(body)), /too large/);
+});
+
+test("managed authoring replies require the exact operation, Plan identity and resulting revision", () => {
+    const operationId = crypto.randomUUID();
+    const planId = crypto.randomUUID();
+    const expectedRevision = "c".repeat(64);
+    const result = { operationId, planId, revision: "d".repeat(64), status: "completed" as const };
+    const create = {
+        binding,
+        command: {
+            kind: "create-plan" as const,
+            operationId,
+            input: { planName: "draft", contextMarkdown: "# Draft" },
+        },
+    };
+    const revise = {
+        binding,
+        command: {
+            kind: "revise-plan" as const,
+            operationId,
+            planId,
+            expectedRevision,
+            input: { contextMarkdown: "# Revised" },
+        },
+    };
+    const legacy = {
+        binding,
+        command: {
+            kind: "author-plan" as const,
+            operationId,
+            planId,
+            input: { planName: "draft", contextMarkdown: "# Draft" },
+        },
+    };
+    for (const request of [create, revise, legacy]) {
+        validateProjectStoreRequest(request);
+        validateProjectStoreReply({ binding, result }, request);
+        for (const invalid of [
+            { ...result, operationId: crypto.randomUUID() },
+            { ...result, planId: undefined },
+            { ...result, revision: "" },
+            { operationId, status: "pending" as const },
+            { ...result, recordId: "unrelated" },
+        ])
+            throws(() => validateProjectStoreReply({ binding, result: invalid }, request), /Plan authoring reply/);
+    }
+    for (const request of [revise, legacy])
+        throws(
+            () => validateProjectStoreReply({ binding, result: { ...result, planId: crypto.randomUUID() } }, request),
+            /Plan authoring reply/,
+        );
 });
 
 test("history requires a version identifier and restore accepts only an observed package revision", () => {

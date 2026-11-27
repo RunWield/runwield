@@ -453,6 +453,12 @@ host disconnects during a read, the original store handle rejects that read and 
 store after reconnect resolves its canonical laptop owner. A write that committed before its response was lost
 can recover the same outcome under its retained operation ID.
 
+**Acceptance: Author a Plan over SSH.** A create request carries the proposed Plan and a retry ID. The personal
+Plan store assigns the Plan ID and returns that same ID if the request is replayed after a lost response. A revision
+names the existing Plan ID and the revision the author edited. A fresh stale revision leaves the Plan untouched.
+Retrying a previously committed revision preserves any subsequent edit. Requests saved by an older client finish
+with their recorded operation and Plan IDs.
+
 **Acceptance: Recover a Plan whose execution lives on an SSH host.** The laptop reads the saved Plan without
 contacting the execution host. During recovery, the authenticated host reports what happened to the requested
 attempt. Plans checks the personal owner, Project, repository, Plan and attempt against its saved records and checks

@@ -3,11 +3,15 @@ import {
     readProjectStoreBody,
     sameProjectStoreBinding,
 } from "@runwield/plans/project-store-wire";
-import { StalePlanWriteError } from "@runwield/plans/store";
+import { PlanNotFoundError, StalePlanWriteError } from "@runwield/plans/store";
 import { type HomeProjectOwner } from "@runwield/projects";
 import type { ManagedProjectStoreLaunch } from "./project-store-launch.ts";
 import { PreparedProjectStore, type PlanExecutionHost } from "../../plan-store/index.ts";
-import { validateProjectStoreRequest, type ProjectStoreRequest } from "./project-store-protocol.ts";
+import {
+    PROJECT_STORE_PLAN_REVISION_HEADER,
+    validateProjectStoreRequest,
+    type ProjectStoreRequest,
+} from "./project-store-protocol.ts";
 
 export class LaptopProjectStoreService {
     private readonly owner: PreparedProjectStore;
@@ -49,12 +53,25 @@ export class LaptopProjectStoreService {
                 return new Response(null, { status: 413 });
             return new Response(result, { headers: { "Content-Type": "application/json" } });
         } catch (error) {
+            if (input.command.kind === "revise-plan") {
+                if (error instanceof PlanNotFoundError)
+                    return new Response(null, {
+                        status: 404,
+                        headers: { [PROJECT_STORE_PLAN_REVISION_HEADER]: "missing" },
+                    });
+                if (error instanceof StalePlanWriteError)
+                    return new Response(null, {
+                        status: 412,
+                        headers: { [PROJECT_STORE_PLAN_REVISION_HEADER]: error.currentRevision },
+                    });
+            }
             if (
                 error instanceof StalePlanWriteError &&
                 (input.command.kind === "restore-history" ||
                     input.command.kind === "save-epic-artifact" ||
                     input.command.kind === "append-epic-qa" ||
                     input.command.kind === "edit-documents" ||
+                    input.command.kind === "create-plan" ||
                     (input.command.kind === "author-plan" && input.command.input.expectedRevision === undefined))
             )
                 return new Response(null, { status: 412 });
