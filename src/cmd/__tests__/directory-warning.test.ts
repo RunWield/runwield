@@ -123,7 +123,7 @@ test("Plan import explains how to recover a disconnected Git worktree and can be
         await git(root, ["worktree", "prune"]);
         const imported = await runPlans("import", "plan.md");
         assertEquals(imported.code, 0, decode(imported.stderr));
-        assertStringIncludes(decode(imported.stdout), "Imported 1 Plans");
+        assertStringIncludes(decode(imported.stdout), "Imported 1 Plan");
 
         const archived = join(root, "docs", "plans", "archived");
         await mkdir(archived, { recursive: true });
@@ -135,6 +135,27 @@ test("Plan import explains how to recover a disconnected Git worktree and can be
         assertEquals(archives.code, 0, decode(archives.stderr));
         assertStringIncludes(decode(archives.stdout), "incomplete");
         assertStringIncludes(decode(archives.stdout), "Archive date: unknown");
+
+        const plans = join(root, "docs", "plans");
+        await writeFile(join(archived, "newly-selected.md"), "# Another archived Plan\n");
+        await writeFile(join(plans, "broken.md"), "---\nstatus: draft\n");
+        await writeFile(join(plans, "working.md"), "# Another good Plan\n");
+        const bulk = await runPlans("import", "docs/plans");
+        const report = decode(bulk.stdout);
+        assertEquals(bulk.code, 0, decode(bulk.stderr));
+        assertStringIncludes(report, "Imported 1 Plan (0 already present)");
+        assertStringIncludes(report, "Use --include-archived");
+        assertStringIncludes(report, "Skipped 1 file");
+        assertStringIncludes(report, "docs/plans/broken.md");
+        assertStringIncludes(report, "Unclosed Markdown front matter");
+        assertEquals(
+            report.trimEnd().endsWith("Review the named file or conflicting Plan, then retry the import."),
+            true,
+        );
+        const withArchive = await runPlans("import", "--include-archived", "docs/plans");
+        assertEquals(withArchive.code, 0, decode(withArchive.stderr));
+        assertStringIncludes(decode(withArchive.stdout), "Imported 1 Plan (2 already present)");
+        assertEquals(decode(withArchive.stdout).includes("Use --include-archived"), false);
     } finally {
         await rm(linked, { recursive: true, force: true });
         await rm(root, { recursive: true, force: true });

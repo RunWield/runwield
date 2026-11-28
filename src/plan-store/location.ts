@@ -89,6 +89,13 @@ export class PlanningNotStartedError extends Error {
     }
 }
 
+export class WorkflowPlanDocumentUnavailable extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = "WorkflowPlanDocumentUnavailable";
+    }
+}
+
 function inferParentPlanName(planName: string): string {
     const segments = planName.split("/");
     segments.pop();
@@ -195,7 +202,7 @@ async function resolveWorkflowPlanLocationInScope(
         ) {
             return { registryRoot, documentRoot: attempt.path, plan: null, archived: true };
         }
-        throw new Error(
+        throw new WorkflowPlanDocumentUnavailable(
             `The execution Plan is missing at ${attempt.path}/docs/plans/${planName}.md. ` +
                 "Your branch and other files are unchanged. Restore that Plan file from Git history or a backup before continuing; the primary copy will not be used.",
         );
@@ -214,7 +221,7 @@ async function resolveWorkflowPlanLocationInScope(
             if (await loadPlan(registered.path, `archived/${planName}`)) {
                 return { registryRoot, documentRoot: registered.path, plan: null, archived: true };
             }
-            throw new Error(
+            throw new WorkflowPlanDocumentUnavailable(
                 `The registered Plan is missing or has a different identity at ${registered.path}/docs/plans/${planName}.md. ` +
                     "Your files are unchanged. Restore that Plan file before continuing; the primary copy will not be used.",
             );

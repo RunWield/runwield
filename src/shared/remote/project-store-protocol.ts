@@ -34,7 +34,12 @@ export function validateProjectStoreRequest(request: ProjectStoreRequest): void 
         "confirm-retention": ["kind", "target", "token"],
         "inspect-owner": ["kind"],
         "repair-owner": ["kind", "operationId"],
-        "import-plans": ["kind", "operationId", "selection"],
+        "import-plans": [
+            "kind",
+            "operationId",
+            "selection",
+            ...(command.kind === "import-plans" && "includeArchived" in command ? ["includeArchived"] : []),
+        ],
         "read-import-result": ["kind", "operationId"],
         "read-retained-family-controller": ["kind", "executionPlanId", "attemptId", "member"],
         "checkpoint-retained-family-controller": [
@@ -171,7 +176,10 @@ export function validateProjectStoreRequest(request: ProjectStoreRequest): void 
         throw new Error("Invalid Plan authoring input.");
     if (
         command.kind === "import-plans" &&
-        (typeof command.selection !== "string" || !command.selection.startsWith("/") || command.selection.length > 4096)
+        (typeof command.selection !== "string" ||
+            !command.selection.startsWith("/") ||
+            command.selection.length > 4096 ||
+            ("includeArchived" in command && command.includeArchived !== true))
     )
         throw new Error("Invalid import selection.");
     if (

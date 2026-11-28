@@ -363,6 +363,7 @@ export async function readManagedImportSource(
     );
     if (
         prepared.selection !== request.selection ||
+        prepared.includeArchived !== request.includeArchived ||
         !Array.isArray(prepared.members) ||
         !Array.isArray(prepared.observations)
     )

@@ -31,10 +31,14 @@ import {
 import { EPIC_ARTIFACT_FILE_NAMES } from "../plan-format.ts";
 import { canonicalPlanStatus, normalizePlanId, StalePlanWriteError, type PlanFrontMatter } from "../plan-store.ts";
 import {
+    omitBlockedPlanImports,
     preparePlanPackageImport,
     revalidatePlanImport,
+    skipPlanImportSource,
     type ImportAllocation,
     type LegacyImportEvidence,
+    type PlanImportCommitted,
+    type PlanImportOptions,
     type PlanImportResult,
     type PreparedPlanImport,
 } from "./import-source.ts";
@@ -1772,7 +1776,16 @@ function validateImportRecord(record: ImportRecord): ImportRecord {
         !/^[0-9a-f-]{36}$/.test(record.recordId) ||
         !record.projectId ||
         !Array.isArray(record.prepared?.members) ||
-        !Array.isArray(record.prepared.allocations)
+        !Array.isArray(record.prepared.allocations) ||
+        (record.prepared.skipped !== undefined &&
+            (!Array.isArray(record.prepared.skipped) ||
+                record.prepared.skipped.some(
+                    (item) =>
+                        !item ||
+                        typeof item.path !== "string" ||
+                        typeof item.reason !== "string" ||
+                        typeof item.action !== "string",
+                )))
     )
         fail("pending_recovery", "Invalid retained import record.");
     for (const member of record.prepared.members) {
@@ -2181,20 +2194,37 @@ interface ManagedImportTransport {
     operationId: string;
     signal?: AbortSignal;
 }
-export async function importPlanPackages(identity: ProjectIdentity, selection: string): Promise<PlanImportResult> {
-    return await importObservedPlanPackages(identity, selection);
+export async function importPlanPackages(
+    identity: ProjectIdentity,
+    selection: string,
+    options: PlanImportOptions = {},
+): Promise<PlanImportResult> {
+    return await importObservedPlanPackages(identity, selection, options);
 }
 export async function importManagedPlanPackages(
     identity: ProjectIdentity,
     selection: string,
     transport: ManagedImportTransport,
+    options: PlanImportOptions = {},
 ): Promise<PlanImportResult> {
     if (!isHomeProjectOwner(identity)) throw new Error("Managed import requires the personal home owner.");
-    return await importObservedPlanPackages(identity, selection, transport);
+    return await importObservedPlanPackages(identity, selection, options, transport);
+}
+function planImportResult(prepared: PreparedPlanImport, committed = prepared.members.length > 0): PlanImportCommitted {
+    const importedPlanIds = prepared.members.map(({ metadata }) => metadata.planId);
+    return {
+        kind: committed ? "committed" : "existing",
+        planIds: [...new Set([...importedPlanIds, ...prepared.existingPlanIds])],
+        importedPlanIds,
+        existingPlanIds: prepared.existingPlanIds,
+        ...(prepared.archiveExcluded ? { archiveExcluded: true } : {}),
+        ...(prepared.skipped?.length ? { skipped: prepared.skipped } : {}),
+    };
 }
 async function importObservedPlanPackages(
     identity: ProjectIdentity,
     selection: string,
+    options: PlanImportOptions,
     transport?: ManagedImportTransport,
 ): Promise<PlanImportResult> {
     try {
@@ -2205,13 +2235,7 @@ async function importObservedPlanPackages(
             if (transport && (await file(paths.home, join(paths.imports, transport.operationId, "record.json")))) {
                 const recorded = await importRecord(paths, transport.operationId);
                 if (recorded.prepared.selection !== selection) throw new Error("Import operation selection changed.");
-                const importedPlanIds = recorded.prepared.members.map((member) => member.metadata.planId);
-                return {
-                    kind: "committed",
-                    planIds: [...new Set([...importedPlanIds, ...recorded.prepared.existingPlanIds])],
-                    importedPlanIds,
-                    existingPlanIds: recorded.prepared.existingPlanIds,
-                };
+                return planImportResult(recorded.prepared, true);
             }
             if (!transport && !(await stat(selection))) {
                 const recordedIds = new Set<string>();
@@ -2249,6 +2273,7 @@ async function importObservedPlanPackages(
                     },
                 })),
                 createdAt: new Date().toISOString(),
+                ...options,
             };
             const prepared = transport
                 ? await (
@@ -2260,31 +2285,8 @@ async function importObservedPlanPackages(
                       allocations,
                       catalog.packages,
                       request.createdAt,
+                      options,
                   );
-            if (!prepared.members.length) {
-                if (transport) {
-                    await (
-                        await import("../shared/remote/project-store-launch.ts")
-                    ).readManagedImportSource(transport.launch, { ...request, prepared }, transport.signal);
-                    const resultRoot = join(paths.imports, transport.operationId);
-                    await directory(paths, resultRoot);
-                    writeJsonAtomically(
-                        join(resultRoot, "record.json"),
-                        validateImportRecord({
-                            version: 1,
-                            recordId: transport.operationId,
-                            projectId: identity.projectId,
-                            prepared,
-                        }),
-                    );
-                }
-                return {
-                    kind: "existing",
-                    planIds: prepared.existingPlanIds,
-                    importedPlanIds: [],
-                    existingPlanIds: prepared.existingPlanIds,
-                };
-            }
             const locks: NativeFileLock[] = [];
             try {
                 for (const id of prepared.members.map((member) => member.metadata.planId).sort()) {
@@ -2294,21 +2296,50 @@ async function importObservedPlanPackages(
                     locks.push(lock);
                     await lock.lock(true);
                 }
-                for (const member of prepared.members) {
-                    metadataFrom(member.metadata);
-                    await assertDestination(paths, member.metadata.name);
-                }
                 if (transport)
                     await (
                         await import("../shared/remote/project-store-launch.ts")
                     ).readManagedImportSource(transport.launch, { ...request, prepared }, transport.signal);
-                else
+                else if (prepared.members.length)
                     await revalidatePlanImport(
                         requireProjectCheckout(identity),
                         prepared,
                         catalog.packages,
                         allocations,
                     );
+                const eligible = [];
+                for (const member of prepared.members) {
+                    try {
+                        metadataFrom(member.metadata);
+                        await assertDestination(paths, member.metadata.name);
+                        eligible.push(member);
+                    } catch (error) {
+                        if (!(error instanceof PlanPackageError)) throw error;
+                        skipPlanImportSource(prepared, member.evidence.source.path, error);
+                    }
+                }
+                prepared.members = eligible;
+                omitBlockedPlanImports(prepared, catalog.packages);
+                if (prepared.skipped?.length) {
+                    const skippedPaths = new Set(prepared.skipped.map(({ path }) => path));
+                    prepared.observations = prepared.observations.filter(({ path }) => !skippedPaths.has(path));
+                }
+                if (!prepared.members.length) {
+                    if (transport) {
+                        const resultRoot = join(paths.imports, transport.operationId);
+                        await directory(paths, resultRoot);
+                        writeJsonAtomically(
+                            join(resultRoot, "record.json"),
+                            validateImportRecord({
+                                version: 1,
+                                recordId: transport.operationId,
+                                projectId: identity.projectId,
+                                prepared,
+                            }),
+                        );
+                    }
+                    return planImportResult(prepared);
+                }
                 const recordId = transport?.operationId || randomUUID();
                 for (const member of prepared.members)
                     member.metadata.references.legacyImport = {
@@ -2328,13 +2359,7 @@ async function importObservedPlanPackages(
                     record,
                 } satisfies ImportBatch);
                 await recoverImportBatch(paths);
-                const importedPlanIds = prepared.members.map((member) => member.metadata.planId);
-                return {
-                    kind: "committed",
-                    planIds: [...new Set([...importedPlanIds, ...prepared.existingPlanIds])],
-                    importedPlanIds,
-                    existingPlanIds: prepared.existingPlanIds,
-                };
+                return planImportResult(prepared);
             } finally {
                 for (const lock of locks.reverse()) lock.close();
             }
@@ -2733,15 +2758,9 @@ export function packageWorkflowRevision(plan: LoadedPlanPackage): string {
 export async function readManagedPlanImportResult(
     identity: ProjectIdentity,
     operationId: string,
-): Promise<import("./import-source.ts").PlanImportCommitted> {
+): Promise<PlanImportCommitted> {
     const record = await importRecord(layout(identity), operationId);
-    const importedPlanIds = record.prepared.members.map((member) => member.metadata.planId);
-    return {
-        kind: "committed",
-        planIds: [...new Set([...importedPlanIds, ...record.prepared.existingPlanIds])],
-        importedPlanIds,
-        existingPlanIds: record.prepared.existingPlanIds,
-    };
+    return planImportResult(record.prepared, true);
 }
 
 interface PruneMember {

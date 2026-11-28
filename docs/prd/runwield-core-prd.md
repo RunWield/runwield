@@ -503,8 +503,13 @@ neither advances them nor grants execution admission. Later lifecycle admission 
 
 An ID-less source keeps its allocated ID across restarts and overlapping selections; changed bytes at that locator
 produce a conflict. Reimporting an existing ID preserves current package edits and names. Conflicting identities,
-ambiguous relationships and unavailable evidence publish no selected member. Explicitly selecting a target-only child
-may use its local target snapshot; import does not expand the selection to unrelated siblings or fetch remote refs.
+ambiguous relationships and unavailable evidence block the affected Plan and any selected Plans that need it. A
+folder import commits the remaining Plans together and reports each skipped file, the reason, and a recovery step
+at the end. Folder imports exclude archived Plans unless the user selects an archive directly or passes
+`--include-archived`. An explicit file import returns an error if its source cannot be imported. An explicitly
+selected child may use its local target snapshot. A folder import can also find a required sibling in the same
+target commit when the sibling's path is inside the selected folder. Import never fetches remote refs or includes
+unrelated target-only siblings.
 Original repository-relative paths remain available for later pruning; this operation performs no pruning or delivery
 copy setup inside the import transaction. Public local commands expose explicit import and store-only discovery; the
 separate post-import folder choice controls delivery copies. After importing a repository folder, Core offers that choice once with Yes preselected. The upgrade announcement directs existing users to run `wld plans import docs/plans/` once per Project.
@@ -513,7 +518,7 @@ Plan import reports when project storage preparation starts. If a stale Git work
 with a missing Git link, Core names the affected folder and explains how to review and prune obsolete registrations
 before retrying. Core leaves the folder and its Git registration available for recovery.
 Historical workflow names prefixed with `archived/` remain valid evidence for an archived source with the same
-explicit Plan ID. A conflicting identity stops the batch and reports the affected source and how to continue.
+explicit Plan ID. A conflicting identity blocks that source and reports how to continue.
 An older source under the repository archive imports as archived even when its archive date is missing. Core shows the
 date as unknown and keeps these archive families out of age-based pruning. References to missing Plans in such an
 archive remain in the retained source evidence. Core resolves available relationships and refuses ambiguous matches.

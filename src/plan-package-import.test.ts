@@ -72,7 +72,7 @@ test("explicit family import preserves metadata, exact bodies, archived relation
         await source(f.root, "family/manual-qa", "# Manual\n");
         await source(f.root, "family/integration-report", "# Integration\n");
         const before = await tree(join(f.root, "docs"));
-        const result = await importPlanPackages(f.identity, join(f.root, "docs/plans"));
+        const result = await importPlanPackages(f.identity, join(f.root, "docs/plans"), { includeArchived: true });
         equal(result.kind, "committed", JSON.stringify(result));
         const catalog = await listPlanPackages(f.identity, true);
         equal(catalog.packages.length, 6);
@@ -171,17 +171,23 @@ for (const [label, bad] of [
     ["unresolved relationship", legacy("bad", "dependencies: [absent]\n")],
     ["unsupported type", legacy("bad", "type: alien\n")],
 ] as const)
-    test(`a batch with ${label} publishes no members and preserves existing packages and sources`, async () => {
+    test(`a batch with ${label} skips the broken file and preserves existing packages and sources`, async () => {
         const f = await packageFixture();
         try {
             const existing = await create(f.identity);
             await source(f.root, "good", legacy("good"));
-            await source(f.root, "bad", bad);
+            const badPath = await source(f.root, "bad", bad);
             const before = await tree(join(f.root, "docs"));
             const result = await importPlanPackages(f.identity, join(f.root, "docs/plans"));
-            ok(!["committed", "existing"].includes(result.kind), JSON.stringify(result));
-            equal((await listPlanPackages(f.identity)).packages.length, 1);
-            deepEqual((await read(f.identity)).metadata, existing.metadata);
+            equal(result.kind, "committed", JSON.stringify(result));
+            ok(result.kind === "committed");
+            deepEqual(result.importedPlanIds, ["good"]);
+            deepEqual(
+                result.skipped?.map(({ path }) => path),
+                [badPath],
+            );
+            equal((await listPlanPackages(f.identity)).packages.length, 2);
+            deepEqual((await read(f.identity, existing.metadata.planId)).metadata, existing.metadata);
             deepEqual(await tree(join(f.root, "docs")), before);
         } finally {
             await f.cleanup();
@@ -192,8 +198,11 @@ test("duplicate IDs, case collisions, traversal and symlink escapes are explicit
     const f = await packageFixture();
     try {
         const one = await source(f.root, "one", legacy("same"));
-        await source(f.root, "two", legacy("same"));
-        equal((await importPlanPackages(f.identity, join(f.root, "docs/plans"))).kind, "conflict");
+        const two = await source(f.root, "two", legacy("same"));
+        const duplicate = await importPlanPackages(f.identity, join(f.root, "docs/plans"));
+        ok(!("message" in duplicate), JSON.stringify(duplicate));
+        deepEqual(duplicate.importedPlanIds, []);
+        deepEqual(duplicate.skipped?.map(({ path }) => path).sort(), [one, two].sort());
         equal((await listPlanPackages(f.identity)).packages.length, 0);
         equal((await importPlanPackages(f.identity, `${f.root}/docs/../docs/plans/one.md`)).kind, "invalid");
         const link = join(f.root, "link.md");
@@ -246,7 +255,7 @@ test("ID-less source changes cannot evade conflict by adding its allocated ID", 
     }
 });
 
-test("ambiguous short-name dependencies and duplicate existing IDs refuse the entire selection", async () => {
+test("ambiguous dependencies and conflicting duplicate IDs leave unrelated and existing Plans available", async () => {
     const f = await packageFixture();
     try {
         await create(f.identity, { planId: "root-first", name: "first" });
@@ -256,15 +265,32 @@ test("ambiguous short-name dependencies and duplicate existing IDs refuse the en
             legacy("parent", "classification: PROJECT\n").replace("classification: PLANNED_CHANGE\n", ""),
         );
         await source(f.root, "family/first", legacy("child-first", "parentPlan: family\n"));
-        await source(f.root, "family/second", legacy("child-second", "parentPlan: family\ndependencies: [first]\n"));
-        equal((await importPlanPackages(f.identity, join(f.root, "docs/plans"))).kind, "conflict");
-        equal((await listPlanPackages(f.identity)).packages.length, 1);
+        const second = await source(
+            f.root,
+            "family/second",
+            legacy("child-second", "parentPlan: family\ndependencies: [first]\n"),
+        );
+        const folder = await importPlanPackages(f.identity, join(f.root, "docs/plans"));
+        ok(!("message" in folder), JSON.stringify(folder));
+        deepEqual(folder.importedPlanIds.sort(), ["child-first", "parent"]);
+        deepEqual(
+            folder.skipped?.map(({ path }) => path),
+            [second],
+        );
+        equal((await listPlanPackages(f.identity)).packages.length, 3);
         const other = join(f.root, "other");
         await fs.mkdir(other);
         await fs.writeFile(join(other, "alias.md"), legacy("root-first"));
         await fs.writeFile(join(other, "conflict.md"), legacy("root-first", "", "# Different\n"));
-        equal((await importPlanPackages(f.identity, other)).kind, "conflict");
-        equal((await listPlanPackages(f.identity)).packages.length, 1);
+        const previous = await read(f.identity, "root-first");
+        const aliases = await importPlanPackages(f.identity, other);
+        ok(!("message" in aliases), JSON.stringify(aliases));
+        deepEqual(aliases.importedPlanIds, []);
+        deepEqual(
+            aliases.skipped?.map(({ path }) => path),
+            [join(other, "conflict.md")],
+        );
+        deepEqual(await read(f.identity, "root-first"), previous);
     } finally {
         await f.cleanup();
     }
@@ -307,15 +333,17 @@ test("later child imports resolve original parent names after the package is ren
     }
 });
 
-test("conflicting directory casing refuses the whole import before publishing a family", async () => {
+test("conflicting directory casing skips the targeted family", async () => {
     const f = await packageFixture();
     try {
         const existing = await create(f.identity);
-        await source(f.root, "Family", legacy("parent"));
-        await source(f.root, "family/child", legacy("child"));
+        const parent = await source(f.root, "Family", legacy("parent"));
+        const child = await source(f.root, "family/child", legacy("child"));
         const before = await tree(join(f.root, "docs"));
         const result = await importPlanPackages(f.identity, join(f.root, "docs/plans"));
-        equal(result.kind, "conflict", JSON.stringify(result));
+        ok(!("message" in result), JSON.stringify(result));
+        deepEqual(result.importedPlanIds, []);
+        deepEqual(result.skipped?.map(({ path }) => path).sort(), [parent, child].sort());
         const catalog = await listPlanPackages(f.identity, true);
         deepEqual(catalog.packages, [existing]);
         deepEqual(catalog.issues, []);

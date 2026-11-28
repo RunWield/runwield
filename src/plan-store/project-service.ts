@@ -1,5 +1,6 @@
 import { HISTORY_PAGE_CHARS } from "../shared/remote/project-store-protocol.ts";
 import { listPlanPackages } from "./packages.ts";
+import type { PlanImportOptions } from "./import-source.ts";
 import type { RetainedFamilyRequest, RetainedFamilyCheckpoint } from "./retained-family.ts";
 import { readPlanRecordingContext, type PlanRecordingContext } from "./recording.ts";
 import type { GeneratedWorkRecordSections } from "../shared/work-records/generation.ts";
@@ -551,7 +552,7 @@ export interface ProjectStoreRepairOwner {
 export interface ProjectStoreOwnerDiagnostics {
     ownerDiagnostics: import("./doctor.ts").DoctorIssue[];
 }
-export interface ProjectStoreImport {
+export interface ProjectStoreImport extends PlanImportOptions {
     kind: "import-plans";
     operationId: string;
     selection: string;
@@ -829,11 +830,12 @@ export class PreparedProjectStore {
                             async () => {
                                 const imported = await (
                                     await import("./packages.ts")
-                                ).importManagedPlanPackages(owner, command.selection, {
-                                    launch: this.launch!,
-                                    operationId: command.operationId,
-                                    signal: this.signal,
-                                });
+                                ).importManagedPlanPackages(
+                                    owner,
+                                    command.selection,
+                                    { launch: this.launch!, operationId: command.operationId, signal: this.signal },
+                                    command.includeArchived ? { includeArchived: true } : {},
+                                );
                                 if ("message" in imported) throw new Error(imported.message);
                                 return { revision: operationDigest(JSON.stringify(imported)) };
                             },

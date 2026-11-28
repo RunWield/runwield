@@ -1416,16 +1416,19 @@ export async function appendManagedEpicQa(args: import("./artifacts.ts").AppendE
     });
 }
 
-export async function importManagedPlans(cwd: string, selection: string) {
-    const completed = await mutateManagedPlan(cwd, { kind: "import-plans", operationId: randomUUID(), selection });
+export async function importManagedPlans(
+    cwd: string,
+    selection: string,
+    options: import("./import-source.ts").PlanImportOptions = {},
+) {
+    const command = { kind: "import-plans" as const, selection, ...options };
+    const completed = await mutateManagedPlan(cwd, { ...command, operationId: randomUUID() });
     const result = (
         await (await client(cwd, true)).execute({ kind: "read-import-result", operationId: completed.operationId })
     ).result;
     if (!("importResult" in result)) throw new Error("Managed import result is unavailable.");
     const owner = await client(cwd, true);
-    const key = operationDigest(
-        JSON.stringify({ binding: owner.binding, command: { kind: "import-plans", selection } }),
-    );
+    const key = operationDigest(JSON.stringify({ binding: owner.binding, command }));
     const directory = join((await enterProjectRuntime(cwd)).selected.transitionJournalsDir, "managed-operations");
     const path = join(directory, `managed-operation-${key}.json`);
     const lock = openNativeFileLock(`${path}.lock`);
