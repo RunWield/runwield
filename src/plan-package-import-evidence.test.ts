@@ -3,14 +3,15 @@ import { planFixtureControllerPath } from "./shared/testing/plan-state-fixture.t
 import { seedPlanController } from "./shared/testing/plan-state-fixture.ts";
 import { withRetainedCheckoutSource } from "@runwield/plans/retained-checkout";
 import { test } from "node:test";
-import { deepEqual, equal, ok } from "node:assert/strict";
+import { deepEqual, equal, ok, rejects } from "node:assert/strict";
 import fs from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { packageFixture, read, tree, driver } from "./shared/testing/plan-package-fixture.ts";
 import {
     listPlanPackages,
     readPlanImportEvidence,
     renamePlanPackage,
+    restorePlanPackage,
     savePlanPackageDocument,
 } from "@runwield/plans/package-storage";
 import { archivePlan } from "./plan-store/index.ts";
@@ -18,7 +19,11 @@ import { git } from "./shared/git-test-fixture.ts";
 import { enterProjectRuntime } from "@runwield/project-runtime/layout";
 import { addEntry, getWorktreeRegistryPath, updateEntry } from "./shared/worktree-registry.ts";
 
-import { createPublicationAttempt, hasApplicablePublicationReceipt } from "@runwield/workflow/publication";
+import {
+    advancePublicationAttempt,
+    createPublicationAttempt,
+    hasApplicablePublicationReceipt,
+} from "@runwield/workflow/publication";
 import { type ValidationCheckpoint } from "@runwield/plans/controller-state";
 import { validationCheckpointCanResume } from "./shared/workflow/validation-checkpoint.ts";
 
@@ -30,6 +35,82 @@ async function write(root: string, name: string, content: string) {
     await fs.writeFile(path, content);
     return path;
 }
+
+for (const controllerName of ["archived/closed", "archived/unrelated"]) {
+    test(`archive import checks the saved workflow name ${controllerName}`, async () => {
+        const f = await packageFixture();
+        try {
+            const source = await write(
+                f.root,
+                "archived/closed",
+                markdown("# Archived Plan\n", "archivedAt: '2020-02-01'\n"),
+            );
+            const controller = await seedPlanController(
+                f.root,
+                { planId: "active-plan", planName: controllerName },
+                {},
+            );
+            const saved = planFixtureControllerPath(f.root, { planId: "active-plan", planName: controllerName });
+            const original = await fs.readFile(saved, "utf8");
+            const result = await importPlanPackages(f.identity, source);
+            if (controllerName === "archived/closed") {
+                equal(result.kind, "committed", JSON.stringify(result));
+                const plan = await read(f.identity, "active-plan");
+                equal(plan.metadata.name, "closed");
+                ok(plan.metadata.archive);
+                const evidence = await readPlanImportEvidence(f.identity, plan.metadata.references.legacyImport!);
+                deepEqual(evidence.controller, controller);
+            } else {
+                equal(result.kind, "pending", JSON.stringify(result));
+                ok("message" in result && result.message.includes(source));
+                equal((await listPlanPackages(f.identity)).packages.length, 0);
+            }
+            equal(await fs.readFile(saved, "utf8"), original);
+        } finally {
+            await f.cleanup();
+        }
+    });
+}
+
+test("imports historical archive folders with missing dates and unavailable Plan references", async () => {
+    const f = await packageFixture();
+    try {
+        const a = "# First archived child\n";
+        const first = await write(
+            f.root,
+            "archived/old-folder/first",
+            markdown(a, "parentPlan: 'removed-parent'\ndependencies: ['removed-dependency']\n"),
+        );
+        await write(
+            f.root,
+            "archived/old-folder/second",
+            markdown("# Second archived child\n", "parentPlan: 'removed-parent'\ndependencies: ['first']\n").replace(
+                "active-plan",
+                "second-plan",
+            ),
+        );
+        const original = await fs.readFile(first, "utf8");
+        const result = await importPlanPackages(f.identity, dirname(first));
+        equal(result.kind, "committed", JSON.stringify(result));
+        equal((await listPlanPackages(f.identity)).packages.length, 0);
+        const plan = await read(f.identity, "active-plan");
+        equal(plan.metadata.archive?.archivedAt, "");
+        equal(plan.metadata.parentPlanId, null);
+        deepEqual(plan.metadata.dependencyPlanIds, []);
+        const evidence = await readPlanImportEvidence(f.identity, plan.metadata.references.legacyImport!);
+        equal(evidence.legacyFields.parentPlan, "removed-parent");
+        deepEqual(evidence.legacyFields.dependencies, ["removed-dependency"]);
+        equal(await fs.readFile(first, "utf8"), original);
+        const second = await read(f.identity, "second-plan");
+        deepEqual(second.metadata.dependencyPlanIds, ["active-plan"]);
+        const restored = await restorePlanPackage(f.identity, "active-plan", plan.metadata.revision);
+        ok(restored.archive?.restoredAt);
+        equal(restored.archive.archivedAt, "");
+    } finally {
+        await f.cleanup();
+    }
+});
+
 async function execution(status: "active" | "planning" = "active") {
     const f = await packageFixture();
     const source = await write(f.root, "active", markdown("# Stale primary\n"));
@@ -55,6 +136,57 @@ async function execution(status: "active" | "planning" = "active") {
     await addEntry(f.root, entry);
     return { ...f, source, path, commit, entry };
 }
+
+test("folder import saves independent Plans and reports a missing execution Plan and its dependents", async () => {
+    const f = await execution();
+    try {
+        const missing = join(f.path, "docs/plans/active.md");
+        const original = await fs.readFile(missing, "utf8");
+        await fs.rm(missing);
+        await write(f.root, "unrelated", "# An independent Plan\n");
+        const dependent = await write(
+            f.root,
+            "dependent",
+            markdown("# Dependent Plan\n", "dependencies: [active]\n").replace("active-plan", "dependent-plan"),
+        );
+        const dependentOfDependent = await write(
+            f.root,
+            "transitive",
+            markdown("# Transitive dependency\n", "dependencies: [dependent]\n").replace(
+                "active-plan",
+                "transitive-plan",
+            ),
+        );
+        const folder = dirname(f.source);
+        const registry = await fs.readFile(getWorktreeRegistryPath(f.root), "utf8");
+        const first = await importPlanPackages(f.identity, folder);
+        ok(!("message" in first), JSON.stringify(first));
+        equal(first.importedPlanIds.length, 1);
+        equal(first.skipped?.length, 3);
+        const unavailable = first.skipped?.find(({ path }) => path === f.source);
+        ok(unavailable?.reason.includes("could not read the matching Plan file"));
+        ok(unavailable?.action.includes("wld plans doctor --check"));
+        ok(first.skipped?.some(({ path, reason }) => path === dependent && reason.includes("refers to active")));
+        ok(
+            first.skipped?.some(
+                ({ path, reason }) => path === dependentOfDependent && reason.includes("refers to dependent"),
+            ),
+        );
+        equal(await fs.readFile(getWorktreeRegistryPath(f.root), "utf8"), registry);
+        equal((await importPlanPackages(f.identity, f.source)).kind, "unavailable");
+
+        await fs.writeFile(missing, original);
+        const retried = await importPlanPackages(f.identity, folder);
+        ok(!("message" in retried), JSON.stringify(retried));
+        equal(retried.existingPlanIds.length, 1);
+        equal(retried.importedPlanIds.length, 3);
+        equal(retried.skipped, undefined);
+        deepEqual((await read(f.identity, "dependent-plan")).metadata.dependencyPlanIds, ["active-plan"]);
+        deepEqual((await read(f.identity, "transitive-plan")).metadata.dependencyPlanIds, ["dependent-plan"]);
+    } finally {
+        await f.cleanup();
+    }
+});
 
 for (const status of ["planning", "active"] as const)
     test(`import uses registered ${status} prose and retains resolvable controller/checkpoint continuation`, async () => {
@@ -361,6 +493,69 @@ test("an explicitly selected target-only child imports its local snapshot withou
     }
 });
 
+test("folder import brings in a required sibling from the same published Epic commit", async () => {
+    const f = await packageFixture();
+    try {
+        await write(
+            f.root,
+            "family",
+            "---\nplanId: family\nclassification: PROJECT\nstatus: draft\ntargetBranch: epic/family\n---\n# Family\n",
+        );
+        const primary = await write(
+            f.root,
+            "family/selected",
+            markdown("# Older checkout\n", "parentPlan: family\ntargetBranch: epic/family\n"),
+        );
+        await git(f.root, ["add", "docs"]);
+        await git(f.root, ["commit", "-m", "primary"]);
+        const original = (await git(f.root, ["rev-parse", "HEAD"])).trim();
+        const target = join(dirname(f.root), `${basename(f.root)}-epic-target`);
+        await git(f.root, ["worktree", "add", "-b", "epic/family", target]);
+        try {
+            await write(
+                target,
+                "family/selected",
+                markdown("# Published with dependency\n", "parentPlan: family\ndependencies: [required]\n"),
+            );
+            await write(
+                target,
+                "family/required",
+                markdown("# Target-only dependency\n", "parentPlan: family\n").replace("active-plan", "required"),
+            );
+            await write(
+                target,
+                "family/unrelated",
+                markdown("# Unrelated target-only sibling\n", "parentPlan: family\n").replace(
+                    "active-plan",
+                    "unrelated",
+                ),
+            );
+            await git(target, ["add", "docs"]);
+            await git(target, ["commit", "-m", "published"]);
+            await git(f.root, ["remote", "add", "origin", "."]);
+            await git(f.root, ["update-ref", "refs/remotes/origin/epic/family", "epic/family"]);
+        } finally {
+            await git(f.root, ["worktree", "remove", target]);
+        }
+        await git(f.root, ["update-ref", "refs/heads/epic/family", original]);
+        const result = await importPlanPackages(f.identity, join(f.root, "docs", "plans"));
+        ok(!("message" in result), JSON.stringify(result));
+        deepEqual(new Set(result.importedPlanIds), new Set(["family", "active-plan", "required"]));
+        equal(result.skipped, undefined);
+        deepEqual((await read(f.identity, "active-plan")).metadata.dependencyPlanIds, ["required"]);
+        const dependency = await read(f.identity, "required");
+        const evidence = await readPlanImportEvidence(f.identity, dependency.metadata.references.legacyImport!);
+        equal(evidence.authorityKind, "target-snapshot");
+        equal(
+            await fs.readFile(primary, "utf8"),
+            markdown("# Older checkout\n", "parentPlan: family\ntargetBranch: epic/family\n"),
+        );
+        await rejects(() => fs.access(join(dirname(primary), "required.md")), { code: "ENOENT" });
+    } finally {
+        await f.cleanup();
+    }
+});
+
 test("a stale completed primary cannot hide a registered unfinished execution", async () => {
     const f = await execution();
     try {
@@ -450,3 +645,55 @@ for (const foreignId of [false, true])
             await f.cleanup();
         }
     });
+
+test("an archived Plan keeps verified publication evidence after its execution checkout is gone", async () => {
+    const f = await execution();
+    try {
+        const { updatePublication } = await import("./shared/worktree-registry.ts");
+        const source = await write(
+            f.root,
+            "archived/active",
+            markdown("# Archived Plan\n", "archivedAt: '2026-01-01'\n").replace(
+                "status: implemented",
+                "status: verified",
+            ),
+        );
+        const attempt = createPublicationAttempt({
+            attemptId: "attempt",
+            planId: "active-plan",
+            planName: "active",
+            targetBranch: "main",
+            executionBranch: "execution",
+            executionCwd: f.path,
+            publicationRoot: join(f.root, "publication"),
+            validatedCommit: f.commit,
+            targetHeadAtSeal: f.commit,
+        });
+        const artifacts = advancePublicationAttempt(attempt, "artifacts_committed", {
+            artifactCommit: f.commit,
+            planPaths: ["docs/plans/active.md"],
+        });
+        const integrated = advancePublicationAttempt(artifacts, "target_integrated", {
+            targetBaseCommit: f.commit,
+            integrationCommit: f.commit,
+        });
+        const published = advancePublicationAttempt(integrated, "target_published", {
+            publicationMode: "local",
+            publishedCommit: f.commit,
+        });
+        const verified = advancePublicationAttempt(published, "publication_verified", {
+            verifiedAt: "2026-01-01",
+        });
+        await updatePublication(f.root, "attempt", null, verified);
+        await git(f.root, ["worktree", "remove", "--force", f.path]);
+        const registry = await fs.readFile(getWorktreeRegistryPath(f.root), "utf8");
+        const result = await importPlanPackages(f.identity, source);
+        equal(result.kind, "committed", JSON.stringify(result));
+        const plan = await read(f.identity, "active-plan");
+        const evidence = await readPlanImportEvidence(f.identity, plan.metadata.references.legacyImport!);
+        deepEqual(evidence.attempts[0].publication, verified);
+        equal(await fs.readFile(getWorktreeRegistryPath(f.root), "utf8"), registry);
+    } finally {
+        await f.cleanup();
+    }
+});

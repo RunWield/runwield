@@ -186,22 +186,34 @@ async function checkoutRoots(identity: ProjectIdentity): Promise<string[]> {
         }
         await rememberGitRead(evidence, records);
     }
-    const roots = [
-        ...new Set([
-            primary,
-            identity.checkoutRoot,
-            ...records
-                .split("\0")
-                .filter((s) => s.startsWith("worktree "))
-                .map((s) => s.slice(9)),
-        ]),
-    ].sort();
+    const roots = new Set([primary, identity.checkoutRoot]);
+    const prunable = new Set<string>();
+    for (const record of records.split("\0\0")) {
+        const [worktree, ...fields] = record.split("\0");
+        if (!worktree.startsWith("worktree ")) continue;
+        const root = worktree.slice(9);
+        roots.add(root);
+        if (fields.some((field) => field === "prunable" || field.startsWith("prunable "))) prunable.add(root);
+    }
     // Git retains prunable registrations after a checkout disappears. Recovery owns
     // those attempts; absence supplies no source tree to admit or migrate.
     const present: string[] = [];
-    for (const root of roots) {
+    const disconnected: string[] = [];
+    for (const root of [...roots].sort()) {
         const path = await existingRealpath(root);
-        if (path) present.push(path);
+        if (!path) continue;
+        if (prunable.has(root) && !(await info(join(path, ".git")))) disconnected.push(path);
+        else present.push(path);
+    }
+    if (disconnected.length) {
+        refuse(
+            "invalid_registered_checkout",
+            disconnected,
+            "Git still lists worktrees whose folders exist but whose .git links are missing. " +
+                "From the main checkout, run `git worktree prune --dry-run --verbose` to review stale registrations. " +
+                "For worktrees you still use, restore their Git links first. " +
+                "If every listed registration is obsolete, run `git worktree prune --verbose` and retry.",
+        );
     }
     return present;
 }
@@ -1095,6 +1107,7 @@ async function enterPinnedProjectRuntime(identity: ProjectIdentity): Promise<Pro
             for (const lock of sourceLocks.reverse()) lock.close();
             sourceLocks = [];
         }
+        let retiredSinceCheckpoint = 0;
         for (const file of journal.files) {
             if (file.retired) continue;
             if (!file.lock) {
@@ -1128,8 +1141,14 @@ async function enterPinnedProjectRuntime(identity: ProjectIdentity): Promise<Pro
                 syncParentDirectory(file.source);
             }
             file.retired = true;
+            // A restart verifies the published destination even if the source was already removed.
+            // Batch checkpoints because each save rewrites the entire inventory.
+            retiredSinceCheckpoint++;
+            if (retiredSinceCheckpoint < 4096) continue;
             await save(layout.primary.layoutMigrationJournalPath, journal);
+            retiredSinceCheckpoint = 0;
         }
+        if (retiredSinceCheckpoint) await save(layout.primary.layoutMigrationJournalPath, journal);
         for (const mapping of journal.mappings) await removeEmptyTree(mapping.source);
         for (const root of journal.roots) await removeEmptyTree(join(getRunWieldRuntimeDir(root), "internal"));
         await save(layout.primary.layoutMarkerPath, {

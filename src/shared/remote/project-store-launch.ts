@@ -357,6 +357,7 @@ export async function readManagedImportSource(
     const prepared: PreparedPlanImport = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(result.stdout));
     if (
         prepared.selection !== request.selection ||
+        prepared.includeArchived !== request.includeArchived ||
         !Array.isArray(prepared.members) ||
         !Array.isArray(prepared.observations)
     )

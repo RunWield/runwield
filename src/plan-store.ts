@@ -364,6 +364,7 @@ import {
     restorePlanPackage,
     renamePlanPackage,
     listPlanPackages,
+    listPlanPackageHeaders,
     readPlanPackage,
     savePlanPackageDocument,
 } from "@runwield/plans/package-storage";
@@ -2188,7 +2189,30 @@ export async function listPlanDocuments(cwd: string): Promise<Array<PlanListEntr
  * @returns {ReturnType<typeof listPlanDocuments>}
  */
 async function listPlanDocumentsInProject(cwd: string): Promise<Array<PlanListEntry>> {
-    if (currentPackageProject()) return await listPlans(cwd);
+    const owner = currentPackageProject();
+    if (owner) {
+        const catalog = await listPlanPackageHeaders(owner);
+        if (catalog.issues.length) throw new Error(catalog.issues[0].message);
+        const names = new Map(catalog.packages.map(({ metadata }) => [metadata.planId, metadata.name]));
+        return catalog.packages
+            .filter(({ metadata }) => !metadata.archive || metadata.archive.restoredAt)
+            .map(({ path, metadata }) => ({
+                name: metadata.name,
+                path: join(path, "context.md"),
+                attrs: {
+                    ...metadata.definition,
+                    ...metadata.controller,
+                    planId: metadata.planId,
+                    createdAt: metadata.createdAt,
+                    parentPlan: metadata.parentPlanId
+                        ? names.get(metadata.parentPlanId) || metadata.parentPlanId
+                        : undefined,
+                    dependencies: metadata.dependencyPlanIds.map((id) => names.get(id) || id),
+                    worktreeId: metadata.workflow?.attempt?.attemptId,
+                } as PlanFrontMatter,
+            }))
+            .sort(comparePlansForList);
+    }
     /** @type {Array<{ name: string, path: string, attrs: PlanFrontMatter, readAvailability?: PlanReadAvailability }>} */
     const plans: Array<PlanListEntry> = [];
     /** @type {PlanParseIssue[]} */

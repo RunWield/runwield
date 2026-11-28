@@ -507,6 +507,7 @@ export const commandRegistry: Record<string, CommandDefinition> = {
             `${bin("plans push <plan-name-or-id> [--plan-server <url>] [--project-secrets] [--help]")}`,
             `${bin("plans unshare <plan-name-or-id> [--plan-server <url>] [--project-secrets] [--force] [--help]")}`,
             `${bin("plans archive [--help]")}`,
+            `${bin("plans import <file-or-folder> [--include-archived]")}`,
             `${bin("plans archive <plan-name-or-id> [--reason <text>] [--force] [--help]")}`,
             `${bin("plans archive --all --status <status> [--reason <text>] [--force] [--help]")}`,
             `${bin("plans archive restore <archived-plan-name-or-id> [--to <plan-name>] [--help]")}`,

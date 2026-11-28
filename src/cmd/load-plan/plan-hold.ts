@@ -86,6 +86,7 @@ export interface HandleOnHoldPlanOptions {
     plan: HeldPlanWithBody;
     uiAPI: UiAPI;
     session: PlanSessionSurface;
+    runAction?<T>(action: () => Promise<T>): Promise<T>;
 }
 
 /**
@@ -510,6 +511,7 @@ export async function handleOnHoldPlan({
     plan,
     uiAPI,
     session,
+    runAction = (action) => action(),
 }: HandleOnHoldPlanOptions): Promise<"resume" | "handled"> {
     while (plan.attrs.status === "on_hold") {
         const answer = await uiAPI.promptSelect("This plan is on hold. What would you like to do?", [
@@ -526,11 +528,13 @@ export async function handleOnHoldPlan({
         }
 
         if (answer === "reset") {
-            const reset = await resetHeldPlanToDraft({
-                projectRoot,
-                plan,
-                uiAPI,
-            });
+            const reset = await runAction(() =>
+                resetHeldPlanToDraft({
+                    projectRoot,
+                    plan,
+                    uiAPI,
+                }),
+            );
             if (reset) {
                 await session.activateForPlan(plan.planName);
                 return "resume";
@@ -539,7 +543,8 @@ export async function handleOnHoldPlan({
         }
 
         if (answer === "resume") {
-            if (!plan.attrs.heldFromStatus) {
+            const restoredStatus = plan.attrs.heldFromStatus;
+            if (!restoredStatus) {
                 uiAPI.appendSystemMessage(
                     "Cannot resume from hold because heldFromStatus is missing. Use Reset status to draft or repair the plan metadata.",
                     true,
@@ -547,50 +552,60 @@ export async function handleOnHoldPlan({
                 );
                 continue;
             }
-            const check = await runResumeCheck({
-                projectRoot,
-                plan,
-                uiAPI,
-            });
-            uiAPI.appendSystemMessage(
-                ["Resume Check:", ...check.messages.map((message) => `- ${message}`)].join("\n"),
-                check.status !== "pass",
-                "RunWield",
-            );
-            if (check.status === "fail") {
+            const resumed = await runAction(async () => {
+                const check = await runResumeCheck({
+                    projectRoot,
+                    plan,
+                    uiAPI,
+                });
                 uiAPI.appendSystemMessage(
-                    "Resume Check failed. The Plan will stay on hold until you choose recovery.",
-                    true,
+                    ["Resume Check:", ...check.messages.map((message) => `- ${message}`)].join("\n"),
+                    check.status !== "pass",
                     "RunWield",
                 );
-                continue;
-            }
-            if (check.status === "warn") {
-                const proceed = await uiAPI.promptSelect("Resume Check found warnings. What would you like to do?", [
-                    { value: "proceed", label: "Proceed with resume" },
-                    { value: "keep", label: "Keep on hold" },
-                ]);
-                if (proceed !== "proceed") continue;
-            }
-            const restoredStatus = plan.attrs.heldFromStatus;
-            const updatedAttrs = await recordPlanEvent({
-                cwd: projectRoot,
-                planName: plan.planName,
-                event: "hold_resumed",
-                currentStatus: "on_hold",
-                details: { triageMeta: plan.attrs, heldFromStatus: restoredStatus },
-            });
-            plan.attrs = { ...plan.attrs, ...updatedAttrs };
-            const refreshed = await planDocumentsForCheckout(projectRoot).load(plan.planName);
-            if (refreshed) Object.assign(plan, refreshed);
-            uiAPI.appendSystemMessage(`Resumed from hold. Restored status: ${plan.attrs.status}.`, false, "RunWield");
-            if (isProjectPlan(plan.attrs)) {
-                const children = await planDocumentsForCheckout(projectRoot).children(plan.planName);
-                if (children.length > 0) {
-                    uiAPI.appendSystemMessage(formatEpicProgressSummary(children), false, "RunWield");
+                if (check.status === "fail") {
+                    uiAPI.appendSystemMessage(
+                        "Resume Check failed. The Plan will stay on hold until you choose recovery.",
+                        true,
+                        "RunWield",
+                    );
+                    return false;
                 }
-            }
-            await session.activateForPlan(plan.planName);
+                if (check.status === "warn") {
+                    const proceed = await uiAPI.promptSelect(
+                        "Resume Check found warnings. What would you like to do?",
+                        [
+                            { value: "proceed", label: "Proceed with resume" },
+                            { value: "keep", label: "Keep on hold" },
+                        ],
+                    );
+                    if (proceed !== "proceed") return false;
+                }
+                const updatedAttrs = await recordPlanEvent({
+                    cwd: projectRoot,
+                    planName: plan.planName,
+                    event: "hold_resumed",
+                    currentStatus: "on_hold",
+                    details: { triageMeta: plan.attrs, heldFromStatus: restoredStatus },
+                });
+                plan.attrs = { ...plan.attrs, ...updatedAttrs };
+                const refreshed = await planDocumentsForCheckout(projectRoot).load(plan.planName);
+                if (refreshed) Object.assign(plan, refreshed);
+                uiAPI.appendSystemMessage(
+                    `Resumed from hold. Restored status: ${plan.attrs.status}.`,
+                    false,
+                    "RunWield",
+                );
+                if (isProjectPlan(plan.attrs)) {
+                    const children = await planDocumentsForCheckout(projectRoot).children(plan.planName);
+                    if (children.length > 0) {
+                        uiAPI.appendSystemMessage(formatEpicProgressSummary(children), false, "RunWield");
+                    }
+                }
+                await session.activateForPlan(plan.planName);
+                return true;
+            });
+            if (!resumed) continue;
             return "resume";
         }
     }

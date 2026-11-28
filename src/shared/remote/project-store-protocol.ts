@@ -60,7 +60,12 @@ export function validateProjectStoreRequest(request: ProjectStoreRequest): void 
         "confirm-retention": ["kind", "target", "token"],
         "inspect-owner": ["kind"],
         "repair-owner": ["kind", "operationId"],
-        "import-plans": ["kind", "operationId", "selection"],
+        "import-plans": [
+            "kind",
+            "operationId",
+            "selection",
+            ...(command.kind === "import-plans" && "includeArchived" in command ? ["includeArchived"] : []),
+        ],
         "read-import-result": ["kind", "operationId"],
         "read-retained-family-controller": ["kind", "executionPlanId", "attemptId", "member"],
         "checkpoint-retained-family-controller": [
@@ -111,6 +116,7 @@ export function validateProjectStoreRequest(request: ProjectStoreRequest): void 
         "author-plan": ["kind", "operationId", "planId", "input"],
         "resolve-plan": ["kind", "reference"],
         "list-plans": ["kind"],
+        "list-plan-documents": ["kind"],
         "settle-retained-record": [...common, "attemptId"],
         "read-retained-recording": ["kind", "reference", "pendingPublication"],
         "prepare-retained-record": [...common, "attemptId", "pendingPublication", "sections"],
@@ -216,7 +222,10 @@ export function validateProjectStoreRequest(request: ProjectStoreRequest): void 
     }
     if (
         command.kind === "import-plans" &&
-        (typeof command.selection !== "string" || !command.selection.startsWith("/") || command.selection.length > 4096)
+        (typeof command.selection !== "string" ||
+            !command.selection.startsWith("/") ||
+            command.selection.length > 4096 ||
+            ("includeArchived" in command && command.includeArchived !== true))
     )
         throw new Error("Invalid import selection.");
     if (
@@ -746,7 +755,7 @@ export function validateProjectStoreReply(reply: ProjectStoreReply, request: Pro
                     !/^[a-f0-9]{64}$/.test(result.plan.revision || "")))
         )
             throw new Error("Invalid resolved Plan reply.");
-    } else if (request.command.kind === "list-plans") {
+    } else if (request.command.kind === "list-plans" || request.command.kind === "list-plan-documents") {
         if (
             !("plans" in result) ||
             !Array.isArray(result.plans) ||

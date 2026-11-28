@@ -8,6 +8,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resourceExhaustionMessage } from "./resource-exhaustion.ts";
 import { Terminal, spawn as spawnPty } from "bun";
+import { defineCommittedGitFixture } from "./git-test-fixture.ts";
+import { rm } from "node:fs/promises";
 
 const supervisor = fileURLToPath(new URL("./runtime-supervisor.ts", import.meta.url));
 const fixture = fileURLToPath(new URL("./testing/runtime-supervisor-child.ts", import.meta.url));
@@ -74,6 +76,32 @@ test("supervisor preserves ordinary exit codes without resource advice", () => {
     assert.equal(result.status, 17);
     assert.equal(result.stderr, "ordinary failure\n");
 });
+
+test(
+    "a Plan import CLI failure leaves its error visible without changing terminal modes",
+    { skip: process.platform === "win32" ? "POSIX PTY fixture" : false, timeout: 10_000 },
+    async () => {
+        const root = await defineCommittedGitFixture().checkout();
+        let output = "";
+        const terminal = new Terminal({ data: (_terminal, bytes) => (output += Buffer.from(bytes).toString()) });
+        const before = terminal.localFlags;
+        const cli = fileURLToPath(new URL("../cli.ts", import.meta.url));
+        try {
+            const child = spawnPty([process.execPath, cli, "plans", "import"], {
+                cwd: root,
+                terminal,
+                env: runtimeEnvironment(),
+            });
+            assert.equal(await child.exited, 1, output);
+            assert.match(output, /Fatal error: Error: Usage: wld plans import/);
+            assert.doesNotMatch(output, /\x1b|runtime stopped unexpectedly|wld --continue/i);
+            assert.equal(terminal.localFlags, before);
+        } finally {
+            terminal.close();
+            await rm(root, { recursive: true, force: true });
+        }
+    },
+);
 
 test("source CLI preserves Bun runtime preloads in the working process", () => {
     const result = spawnSync(
@@ -216,7 +244,9 @@ test(
             const pendingInput = process.platform === "darwin" ? 0x20000000 : 0x4000;
             assert.equal(terminal.localFlags & ~pendingInput, before.local & ~pendingInput);
             assert.ok(output.includes("\x1b[?2004l\x1b[?1049l\x1b[?25h"));
-            assert.match(output, /RunWield reached the open-file limit/);
+            const restoredOutput = output.slice(output.indexOf("\x1b[?1049l"));
+            assert.match(restoredOutput, /failed to create the event loop|ran out of file descriptors/);
+            assert.match(restoredOutput, /RunWield reached the open-file limit/);
             child.kill("SIGTERM");
             assert.ok((await child.exited) > 0, "the launcher must report descriptor exhaustion as a failure");
         } finally {

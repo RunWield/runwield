@@ -316,19 +316,16 @@ export async function admitPlanStoreForCheckout(cwd: string) {
 
 /** Picker reads are passive. Retained executions expose only their own checkout documents. */
 export async function listSelectablePlanDocuments(cwd: string) {
-    if (currentManagedRetainedExecution() || hasRetainedCheckoutSource(cwd)) {
-        return (await listPlanDocuments(cwd)).map(({ name, attrs }) => ({
-            name,
-            attrs,
-            planId: attrs.planId,
-            projectId: undefined,
-        }));
-    }
-    const store = openPlanStoreForCheckout(cwd);
-    if (!store) return [];
-    const catalog = await store.list();
-    if (catalog.diagnostics.length) throw new Error(catalog.diagnostics[0].message);
-    return catalog.resources.map(({ name, attrs, planId }) => ({ name, attrs, planId, projectId: store.projectId }));
+    const retained = currentManagedRetainedExecution() || hasRetainedCheckoutSource(cwd);
+    const projectId = retained ? undefined : checkoutPlanIdentity(cwd)?.projectId;
+    if (!retained && !projectId) return [];
+    return (await listPlanDocuments(cwd)).map(({ name, path, attrs }) => ({
+        name,
+        path,
+        attrs,
+        planId: attrs.planId,
+        projectId,
+    }));
 }
 
 /** Capture the read source once. Queries reject if a retained attempt or the admitted Project changes. */

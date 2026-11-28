@@ -3,7 +3,7 @@ import process from "node:process";
 import { closeSync, existsSync, openSync, readFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { resizeImage } from "@earendil-works/pi-coding-agent";
-import { superviseRuntime } from "../runtime-supervisor.ts";
+import { reportRuntimeTerminalState, superviseRuntime } from "../runtime-supervisor.ts";
 
 const mode = process.argv[2];
 if (process.platform === "linux" && ["abort", "image-exhaustion", "tty-image-exhaustion"].includes(mode)) {
@@ -24,6 +24,7 @@ if (process.platform === "linux" && ["abort", "image-exhaustion", "tty-image-exh
 }
 if (mode === "image-exhaustion" || mode === "supervisor-exhaustion" || mode === "tty-image-exhaustion") {
     if (mode === "tty-image-exhaustion") {
+        reportRuntimeTerminalState(true);
         process.stdin.setRawMode(true);
         process.stdout.write("\x1b[?1049h\x1b[?2004h\x1b[?25l");
     }

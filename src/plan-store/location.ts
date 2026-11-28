@@ -11,6 +11,7 @@ import {
     type PackageWorkflowSelection,
 } from "./workflows.ts";
 import { effectiveDeliveryBranch, isPublicationCleanupPending } from "@runwield/workflow/publication";
+import { readLegacyEpicBranch } from "../shared/workflow/epic-branch.ts";
 /** Locate the editable document independently from the shared controller files. */
 import { canonicalizeStoredPlanName, isCompletedPlanStatus, isSequencePlan } from "@runwield/plans/format";
 import { loadPlan } from "./queries.ts";
@@ -86,6 +87,13 @@ export class PlanningNotStartedError extends Error {
     }
 }
 
+export class WorkflowPlanDocumentUnavailable extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = "WorkflowPlanDocumentUnavailable";
+    }
+}
+
 function inferParentPlanName(planName: string): string {
     const segments = planName.split("/");
     segments.pop();
@@ -101,11 +109,12 @@ export async function resolveWorkflowPlanLocation(
     if (managedPlanStoreActive()) {
         const plan = await readManagedPlan(cwd, planName);
         const execution = plan?.attrs.planId ? await readManagedExecution(cwd, plan.attrs.planId) : null;
+        const archived = typeof plan?.attrs.archivedAt === "string";
         return {
             registryRoot: projects.checkout.primaryRoot(cwd),
             documentRoot: cwd,
-            plan: plan?.attrs.archivedAt ? null : plan,
-            archived: Boolean(plan?.attrs.archivedAt),
+            plan: archived ? null : plan,
+            archived,
             packageSelection: undefined,
             resumeInterruptedPreparation: Boolean(execution),
         };
@@ -117,11 +126,12 @@ export async function resolveWorkflowPlanLocation(
             const selection = await selectLocalPlanWorkflow(cwd, planName);
             return await withPackageProject(cwd, store.identity, async () => {
                 const plan = await loadPackageWorkflowPlan({ planId: selection!.planId });
+                const archived = typeof plan.attrs.archivedAt === "string";
                 return {
                     registryRoot: projects.home.requireCheckout(store.identity).checkoutRoot,
                     ...(await packagePlanningSource(cwd, planName, plan, options.loadFromTarget)),
-                    plan: plan.attrs.archivedAt ? null : plan,
-                    archived: Boolean(plan.attrs.archivedAt),
+                    plan: archived ? null : plan,
+                    archived,
                     packageSelection: selection,
                     resumeInterruptedPreparation: Boolean(plan.attrs.worktreeId),
                 };
@@ -145,11 +155,12 @@ async function resolveWorkflowPlanLocationInScope(
 ) {
     if (currentPackageSelection()) {
         const plan = await loadPackageWorkflowPlan(planName);
+        const archived = typeof plan.attrs.archivedAt === "string";
         return {
             registryRoot: projects.home.requireCheckout(currentPackageSelection()!.identity).checkoutRoot,
             ...(await packagePlanningSource(cwd, planName, plan, options.loadFromTarget)),
-            plan: plan.attrs.archivedAt ? null : plan,
-            archived: Boolean(plan.attrs.archivedAt),
+            plan: archived ? null : plan,
+            archived,
             packageSelection: currentPackageSelection(),
             resumeInterruptedPreparation: Boolean(
                 plan.attrs.worktreeId || (await selectedPackage(planName)).metadata.workflow?.attempt,
@@ -189,7 +200,7 @@ async function resolveWorkflowPlanLocationInScope(
         ) {
             return { registryRoot, documentRoot: attempt.path, plan: null, archived: true };
         }
-        throw new Error(
+        throw new WorkflowPlanDocumentUnavailable(
             `The execution Plan is missing at ${attempt.path}/docs/plans/${planName}.md. ` +
                 "Your branch and other files are unchanged. Restore that Plan file from Git history or a backup before continuing; the primary copy will not be used.",
         );
@@ -208,7 +219,7 @@ async function resolveWorkflowPlanLocationInScope(
             if (await loadPlan(registered.path, `archived/${planName}`)) {
                 return { registryRoot, documentRoot: registered.path, plan: null, archived: true };
             }
-            throw new Error(
+            throw new WorkflowPlanDocumentUnavailable(
                 `The registered Plan is missing or has a different identity at ${registered.path}/docs/plans/${planName}.md. ` +
                     "Your files are unchanged. Restore that Plan file before continuing; the primary copy will not be used.",
             );
@@ -223,8 +234,7 @@ async function resolveWorkflowPlanLocationInScope(
             if (!parent || (parentEntry.planId && parent.attrs.planId !== parentEntry.planId)) {
                 throw new Error(`The registered parent Plan ${parentName} is missing or has a different identity.`);
             }
-            registeredParentTarget =
-                typeof parent.attrs.targetBranch === "string" ? parent.attrs.targetBranch.trim() : "";
+            registeredParentTarget = await readLegacyEpicBranch(registryRoot, parentName, parent.attrs);
             // Sequence review saves the whole group in its parent's document. Epic siblings use the published branch.
             const child =
                 options.loadFromTarget || !isSequencePlan(parent.attrs)
@@ -246,7 +256,7 @@ async function resolveWorkflowPlanLocationInScope(
     if (options.loadFromTarget && !registeredParentTarget) {
         const parentName = inferParentPlanName(planName);
         const parent = parentName ? await loadPlan(cwd, parentName) : null;
-        registeredParentTarget = typeof parent?.attrs.targetBranch === "string" ? parent.attrs.targetBranch.trim() : "";
+        if (parentName) registeredParentTarget = await readLegacyEpicBranch(registryRoot, parentName, parent?.attrs);
     }
     // A checkout child is not an input once its parent's branch is known.
     const plan = options.loadFromTarget && registeredParentTarget ? null : await loadPlan(cwd, planName);
@@ -270,7 +280,7 @@ async function resolveWorkflowPlanLocationInScope(
     let targetBranch = registeredParentTarget || localTargetBranch;
     if (!targetBranch && parentPlanName) {
         const parentPlan = await loadPlan(cwd, parentPlanName);
-        targetBranch = typeof parentPlan?.attrs.targetBranch === "string" ? parentPlan.attrs.targetBranch.trim() : "";
+        targetBranch = await readLegacyEpicBranch(registryRoot, parentPlanName, parentPlan?.attrs);
     }
     if (targetBranch && (parentPlanName || plan?.attrs.deliveryBranch)) {
         const targetPlan = await findTargetBranchPlan(registryRoot, targetBranch, planName);

@@ -4,6 +4,8 @@ import { captureForegroundProcess } from "@runwield/resources/process";
 import { resolvePublicationUpstream } from "../publication-target.ts";
 import { effectiveDeliveryBranch } from "@runwield/workflow/publication";
 
+export { TargetBranchSnapshotUnavailableError };
+
 export interface PlanningPlanAttributes {
     planId?: string;
     targetBranch?: string;

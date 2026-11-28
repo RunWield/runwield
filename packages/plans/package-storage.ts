@@ -146,6 +146,7 @@ export type PackageControllerState = Pick<
     | "collaborationSyncedAt"
 >;
 export interface PackageArchive {
+    /** Empty only when a legacy archive has no recorded date. */
     archivedAt: string;
     reason: string;
     restoredAt?: string;
@@ -276,10 +277,12 @@ export interface PackageMetadataUpdate {
     parentPlanId?: string | null;
     dependencyPlanIds?: string[];
 }
-export interface LoadedPlanPackage {
+interface PlanPackageHeader {
     kind: "loaded";
     path: string;
     metadata: PlanPackageMetadata;
+}
+export interface LoadedPlanPackage extends PlanPackageHeader {
     documents: PackageDocument[];
 }
 export interface PackageIssue {
@@ -288,8 +291,8 @@ export interface PackageIssue {
     message: string;
 }
 export type PackageInspection = LoadedPlanPackage | PackageIssue;
-export interface PackageCatalog {
-    packages: LoadedPlanPackage[];
+export interface PackageCatalog<Entry extends PlanPackageHeader = LoadedPlanPackage> {
+    packages: Entry[];
     issues: PackageIssue[];
 }
 export interface PackageSelector {
@@ -338,27 +341,40 @@ export interface LegacyImportEvidence {
     legacyFields: FrontMatterRecord;
     retainedFields: string[];
 }
-interface ImportMember {
+export interface ImportMember {
     allocation: ImportAllocation;
     metadata: PlanPackageMetadata;
     documents: PackageDocuments;
     evidence: LegacyImportEvidence;
 }
-export interface PreparedPlanImport {
+export interface PlanImportOptions {
+    includeArchived?: true;
+}
+interface SkippedPlanImport {
+    path: string;
+    reason: string;
+    action: string;
+}
+export interface PreparedPlanImport extends PlanImportOptions {
     selection: string;
     membership: string[];
     members: ImportMember[];
     existingPlanIds: string[];
     allocations: ImportAllocation[];
     observations: ImportFileEvidence[];
+    folder?: true;
+    archiveExcluded?: true;
+    skipped?: SkippedPlanImport[];
 }
 export interface PlanImportCommitted {
     kind: "committed" | "existing";
     planIds: string[];
     importedPlanIds: string[];
     existingPlanIds: string[];
+    archiveExcluded?: true;
+    skipped?: SkippedPlanImport[];
 }
-interface PlanImportIssue {
+export interface PlanImportIssue {
     kind: "conflict" | "pending" | "unavailable" | "invalid";
     message: string;
 }
@@ -839,22 +855,39 @@ async function readIntent(paths: PackageLayout): Promise<PackageIntent | null> {
         return fail("pending_recovery", "Package publication intent needs recovery; its evidence is invalid.");
     }
 }
-async function inspectAt(paths: PackageLayout, name: string): Promise<PackageInspection> {
+async function inspectMetadataAt(paths: PackageLayout, name: string): Promise<PlanPackageHeader | PackageIssue> {
     const path = join(paths.plans, normalizeName(name));
     try {
         const bytes = await file(paths.home, join(path, "plan.wld.json"));
         if (!bytes) return { kind: "missing", path, message: "Plan package is missing." };
         const metadata = parseMetadata(bytes);
         if (metadata.name !== name) fail("pending_recovery", "Package location and metadata name disagree.");
-        const documents = await readPackageDocuments(paths.home, path);
-        return { kind: "loaded", path, metadata, documents };
+        return { kind: "loaded", path, metadata };
     } catch (error) {
         if (error instanceof Error) return issue(error, path);
         throw error;
     }
 }
-async function scanOnce(paths: PackageLayout): Promise<PackageCatalog> {
-    const catalog: PackageCatalog = { packages: [], issues: [] };
+async function inspectAt(paths: PackageLayout, name: string): Promise<PackageInspection> {
+    const entry = await inspectMetadataAt(paths, name);
+    if (entry.kind !== "loaded") return entry;
+    try {
+        return { ...entry, documents: await readPackageDocuments(paths.home, entry.path) };
+    } catch (error) {
+        if (error instanceof Error) return issue(error, entry.path);
+        throw error;
+    }
+}
+type PackageInspector<Entry extends PlanPackageHeader> = (
+    paths: PackageLayout,
+    name: string,
+) => Promise<Entry | PackageIssue>;
+
+async function scanOnce<Entry extends PlanPackageHeader>(
+    paths: PackageLayout,
+    inspect: PackageInspector<Entry>,
+): Promise<PackageCatalog<Entry>> {
+    const catalog: PackageCatalog<Entry> = { packages: [], issues: [] };
     let intent: PackageIntent | null;
     try {
         intent = await readIntent(paths);
@@ -877,7 +910,7 @@ async function scanOnce(paths: PackageLayout): Promise<PackageCatalog> {
             if (entries.some((entry) => entry.name === "plan.wld.json")) {
                 const name = relative(paths.plans, path).replaceAll("\\", "/");
                 if (!intent || (name !== intent.to && !(intent.operation === "rename" && name === intent.from))) {
-                    const inspected = await inspectAt(paths, name);
+                    const inspected = await inspect(paths, name);
                     if (inspected.kind === "loaded") catalog.packages.push(inspected);
                     else catalog.issues.push(inspected);
                 }
@@ -947,11 +980,14 @@ async function readBatch(paths: PackageLayout): Promise<ImportBatch | null> {
         return fail("pending_recovery", "Import batch evidence is damaged; preserving its packages.");
     }
 }
-async function scan(paths: PackageLayout): Promise<PackageCatalog> {
+async function scanCatalog<Entry extends PlanPackageHeader>(
+    paths: PackageLayout,
+    inspect: PackageInspector<Entry>,
+): Promise<PackageCatalog<Entry>> {
     for (let retry = 0; retry < 3; retry++) {
         const before = await readBatch(paths);
         const pruneBefore = await readPruneJournal(paths);
-        const catalog = await scanOnce(paths);
+        const catalog = await scanOnce(paths, inspect);
         const after = await readBatch(paths);
         const pruneAfter = await readPruneJournal(paths);
         if (
@@ -993,6 +1029,14 @@ async function scan(paths: PackageLayout): Promise<PackageCatalog> {
             },
         ],
     };
+}
+function scan(paths: PackageLayout): Promise<PackageCatalog> {
+    return scanCatalog(paths, inspectAt);
+}
+
+/** Read committed package headers for navigation. Selected workflows validate documents separately. */
+export async function listPlanPackageHeaders(identity: ProjectIdentity): Promise<PackageCatalog<PlanPackageHeader>> {
+    return await scanCatalog(layout(identity), inspectMetadataAt);
 }
 export async function listPlanPackages(identity: ProjectIdentity, includeArchived = false): Promise<PackageCatalog> {
     try {
@@ -1634,7 +1678,7 @@ export async function restorePlanPackage(
             archive: {
                 ...current.metadata.archive,
                 restoredAt: new Date().toISOString(),
-                restoredFromPath: current.metadata.archive.fromPath,
+                ...(current.metadata.archive.fromPath ? { restoredFromPath: current.metadata.archive.fromPath } : {}),
             },
         };
         metadataFrom(metadata);
@@ -1690,7 +1734,16 @@ function validateImportRecord(record: ImportRecord): ImportRecord {
         !/^[0-9a-f-]{36}$/.test(record.recordId) ||
         !record.projectId ||
         !Array.isArray(record.prepared?.members) ||
-        !Array.isArray(record.prepared.allocations)
+        !Array.isArray(record.prepared.allocations) ||
+        (record.prepared.skipped !== undefined &&
+            (!Array.isArray(record.prepared.skipped) ||
+                record.prepared.skipped.some(
+                    (item) =>
+                        !item ||
+                        typeof item.path !== "string" ||
+                        typeof item.reason !== "string" ||
+                        typeof item.action !== "string",
+                )))
     )
         fail("pending_recovery", "Invalid retained import record.");
     for (const member of record.prepared.members) {
@@ -2111,7 +2164,7 @@ export async function readPlanPackageImportState(
     if (operationId && (await file(paths.home, join(paths.imports, operationId, "record.json")))) {
         const recorded = await importRecord(paths, operationId);
         if (recorded.prepared.selection !== selection) throw new Error("Import operation selection changed.");
-        return committedImportResult(recorded.prepared);
+        return committedImportResult(recorded.prepared, true);
     }
     return { allocations, catalog: catalog.packages };
 }
@@ -2147,21 +2200,35 @@ export async function findImportedPlansForMissingSource(
 export async function validatePlanPackageImportDestinations(
     identity: ProjectIdentity,
     prepared: PreparedPlanImport,
+    skip: (member: ImportMember, error: PlanPackageError) => void,
 ): Promise<void> {
     const paths = layout(identity);
+    const eligible = [];
     for (const member of prepared.members) {
-        metadataFrom(member.metadata);
-        await assertDestination(paths, member.metadata.name);
+        try {
+            metadataFrom(member.metadata);
+            await assertDestination(paths, member.metadata.name);
+            eligible.push(member);
+        } catch (error) {
+            if (!(error instanceof PlanPackageError)) throw error;
+            skip(member, error);
+        }
     }
+    prepared.members = eligible;
 }
 
-function committedImportResult(prepared: PreparedPlanImport): PlanImportCommitted {
+function committedImportResult(
+    prepared: PreparedPlanImport,
+    committed = prepared.members.length > 0,
+): PlanImportCommitted {
     const importedPlanIds = prepared.members.map((member) => member.metadata.planId);
     return {
-        kind: "committed",
+        kind: committed ? "committed" : "existing",
         planIds: [...new Set([...importedPlanIds, ...prepared.existingPlanIds])],
         importedPlanIds,
         existingPlanIds: prepared.existingPlanIds,
+        ...(prepared.archiveExcluded ? { archiveExcluded: true } : {}),
+        ...(prepared.skipped?.length ? { skipped: prepared.skipped } : {}),
     };
 }
 
@@ -2187,12 +2254,7 @@ export async function commitPlanPackageImport(
                     await directory(paths, resultRoot);
                     writeJsonAtomically(join(resultRoot, "record.json"), record);
                 }
-                return {
-                    kind: "existing",
-                    planIds: prepared.existingPlanIds,
-                    importedPlanIds: [],
-                    existingPlanIds: prepared.existingPlanIds,
-                };
+                return committedImportResult(prepared);
             }
             const recordId = operationId || randomUUID();
             for (const member of prepared.members)
@@ -2549,7 +2611,7 @@ export async function readManagedPlanImportResult(
     operationId: string,
 ): Promise<PlanImportCommitted> {
     const record = await importRecord(layout(identity), operationId);
-    return committedImportResult(record.prepared);
+    return committedImportResult(record.prepared, true);
 }
 
 interface PruneMember {

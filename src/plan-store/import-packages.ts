@@ -8,9 +8,15 @@ import {
     withPlanPackageCatalogDiscovery,
     withPlanPackageLocks,
     type PlanImportResult,
+    type PlanImportOptions,
 } from "@runwield/plans/package-storage";
 import type { ManagedProjectStoreLaunch } from "../shared/remote/project-store-launch.ts";
-import { preparePlanPackageImport, revalidatePlanImport } from "./import-source.ts";
+import {
+    omitBlockedPlanImports,
+    preparePlanPackageImport,
+    revalidatePlanImport,
+    skipPlanImportSource,
+} from "./import-source.ts";
 
 interface ManagedImportTransport {
     launch: ManagedProjectStoreLaunch;
@@ -18,23 +24,29 @@ interface ManagedImportTransport {
     signal?: AbortSignal;
 }
 
-export async function importPlanPackages(identity: ProjectStoreIdentity, selection: string): Promise<PlanImportResult> {
-    return await importObservedPlanPackages(identity, selection);
+export async function importPlanPackages(
+    identity: ProjectStoreIdentity,
+    selection: string,
+    options: PlanImportOptions = {},
+): Promise<PlanImportResult> {
+    return await importObservedPlanPackages(identity, selection, options);
 }
 
 export async function importManagedPlanPackages(
     identity: ProjectStoreIdentity,
     selection: string,
     transport: ManagedImportTransport,
+    options: PlanImportOptions = {},
 ): Promise<PlanImportResult> {
     if (!projects.home.isOwner(identity)) throw new Error("Managed import requires the personal home owner.");
-    return await importObservedPlanPackages(identity, selection, transport);
+    return await importObservedPlanPackages(identity, selection, options, transport);
 }
 
 /** Keep source capture and revalidation with the checkout or SSH execution adapter. */
 async function importObservedPlanPackages(
     identity: ProjectStoreIdentity,
     selection: string,
+    options: PlanImportOptions,
     transport?: ManagedImportTransport,
 ): Promise<PlanImportResult> {
     try {
@@ -56,6 +68,7 @@ async function importObservedPlanPackages(
                     metadata: { planId, name, definition },
                 })),
                 createdAt: new Date().toISOString(),
+                ...options,
             };
             const prepared = transport
                 ? await (
@@ -67,12 +80,12 @@ async function importObservedPlanPackages(
                       allocations,
                       catalog,
                       request.createdAt,
+                      options,
                   );
             return await withPlanPackageLocks(
                 identity,
                 prepared.members.map((member) => member.metadata.planId),
                 async () => {
-                    await validatePlanPackageImportDestinations(identity, prepared);
                     if (transport)
                         await (
                             await import("../shared/remote/project-store-launch.ts")
@@ -84,6 +97,14 @@ async function importObservedPlanPackages(
                             catalog,
                             allocations,
                         );
+                    await validatePlanPackageImportDestinations(identity, prepared, (member, error) =>
+                        skipPlanImportSource(prepared, member.evidence.source.path, error),
+                    );
+                    omitBlockedPlanImports(prepared, catalog);
+                    if (prepared.skipped?.length) {
+                        const skippedPaths = new Set(prepared.skipped.map(({ path }) => path));
+                        prepared.observations = prepared.observations.filter(({ path }) => !skippedPaths.has(path));
+                    }
                     return await commitPlanPackageImport(identity, prepared, transport?.operationId);
                 },
             );

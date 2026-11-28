@@ -19,6 +19,7 @@ import { HISTORY_PAGE_CHARS } from "../shared/remote/project-store-protocol.ts";
 import { listPlanPackages } from "@runwield/plans/package-storage";
 import { projectPlanAuthoring } from "@runwield/plans/project-plan-authoring";
 import { projectPlanFiles } from "@runwield/plans/project-plan-files";
+import type { PlanImportOptions } from "./import-source.ts";
 import type { RetainedFamilyRequest, RetainedFamilyCheckpoint } from "./retained-family.ts";
 import { readPlanRecordingContext, type PlanRecordingContext } from "./recording.ts";
 import type {
@@ -32,7 +33,7 @@ import type { GeneratedWorkRecordSections } from "@runwield/plans/work-records";
 import type { PublishedDeliverySources } from "./published-source.ts";
 import type { ManagedProjectStoreLaunch } from "../shared/remote/project-store-launch.ts";
 import { confirmManagedPublication } from "./retained-proof.ts";
-import { loadPlan, listPlans } from "../plan-store.ts";
+import { loadPlan, listPlanDocuments, listPlans } from "../plan-store.ts";
 import { authorLocalPlan } from "./access.ts";
 import {
     getGlobalSecretStoreLocation,
@@ -145,9 +146,7 @@ export interface ProjectStoreResolve {
     kind: "resolve-plan";
     reference: string;
 }
-export interface ProjectStoreList {
-    kind: "list-plans";
-}
+export type ProjectStoreList = { kind: "list-plans" } | { kind: "list-plan-documents" };
 export interface ProjectStorePlan {
     plan: Awaited<ReturnType<typeof loadPlan>>;
 }
@@ -581,7 +580,7 @@ export interface ProjectStoreRepairOwner {
 export interface ProjectStoreOwnerDiagnostics {
     ownerDiagnostics: import("./doctor.ts").DoctorIssue[];
 }
-export interface ProjectStoreImport {
+export interface ProjectStoreImport extends PlanImportOptions {
     kind: "import-plans";
     operationId: string;
     selection: string;
@@ -860,11 +859,16 @@ export class PreparedProjectStore {
                             async () => {
                                 const imported = await (
                                     await import("./import-packages.ts")
-                                ).importManagedPlanPackages(owner, command.selection, {
-                                    launch: this.launch!,
-                                    operationId: command.operationId,
-                                    signal: this.signal,
-                                });
+                                ).importManagedPlanPackages(
+                                    owner,
+                                    command.selection,
+                                    {
+                                        launch: this.launch!,
+                                        operationId: command.operationId,
+                                        signal: this.signal,
+                                    },
+                                    command.includeArchived ? { includeArchived: true } : {},
+                                );
                                 if ("message" in imported) throw new Error(imported.message);
                                 return { revision: operationDigest(JSON.stringify(imported)) };
                             },
@@ -903,11 +907,15 @@ export class PreparedProjectStore {
                         ),
                     };
                 }
-                if (command.kind === "list-plans" || command.kind === "resolve-plan") {
+                if (command.kind === "list-plan-documents") return { plans: await listPlanDocuments(this.cwd) };
+                if (command.kind === "list-plans") {
                     const catalog = files
                         ? await files.listWorkflowPlans(currentPackageSelection())
                         : await listPlans(this.cwd);
-                    if (command.kind === "list-plans") return { plans: catalog };
+                    return { plans: catalog };
+                }
+                if (command.kind === "resolve-plan") {
+                    const catalog = await listPlanDocuments(this.cwd);
                     const selected = catalog.find(
                         (plan) =>
                             plan.name === command.reference ||

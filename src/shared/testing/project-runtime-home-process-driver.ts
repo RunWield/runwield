@@ -76,6 +76,7 @@ if (command === "hold-registry") {
     const originalCopy = fs.copyFile;
     const originalRename = fs.rename;
     const originalRemove = fs.rm;
+    let retiredSources = 0;
     const exit = (effect: string) => {
         if (effect === boundary) {
             console.log(`reached:${effect}`);
@@ -113,7 +114,10 @@ if (command === "hold-registry") {
     Object.defineProperty(fs, "rm", {
         value: async (...args: Parameters<typeof fs.rm>) => {
             await originalRemove(...args);
-            if (String(args[0]).startsWith(getRunWieldRuntimeDir(root))) exit("retirement");
+            if (String(args[0]).startsWith(getRunWieldRuntimeDir(root))) {
+                exit("retirement");
+                if (++retiredSources === 2) exit("second-retirement");
+            }
             if (String(args[0]).endsWith("layout-migration.json")) exit("cleanup");
         },
     });

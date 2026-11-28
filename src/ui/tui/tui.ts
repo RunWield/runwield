@@ -11,6 +11,7 @@ import { createTuiCrashGuards } from "./tui-crash-guards.ts";
 import { createTuiManager } from "./tui-manager.ts";
 import { cleanupAgentBrowserSessionSync } from "../../shared/agent-browser-session.ts";
 import { copyToClipboard } from "../../shared/clipboard-text.ts";
+import { reportRuntimeTerminalState } from "../../shared/runtime-supervisor.ts";
 
 export interface TuiPair {
     terminal: Terminal;
@@ -57,6 +58,7 @@ const tuiManager = createTuiManager<Terminal, TUI>({
     TuiCtor: RunWieldTui,
     installCrashGuards: () => crashGuards.install(),
     uninstallCrashGuards: () => crashGuards.uninstall(),
+    reportTerminalState: reportRuntimeTerminalState,
 });
 
 const crashGuards = createTuiCrashGuards({

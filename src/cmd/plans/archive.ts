@@ -82,6 +82,7 @@ function printArchivedPlans(plans: ArchivedPlanEntry[]): void {
         console.log(`    Status: ${plan.status}`);
         console.log(`    Summary: ${plan.summary || "(none)"}`);
         if (plan.attrs.archivedAt) console.log(`    Archived: ${plan.attrs.archivedAt}`);
+        else if (plan.attrs.archivedAt === "") console.log("    Archive date: unknown");
         if (plan.attrs.archiveReason) console.log(`    Reason: ${plan.attrs.archiveReason}`);
         console.log();
     }

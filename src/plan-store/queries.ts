@@ -1,11 +1,16 @@
 import { StalePlanWriteError } from "@runwield/plans/store";
+import { join } from "node:path";
+import { mergeFrontMatterText } from "@runwield/plans/format";
 import {
     loadPlan as loadLocalPlan,
     listPlans as listLocalPlans,
     loadPlanStrict as loadLocalPlanStrict,
     inspectPlanStrict as inspectLocalPlanStrict,
+    type PlanListEntry,
 } from "../plan-store.ts";
 import { managedPlanStoreActive, readManagedPlan, listManagedPlans } from "./managed.ts";
+import { inspectLocalHomeStore } from "./access.ts";
+import { packageDocumentContent, readPlanPackage } from "@runwield/plans/package-storage";
 export async function loadPlan(cwd: string, name: string) {
     return managedPlanStoreActive() ? await readManagedPlan(cwd, name) : await loadLocalPlan(cwd, name);
 }
@@ -68,8 +73,34 @@ export async function listPlanResources(cwd: string): ReturnType<typeof import("
 }
 export async function listPlanDocuments(cwd: string): ReturnType<typeof import("../plan-store.ts").listPlanDocuments> {
     return managedPlanStoreActive()
-        ? await listPlans(cwd)
+        ? await listManagedPlans(cwd, true)
         : await (await import("../plan-store.ts")).listPlanDocuments(cwd);
+}
+/** Read the body for one menu entry without entering a workflow or resolving its execution checkout. */
+export async function readPlanMenuDocument(cwd: string, entry: Pick<PlanListEntry, "name" | "attrs">) {
+    if (managedPlanStoreActive()) {
+        const plan = await readManagedPlan(cwd, entry.attrs.planId || entry.name);
+        if (!plan) throw new Error(`Plan not found: ${entry.name}`);
+        return { ...plan, planName: entry.name };
+    }
+    const owner = inspectLocalHomeStore(cwd);
+    if (owner.kind !== "local") throw new Error("No saved Plan store for this Project.");
+    const plan = await readPlanPackage(owner.identity, { name: entry.name, planId: entry.attrs.planId });
+    if (plan.kind !== "loaded") throw new Error(plan.message);
+    if (plan.metadata.archive && !plan.metadata.archive.restoredAt)
+        throw new Error(`This Plan is archived: ${entry.name}`);
+    const document = packageDocumentContent(plan, "context.md");
+    if (!document) throw new Error(`Plan document not found: ${entry.name}`);
+    const { body, revision } = document;
+    const attrs = entry.attrs;
+    return {
+        planName: entry.name,
+        path: join(plan.path, "context.md"),
+        body,
+        markdown: mergeFrontMatterText(body, attrs),
+        attrs,
+        revision,
+    };
 }
 export async function resolvePlan(
     cwd: string,

@@ -13,7 +13,7 @@ export {
 } from "./agent-files.ts";
 export { authorLocalPlan } from "./access.ts";
 export { readPlanDocuments, savePlanDocument, readPlanDocumentLink, saveReviewedPlanDocument } from "./documents.ts";
-export { importPlans, importedPlanCopyChoice } from "./imports.ts";
+export { importPlans, importedPlanCopyChoice, PlanImportRefusedError } from "./imports.ts";
 export {
     resolveSiblingChildPlanDependencies,
     onboardExternalPlan,
@@ -297,7 +297,7 @@ export {
 
 export { savePlanBodyById } from "./queries.ts";
 
-export { archivePlan } from "./queries.ts";
+export { archivePlan, listPlanDocuments, readPlanMenuDocument } from "./queries.ts";
 
 export { readRetainedManagedExecution, type RetainedManagedExecution } from "./retained-managed-execution.ts";
 
