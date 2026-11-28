@@ -277,6 +277,11 @@ test("only Plan owners and exact qualifications can select the retained checkout
         ["src/shared/workflow/planning-worktree-inspection.test.ts", "TargetBranchSnapshotUnavailableError"],
     ]) {
         equal(inspectPlanStoreImports(file, `import { ${operation} } from "${entry}";`).length, 0);
+        const unrelated =
+            operation === "findMissingExecutionSnapshot"
+                ? "TargetBranchSnapshotUnavailableError"
+                : "findMissingExecutionSnapshot";
+        equal(inspectPlanStoreImports(file, `import { ${unrelated} } from "${entry}";`).length, 1);
         equal(inspectPlanStoreImports(file, `import { readRetainedExecutionPlan } from "${entry}";`).length, 1);
         equal(inspectPlanStoreImports(file, `const driver = await import("${entry}");`).length, 1);
     }
