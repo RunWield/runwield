@@ -31,6 +31,7 @@ interface TuiManagerDeps<TTerminal extends FocusReportingTerminal, TTui extends 
     TuiCtor: TuiConstructor<TTerminal, TTui>;
     installCrashGuards(): void;
     uninstallCrashGuards(): void;
+    reportTerminalState?(active: boolean): void;
     restoreTitle?: () => void;
 }
 
@@ -60,6 +61,7 @@ export function createTuiManager<TTerminal extends FocusReportingTerminal, TTui 
         TuiCtor,
         installCrashGuards,
         uninstallCrashGuards,
+        reportTerminalState,
         restoreTitle = defaultRestoreTitle,
     } = deps;
     let tuiInstance: TTui | null = null;
@@ -72,6 +74,7 @@ export function createTuiManager<TTerminal extends FocusReportingTerminal, TTui 
         terminalInstance = pair.terminal;
         tuiInstance = pair.tui;
         try {
+            reportTerminalState?.(true);
             tuiInstance.start?.();
             focusStateOwner?.activate();
             started = true;
@@ -93,6 +96,7 @@ export function createTuiManager<TTerminal extends FocusReportingTerminal, TTui 
             }
             try {
                 tuiInstance?.stop?.({ preserveScreen: true });
+                reportTerminalState?.(false);
             } catch {
                 // Preserve the original construction/start failure.
             }
@@ -135,11 +139,6 @@ export function createTuiManager<TTerminal extends FocusReportingTerminal, TTui 
     }
 
     function stopTUI(): void {
-        try {
-            restoreTitle();
-        } catch {
-            // Terminal title restoration is best effort.
-        }
         if (crashGuardsInstalled) {
             try {
                 uninstallCrashGuards();
@@ -164,6 +163,12 @@ export function createTuiManager<TTerminal extends FocusReportingTerminal, TTui 
         if (tui && wasStarted) {
             // Restore the shell without copying the fullscreen input into its history.
             tui.stop?.({ preserveScreen: true });
+            reportTerminalState?.(false);
+            try {
+                restoreTitle();
+            } catch {
+                // Terminal title restoration is best effort.
+            }
         }
     }
 

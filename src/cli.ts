@@ -283,6 +283,7 @@ try {
     await main();
 } catch (err) {
     const { DirectoryStartupCanceled } = await import("./ui/tui/directory-warning.ts");
+    const { ProjectRuntimeEntryRefusedError } = await import("./shared/project-runtime-layout.ts");
     if (err instanceof DirectoryStartupCanceled) exit(0);
     if (!isProtocolOnlyStartup(cliArgs)) {
         try {
@@ -294,8 +295,10 @@ try {
     }
     if (err instanceof Error && err.message.includes("Mnemoteca binary not found")) {
         console.error(err.message);
+    } else if (err instanceof ProjectRuntimeEntryRefusedError) {
+        console.error(`[RunWield] Could not prepare project storage. ${err.message}`);
     } else {
-        console.error("[RunWield] Fatal error:", err);
+        console.error("[RunWield] Fatal error:", err instanceof Error ? (err.stack ?? err.message) : String(err));
     }
     cleanupAgentBrowserSessionSync();
     exit(1);

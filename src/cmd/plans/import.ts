@@ -1,6 +1,6 @@
 import process from "node:process";
 import { getCwd } from "../../constants.ts";
-import { importPlans, importedPlanCopyChoice } from "../../plan-store/index.ts";
+import { importPlans, importedPlanCopyChoice, PlanImportRefusedError } from "../../plan-store/index.ts";
 import { admitProjectWithIdentityChoice } from "../../ui/tui/project-identity-entry.ts";
 
 async function offerDeliveryCopies(cwd: string, selection: string): Promise<void> {
@@ -27,11 +27,25 @@ export async function runPlansImportCommand(argv: string[]): Promise<void> {
     }
     if (argv.length !== 1 || argv[0].startsWith("-")) throw new Error("Usage: wld plans import <file-or-folder>");
     const cwd = getCwd();
+    console.error(
+        "[RunWield] Preparing project storage for Plan import. This can take time if another Session is active or older storage needs to be moved.",
+    );
     if (!(await admitProjectWithIdentityChoice(cwd))) return;
     const selection = argv[0];
-    const result = await importPlans(cwd, selection);
-    console.log(
-        `[RunWield] Imported ${result.importedPlanIds.length} Plans; ${result.existingPlanIds.length} already present.`,
-    );
+    try {
+        const result = await importPlans(cwd, selection);
+        console.log(
+            `[RunWield] Imported ${result.importedPlanIds.length} Plans; ${result.existingPlanIds.length} already present.`,
+        );
+    } catch (error) {
+        if (!(error instanceof PlanImportRefusedError)) throw error;
+        console.error(`[RunWield] Plan import stopped. ${error.message}`);
+        if (error.issue.kind === "pending" || error.issue.kind === "conflict")
+            console.error("Run `wld plans doctor --check` to inspect saved Plan and worktree state.");
+        if (error.issue.kind !== "unavailable")
+            console.error("To import other Plans, retry with a file or folder that excludes the affected source.");
+        process.exitCode = 1;
+        return;
+    }
     await offerDeliveryCopies(cwd, selection);
 }

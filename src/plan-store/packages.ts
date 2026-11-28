@@ -125,6 +125,7 @@ export type PackageControllerState = Pick<
     | "collaborationSyncedAt"
 >;
 export interface PackageArchive {
+    /** Empty only when a legacy archive has no recorded date. */
     archivedAt: string;
     reason: string;
     restoredAt?: string;
@@ -1604,7 +1605,7 @@ export async function restorePlanPackage(
             archive: {
                 ...current.metadata.archive,
                 restoredAt: new Date().toISOString(),
-                restoredFromPath: current.metadata.archive.fromPath,
+                ...(current.metadata.archive.fromPath ? { restoredFromPath: current.metadata.archive.fromPath } : {}),
             },
         };
         metadataFrom(metadata);

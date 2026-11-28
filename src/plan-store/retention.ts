@@ -167,7 +167,9 @@ async function state(cwd: string, context: RetentionContext, empty = false) {
                         family.map((p) => [p.metadata.planId, packageWorkflowRevision(p)]),
                     ]),
                 ),
-                protected: family.some((p) => !archived(p) || pins.plans.has(p.metadata.planId)),
+                protected: family.some(
+                    (p) => !archived(p) || p.metadata.archive?.archivedAt === "" || pins.plans.has(p.metadata.planId),
+                ),
             });
         }
     } else if (!empty) {

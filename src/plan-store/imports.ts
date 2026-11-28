@@ -7,6 +7,14 @@ import { enterProjectRuntime } from "../shared/project-runtime-layout.ts";
 import { resolvePrimaryCheckoutRoot } from "../shared/project-checkout.ts";
 import { writeJsonAtomically } from "../shared/private-json-file.ts";
 import { getExactProjectCustomSetting, setExactProjectCustomSetting } from "../shared/settings.ts";
+import type { PlanImportIssue } from "./import-source.ts";
+
+export class PlanImportRefusedError extends Error {
+    constructor(readonly issue: PlanImportIssue) {
+        super(issue.message);
+        this.name = "PlanImportRefusedError";
+    }
+}
 
 /** Explicit admission and source-preserving import are one store operation. */
 export async function importPlans(cwd: string, selection: string) {
@@ -15,7 +23,7 @@ export async function importPlans(cwd: string, selection: string) {
     const store = inspectLocalHomeStore(cwd);
     if (store.kind !== "local") throw new Error("Plan import requires the local execution-account store.");
     const result = await importPlanPackages(store.identity, resolve(cwd, selection));
-    if ("message" in result) throw new Error(result.message);
+    if ("message" in result) throw new PlanImportRefusedError(result);
     return result;
 }
 

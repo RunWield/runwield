@@ -1,5 +1,5 @@
 import { readdirSync } from "node:fs";
-import { mkdtemp, rm, mkdir, writeFile, readdir } from "node:fs/promises";
+import { mkdtemp, rm, mkdir, writeFile, readdir, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import process from "node:process";
 import { test } from "node:test";
@@ -88,6 +88,59 @@ test("leading acknowledgement reaches real plans listing and help is exempt", as
         await rm(home, { recursive: true });
     }
 });
+
+test("Plan import explains how to recover a disconnected Git worktree and can be retried", async () => {
+    const fixture = defineCommittedGitFixture({ "plan.md": "# Import fixture\n" });
+    const root = await fixture.checkout();
+    const linked = await mkdtemp(join(tmpdir(), "plans-import-disconnected-"));
+    const runPlans = (...args: string[]) =>
+        collectOutput(
+            Bun.spawn({
+                cmd: [process.execPath, "--no-env-file", "--no-install", cli, "plans", ...args],
+                cwd: root,
+                stdin: "ignore",
+                stdout: "pipe",
+                stderr: "pipe",
+            }),
+        );
+    try {
+        await git(root, ["worktree", "add", "--detach", linked]);
+        await rm(join(linked, ".git"));
+
+        const blocked = await runPlans("import", "plan.md");
+        const error = decode(blocked.stderr);
+        assertEquals(blocked.code, 1);
+        assertStringIncludes(error, "Preparing project storage for Plan import");
+        assertStringIncludes(error, "Could not prepare project storage");
+        assertStringIncludes(error, await realpath(linked));
+        assertStringIncludes(error, "git worktree prune --dry-run --verbose");
+        assertStringIncludes(error, "git worktree prune --verbose");
+        assertEquals(error.includes("Fatal error"), false);
+        assertEquals(error.includes("To reopen your last saved Session"), false);
+        assertEquals((await readdir(linked)).sort(), ["plan.md"]);
+        assertStringIncludes(await git(root, ["worktree", "list", "--porcelain"]), "prunable");
+
+        await git(root, ["worktree", "prune"]);
+        const imported = await runPlans("import", "plan.md");
+        assertEquals(imported.code, 0, decode(imported.stderr));
+        assertStringIncludes(decode(imported.stdout), "Imported 1 Plans");
+
+        const archived = join(root, "docs", "plans", "archived");
+        await mkdir(archived, { recursive: true });
+        const incomplete = join(archived, "incomplete.md");
+        await writeFile(incomplete, "# Archived fixture without archive metadata\n");
+        const recovered = await runPlans("import", await realpath(incomplete));
+        assertEquals(recovered.code, 0, decode(recovered.stderr));
+        const archives = await runPlans("archive");
+        assertEquals(archives.code, 0, decode(archives.stderr));
+        assertStringIncludes(decode(archives.stdout), "incomplete");
+        assertStringIncludes(decode(archives.stdout), "Archive date: unknown");
+    } finally {
+        await rm(linked, { recursive: true, force: true });
+        await rm(root, { recursive: true, force: true });
+    }
+});
+
 test("registry policy covers every CLI command and aliases", () => {
     const guarded = ["router", "onboard", "load-plan", "review", "resume", "plans", "wr", "sleep", "init"];
     for (const command of getCliCommandDefinitions()) {

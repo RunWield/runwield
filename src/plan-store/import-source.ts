@@ -23,6 +23,7 @@ import { resolvePrimaryCheckoutRoot } from "../shared/project-checkout.ts";
 import { checkedProjectRuntimeLayout } from "../shared/project-runtime-layout.ts";
 import type { ProjectIdentity } from "../shared/project-identity.ts";
 import type { PackageDocuments, PlanPackageMetadata, PackageDefinition } from "./packages.ts";
+import { isPublicationCleanupPending } from "../shared/workflow/publication-attempt.ts";
 
 export interface ImportAllocation {
     locator: string;
@@ -328,6 +329,7 @@ export async function preparePlanPackageImport(
         if (previous && previous.planId !== id)
             throw new PlanPackageError("collision", `Source identity changed: ${path}`);
         const name = planName(sourceRelativePath);
+        const archivedSource = within(join(sourcePlansRoot, "archived"), path);
         const allocation = previous || {
             locator,
             name,
@@ -356,15 +358,17 @@ export async function preparePlanPackageImport(
             );
             attempts = registry.entries.filter((entry) => entry.planId === id || entry.planName === name);
             if (
-                !path.includes(`${sourcePlansRoot}/archived/`) ||
-                attempts.some((entry) => entry.status !== "abandoned")
+                !archivedSource ||
+                attempts.some(
+                    (entry) => entry.status !== "abandoned" && !isPublicationCleanupPending(entry.publication),
+                )
             ) {
                 const located = await resolveWorkflowPlanLocation(identity.checkoutRoot, name, {
                     readOnly: true,
                     loadFromTarget: true,
                 });
                 const archivedPath =
-                    located.archived && within(join(sourcePlansRoot, "archived"), path)
+                    located.archived && archivedSource
                         ? join(located.documentRoot, "docs", "plans", "archived", `${name}.md`)
                         : null;
                 if ((!located.plan && !archivedPath) || located.missingExecutionCheckout)
@@ -401,8 +405,18 @@ export async function preparePlanPackageImport(
             }
             const workflowIdentity = { planId: selected.attrs.planId, planName: name };
             controller = await readControllerRecord(identity.checkoutRoot, workflowIdentity);
-            if (controller && (controller.planName !== name || (controller.planId && controller.planId !== id)))
-                pending(`Controller identity does not match ${name}.`);
+            if (controller) {
+                const archivedController =
+                    archivedSource &&
+                    selected.attrs.planId === id &&
+                    controller.planName === `archived/${name}` &&
+                    controller.planId === id;
+                if (
+                    (!archivedController && controller.planName !== name) ||
+                    (controller.planId && controller.planId !== id)
+                )
+                    pending(`Saved workflow identity does not match the Plan at ${path}.`);
+            }
             controllerFile = await inspectImportFile(
                 controllerRecordPath(identity.checkoutRoot, workflowIdentity),
                 identity.executionAccountHome,
@@ -442,8 +456,6 @@ export async function preparePlanPackageImport(
             }
         } else definition.origin = "external";
         const archived = parsed.attrs.archivedAt;
-        if (within(join(sourcePlansRoot, "archived"), path) && !archived)
-            refused(`Archived source lacks archive facts: ${path}`);
         const metadata: PlanPackageMetadata = {
             version: 1,
             planId: id,
@@ -464,16 +476,17 @@ export async function preparePlanPackageImport(
                           ? [parsed.raw.sessionId]
                           : [],
             },
-            archive: archived
-                ? {
-                      archivedAt: String(archived),
-                      reason: parsed.attrs.archiveReason || "",
-                      ...(parsed.attrs.restoredAt ? { restoredAt: String(parsed.attrs.restoredAt) } : {}),
-                      ...(parsed.attrs.archivedFromStatus ? { fromStatus: parsed.attrs.archivedFromStatus } : {}),
-                      ...(parsed.attrs.archivedFromPath ? { fromPath: parsed.attrs.archivedFromPath } : {}),
-                      ...(parsed.attrs.restoredFromPath ? { restoredFromPath: parsed.attrs.restoredFromPath } : {}),
-                  }
-                : null,
+            archive:
+                archived || archivedSource
+                    ? {
+                          archivedAt: archived ? String(archived) : "",
+                          reason: parsed.attrs.archiveReason || "",
+                          ...(parsed.attrs.restoredAt ? { restoredAt: String(parsed.attrs.restoredAt) } : {}),
+                          ...(parsed.attrs.archivedFromStatus ? { fromStatus: parsed.attrs.archivedFromStatus } : {}),
+                          ...(parsed.attrs.archivedFromPath ? { fromPath: parsed.attrs.archivedFromPath } : {}),
+                          ...(parsed.attrs.restoredFromPath ? { restoredFromPath: parsed.attrs.restoredFromPath } : {}),
+                      }
+                    : null,
         };
         const duplicate = result.members.find((member) => member.metadata.planId === id);
         if (duplicate) {
@@ -522,7 +535,8 @@ export async function preparePlanPackageImport(
         if (all.some((other) => other.planId !== member.metadata.planId && namesCollide(other.name, name)))
             throw new PlanPackageError("collision", `Plan name already exists: ${name}`);
         const parsed = document(text(member.evidence.authority));
-        const relationship = (value: string): string => {
+        const legacyArchive = member.metadata.archive?.archivedAt === "" && !member.metadata.archive.restoredAt;
+        const relationship = (value: string, allowArchivedSibling = false): string | null => {
             const reference = planName(value);
             const candidates = new Set(
                 [...names]
@@ -530,10 +544,15 @@ export async function preparePlanPackageImport(
                         ([key]) =>
                             key === reference ||
                             (!reference.includes("/") &&
-                                key === `${planName(parsed.attrs.parentPlan || dirname(name))}/${reference}`),
+                                (key === `${planName(parsed.attrs.parentPlan || dirname(name))}/${reference}` ||
+                                    (legacyArchive &&
+                                        allowArchivedSibling &&
+                                        key === `${dirname(name)}/${reference}`))),
                     )
                     .flatMap(([, ids]) => [...ids]),
             );
+            // Legacy archive folders can outlive the Plans they referred to. Raw references stay in import evidence.
+            if (legacyArchive && candidates.size === 0) return null;
             if (candidates.size !== 1)
                 throw new PlanPackageError(
                     "collision",
@@ -542,7 +561,11 @@ export async function preparePlanPackageImport(
             return [...candidates][0];
         };
         member.metadata.parentPlanId = parsed.attrs.parentPlan ? relationship(parsed.attrs.parentPlan) : null;
-        member.metadata.dependencyPlanIds = [...new Set((parsed.attrs.dependencies || []).map(relationship))];
+        member.metadata.dependencyPlanIds = [
+            ...new Set(
+                (parsed.attrs.dependencies || []).map((value) => relationship(value, true)).filter((id) => id !== null),
+            ),
+        ];
     }
     for (const [artifact, owner] of artifacts) {
         const ownerIds = names.get(owner);

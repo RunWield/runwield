@@ -104,11 +104,12 @@ export async function resolveWorkflowPlanLocation(
     if (managedPlanStoreActive()) {
         const plan = await readManagedPlan(cwd, planName);
         const execution = plan?.attrs.planId ? await readManagedExecution(cwd, plan.attrs.planId) : null;
+        const archived = typeof plan?.attrs.archivedAt === "string";
         return {
             registryRoot: resolvePrimaryCheckoutRoot(cwd),
             documentRoot: cwd,
-            plan: plan?.attrs.archivedAt ? null : plan,
-            archived: Boolean(plan?.attrs.archivedAt),
+            plan: archived ? null : plan,
+            archived,
             packageSelection: undefined,
             resumeInterruptedPreparation: Boolean(execution),
         };
@@ -120,11 +121,12 @@ export async function resolveWorkflowPlanLocation(
             const selection = await selectLocalPlanWorkflow(cwd, planName);
             return await withPackageProject(cwd, store.identity, async () => {
                 const plan = await loadPackageWorkflowPlan({ planId: selection!.planId });
+                const archived = typeof plan.attrs.archivedAt === "string";
                 return {
                     registryRoot: requireProjectCheckout(store.identity).checkoutRoot,
                     ...(await packagePlanningSource(cwd, planName, plan, options.loadFromTarget)),
-                    plan: plan.attrs.archivedAt ? null : plan,
-                    archived: Boolean(plan.attrs.archivedAt),
+                    plan: archived ? null : plan,
+                    archived,
                     packageSelection: selection,
                     resumeInterruptedPreparation: Boolean(plan.attrs.worktreeId),
                 };
@@ -148,11 +150,12 @@ async function resolveWorkflowPlanLocationInScope(
 ) {
     if (currentPackageSelection()) {
         const plan = await loadPackageWorkflowPlan(planName);
+        const archived = typeof plan.attrs.archivedAt === "string";
         return {
             registryRoot: requireProjectCheckout(currentPackageSelection()!.identity).checkoutRoot,
             ...(await packagePlanningSource(cwd, planName, plan, options.loadFromTarget)),
-            plan: plan.attrs.archivedAt ? null : plan,
-            archived: Boolean(plan.attrs.archivedAt),
+            plan: archived ? null : plan,
+            archived,
             packageSelection: currentPackageSelection(),
             resumeInterruptedPreparation: Boolean(
                 plan.attrs.worktreeId || (await selectedPackage(planName)).metadata.workflow?.attempt,

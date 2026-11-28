@@ -1,5 +1,6 @@
 /** Keep native runtime failure outside the process that owns terminal recovery. */
 import { spawn, spawnSync } from "node:child_process";
+import { writeSync } from "node:fs";
 import { constants } from "node:os";
 import process from "node:process";
 import { resourceExhaustionMessage } from "./resource-exhaustion.ts";
@@ -7,6 +8,17 @@ import { resourceExhaustionMessage } from "./resource-exhaustion.ts";
 interface RuntimeExit {
     code: number | null;
     signal: NodeJS.Signals | null;
+}
+
+/** Tell the launcher whether a failure can leave the TUI's terminal modes active. */
+export function reportRuntimeTerminalState(active: boolean): void {
+    if (process.env.WLD_RUNTIME_SUPERVISOR_PID !== String(process.ppid)) return;
+    if (!process.stdin.isTTY && !process.stdout.isTTY) return;
+    try {
+        writeSync(3, active ? "1" : "0");
+    } catch {
+        // There may be no supervisor listening, for example in a standalone test fixture.
+    }
 }
 
 /** Run exactly once. Never replay a command whose external effects may be uncertain. */
@@ -19,8 +31,12 @@ export async function superviseRuntime(command: string, args: string[]): Promise
             : null;
     let diagnostics = "";
     let launchError: Error | undefined;
+    let terminalActive = false;
     const child = spawn(command, args, {
-        stdio: ["inherit", "inherit", "pipe"],
+        stdio:
+            process.stdin.isTTY || process.stdout.isTTY
+                ? ["inherit", "inherit", "pipe", "pipe"]
+                : ["inherit", "inherit", "pipe"],
         env: { ...process.env, WLD_RUNTIME_SUPERVISOR_PID: String(process.pid) },
     });
     child.once("error", (error) => {
@@ -32,6 +48,10 @@ export async function superviseRuntime(command: string, args: string[]): Promise
         diagnostics = (diagnostics + chunk.toString("utf8")).slice(-16_384);
     });
     child.stderr?.pipe(process.stderr, { end: false });
+    const terminalState = child.stdio?.[3];
+    terminalState?.on("data", (chunk: Buffer) => {
+        terminalActive = chunk.toString().endsWith("1");
+    });
     const signals: NodeJS.Signals[] =
         process.platform === "win32" ? ["SIGINT", "SIGTERM"] : ["SIGINT", "SIGTERM", "SIGHUP", "SIGWINCH"];
     const forward = (signal: NodeJS.Signals) => {
@@ -50,6 +70,7 @@ export async function superviseRuntime(command: string, args: string[]): Promise
                 if (drainTimer) clearTimeout(drainTimer);
                 if (resumeDrain) process.stderr.off("drain", resumeDrain);
                 child.stderr?.destroy();
+                terminalState?.destroy();
                 resolve({ code, signal });
             };
             child.once("close", complete);
@@ -68,7 +89,7 @@ export async function superviseRuntime(command: string, args: string[]): Promise
             });
         });
         const failed = result.code !== 0 || result.signal !== null || launchError !== undefined;
-        if (failed) {
+        if (terminalActive) {
             const restored =
                 terminal?.status === 0 &&
                 spawnSync("stty", [terminal.stdout.trim()], { stdio: ["inherit", "ignore", "ignore"] }).status === 0;
@@ -81,8 +102,15 @@ export async function superviseRuntime(command: string, args: string[]): Promise
             }
             if (process.stdout.isTTY) {
                 // Leave alternate-screen, bracketed-paste, and hidden-cursor modes.
-                process.stdout.write("\x1b[?2004l\x1b[?1049l\x1b[?25h\x1b[0m");
+                await new Promise<void>((resolve) =>
+                    process.stdout.write("\x1b[?2004l\x1b[?1049l\x1b[?25h\x1b[0m", () => resolve()),
+                );
             }
+            // stderr written while the alternate screen was active can disappear with that screen.
+            if (failed && process.stdout.isTTY && process.stderr.isTTY && diagnostics)
+                process.stderr.write(diagnostics);
+        }
+        if (failed) {
             // Earlier recovered errors (or quoted log text) do not describe the
             // final failure. Inspect only the last runtime/fatal-error diagnostic.
             let failureStart = -1;
@@ -95,7 +123,7 @@ export async function superviseRuntime(command: string, args: string[]): Promise
                 launchError ?? (failureStart < 0 ? "" : diagnostics.slice(failureStart)),
             );
             const unexpectedSignal = result.signal && !signals.some((signal) => signal === result.signal);
-            const runtimePanic = /Bun has crashed|panic(?:\([^\n]*\))?:|Segmentation fault|fatal error:/i.test(
+            const runtimePanic = /Bun has crashed|panic(?:\([^\n]*\))?:|Segmentation fault|(?:^|\n)fatal error:/i.test(
                 diagnostics,
             );
             if (resource || unexpectedSignal || runtimePanic || launchError) {

@@ -218,6 +218,9 @@ clipboard command fails, the TUI reports failure instead of “Copied!”.
 - Given tool groups inside and outside the viewport, Ctrl+O toggles only the visible groups.
 - Given a visible input, quitting or interrupting the TUI restores the shell without copying the input or its borders
   into terminal history.
+- Given a failing CLI command that never opened the TUI, its error remains visible in the shell and the launcher
+  emits no terminal reset. Given a crash while the TUI is active, the launcher restores the terminal and shows the
+  recent error output on the shell screen.
 
 ### Agent mascots
 
@@ -505,6 +508,17 @@ may use its local target snapshot; import does not expand the selection to unrel
 Original repository-relative paths remain available for later pruning; this operation performs no pruning or delivery
 copy setup inside the import transaction. Public local commands expose explicit import and store-only discovery; the
 separate post-import folder choice controls delivery copies. After importing a repository folder, Core offers that choice once with Yes preselected. The upgrade announcement directs existing users to run `wld plans import docs/plans/` once per Project.
+
+Plan import reports when project storage preparation starts. If a stale Git worktree registration points to a folder
+with a missing Git link, Core names the affected folder and explains how to review and prune obsolete registrations
+before retrying. Core leaves the folder and its Git registration available for recovery.
+Historical workflow names prefixed with `archived/` remain valid evidence for an archived source with the same
+explicit Plan ID. A conflicting identity stops the batch and reports the affected source and how to continue.
+An older source under the repository archive imports as archived even when its archive date is missing. Core shows the
+date as unknown and keeps these archive families out of age-based pruning. References to missing Plans in such an
+archive remain in the retained source evidence. Core resolves available relationships and refuses ambiguous matches.
+An archive remains importable after its verified publication's execution checkout has been removed. Its publication
+record remains evidence for cleanup.
 
 **Requirement: External Markdown Plans are first-class.** An external Markdown file becomes a canonical draft through
 explicit `wld plans import <file-or-folder>` or pathname `/load-plan`. Import preserves the source bytes and records its
@@ -3140,7 +3154,9 @@ validation work; it does not cache Plan contents, admit writers, or replace any 
 registries, staging, delivery evidence, diagnostics, backups, journals, and locks have explicit personal, repository,
 and checkout owners in the home Project tree. Linked worktrees share repository resources; linked clones retain
 separate attempts and Git authority. Copy verification and durable path publication precede retirement of unchanged
-sources. Dirty fallback worktrees and repair clones remain usable by Git. Normal external worktrees keep their paths.
+sources. Retirement checkpoints cover batches of files. After an interruption, relocation verifies the published
+copies for files retired since the last checkpoint before continuing. Dirty fallback worktrees and repair clones
+remain usable by Git. Normal external worktrees keep their paths.
 No runtime marker, alias, or internal directory remains under project `.wld/`. Unavailable home access preserves work
 and reports the prerequisite. Runtime relocation does not import canonical Plans or Work Records.
 

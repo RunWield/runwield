@@ -11,6 +11,7 @@ import {
     listPlanPackages,
     readPlanImportEvidence,
     renamePlanPackage,
+    restorePlanPackage,
     savePlanPackageDocument,
 } from "./plan-store/packages.ts";
 import { archivePlan } from "./plan-store/index.ts";
@@ -18,7 +19,7 @@ import { git } from "./shared/git-test-fixture.ts";
 import { enterProjectRuntime } from "./shared/project-runtime-layout.ts";
 import { addEntry, getWorktreeRegistryPath, updateEntry } from "./shared/worktree-registry.ts";
 
-import { createPublicationAttempt } from "./shared/workflow/publication-attempt.ts";
+import { advancePublicationAttempt, createPublicationAttempt } from "./shared/workflow/publication-attempt.ts";
 import { validationCheckpointCanResume, type ValidationCheckpoint } from "./shared/workflow/validation-checkpoint.ts";
 import { hasApplicablePublicationReceipt } from "./shared/workflow/publication-receipt.ts";
 
@@ -30,6 +31,82 @@ async function write(root: string, name: string, content: string) {
     await fs.writeFile(path, content);
     return path;
 }
+
+for (const controllerName of ["archived/closed", "archived/unrelated"]) {
+    test(`archive import checks the saved workflow name ${controllerName}`, async () => {
+        const f = await packageFixture();
+        try {
+            const source = await write(
+                f.root,
+                "archived/closed",
+                markdown("# Archived Plan\n", "archivedAt: '2020-02-01'\n"),
+            );
+            const controller = await seedPlanController(
+                f.root,
+                { planId: "active-plan", planName: controllerName },
+                {},
+            );
+            const saved = planFixtureControllerPath(f.root, { planId: "active-plan", planName: controllerName });
+            const original = await fs.readFile(saved, "utf8");
+            const result = await importPlanPackages(f.identity, source);
+            if (controllerName === "archived/closed") {
+                equal(result.kind, "committed", JSON.stringify(result));
+                const plan = await read(f.identity, "active-plan");
+                equal(plan.metadata.name, "closed");
+                ok(plan.metadata.archive);
+                const evidence = await readPlanImportEvidence(f.identity, plan.metadata.references.legacyImport!);
+                deepEqual(evidence.controller, controller);
+            } else {
+                equal(result.kind, "pending", JSON.stringify(result));
+                ok("message" in result && result.message.includes(source));
+                equal((await listPlanPackages(f.identity)).packages.length, 0);
+            }
+            equal(await fs.readFile(saved, "utf8"), original);
+        } finally {
+            await f.cleanup();
+        }
+    });
+}
+
+test("imports historical archive folders with missing dates and unavailable Plan references", async () => {
+    const f = await packageFixture();
+    try {
+        const a = "# First archived child\n";
+        const first = await write(
+            f.root,
+            "archived/old-folder/first",
+            markdown(a, "parentPlan: 'removed-parent'\ndependencies: ['removed-dependency']\n"),
+        );
+        await write(
+            f.root,
+            "archived/old-folder/second",
+            markdown("# Second archived child\n", "parentPlan: 'removed-parent'\ndependencies: ['first']\n").replace(
+                "active-plan",
+                "second-plan",
+            ),
+        );
+        const original = await fs.readFile(first, "utf8");
+        const result = await importPlanPackages(f.identity, dirname(first));
+        equal(result.kind, "committed", JSON.stringify(result));
+        equal((await listPlanPackages(f.identity)).packages.length, 0);
+        const plan = await read(f.identity, "active-plan");
+        equal(plan.metadata.archive?.archivedAt, "");
+        equal(plan.metadata.parentPlanId, null);
+        deepEqual(plan.metadata.dependencyPlanIds, []);
+        const evidence = await readPlanImportEvidence(f.identity, plan.metadata.references.legacyImport!);
+        equal(evidence.legacyFields.parentPlan, "removed-parent");
+        deepEqual(evidence.legacyFields.dependencies, ["removed-dependency"]);
+        equal(await fs.readFile(first, "utf8"), original);
+        const second = await read(f.identity, "second-plan");
+        deepEqual(second.metadata.dependencyPlanIds, ["active-plan"]);
+        const restored = await restorePlanPackage(f.identity, "active-plan", plan.metadata.revision);
+        ok(restored.archive?.restoredAt);
+        equal(restored.archive.archivedAt, "");
+    } finally {
+        await f.cleanup();
+    }
+});
+
 async function execution(status: "active" | "planning" = "active") {
     const f = await packageFixture();
     const source = await write(f.root, "active", markdown("# Stale primary\n"));
@@ -450,3 +527,55 @@ for (const foreignId of [false, true])
             await f.cleanup();
         }
     });
+
+test("an archived Plan keeps verified publication evidence after its execution checkout is gone", async () => {
+    const f = await execution();
+    try {
+        const { updatePublication } = await import("./shared/worktree-registry.ts");
+        const source = await write(
+            f.root,
+            "archived/active",
+            markdown("# Archived Plan\n", "archivedAt: '2026-01-01'\n").replace(
+                "status: implemented",
+                "status: verified",
+            ),
+        );
+        const attempt = createPublicationAttempt({
+            attemptId: "attempt",
+            planId: "active-plan",
+            planName: "active",
+            targetBranch: "main",
+            executionBranch: "execution",
+            executionCwd: f.path,
+            publicationRoot: join(f.root, "publication"),
+            validatedCommit: f.commit,
+            targetHeadAtSeal: f.commit,
+        });
+        const artifacts = advancePublicationAttempt(attempt, "artifacts_committed", {
+            artifactCommit: f.commit,
+            planPaths: ["docs/plans/active.md"],
+        });
+        const integrated = advancePublicationAttempt(artifacts, "target_integrated", {
+            targetBaseCommit: f.commit,
+            integrationCommit: f.commit,
+        });
+        const published = advancePublicationAttempt(integrated, "target_published", {
+            publicationMode: "local",
+            publishedCommit: f.commit,
+        });
+        const verified = advancePublicationAttempt(published, "publication_verified", {
+            verifiedAt: "2026-01-01",
+        });
+        await updatePublication(f.root, "attempt", null, verified);
+        await git(f.root, ["worktree", "remove", "--force", f.path]);
+        const registry = await fs.readFile(getWorktreeRegistryPath(f.root), "utf8");
+        const result = await importPlanPackages(f.identity, source);
+        equal(result.kind, "committed", JSON.stringify(result));
+        const plan = await read(f.identity, "active-plan");
+        const evidence = await readPlanImportEvidence(f.identity, plan.metadata.references.legacyImport!);
+        deepEqual(evidence.attempts[0].publication, verified);
+        equal(await fs.readFile(getWorktreeRegistryPath(f.root), "utf8"), registry);
+    } finally {
+        await f.cleanup();
+    }
+});

@@ -57,6 +57,41 @@ for (const boundary of ["copy", "copying", "verified", "published", "retirement"
         }
     });
 }
+
+test("home transfer verifies published files and resumes after multiple retirements without a checkpoint", async () => {
+    const root = await realpath(await fixture.checkout());
+    try {
+        const source = join(getRunWieldRuntimeDir(root), "internal", "debug");
+        await mkdir(source, { recursive: true });
+        for (const name of ["first", "second"]) await writeFile(join(source, name), name);
+
+        const interrupted = await run(root, "second-retirement");
+        equal(interrupted.code, 86, interrupted.output);
+        const layout = resolveProjectRuntimeLayout(root);
+        const checkpoint = JSON.parse(await readFile(layout.primary.layoutMigrationJournalPath, "utf8"));
+        equal(checkpoint.phase, "published");
+        equal(checkpoint.files.filter(({ retired }: { retired: boolean }) => retired).length, 0);
+        for (const name of ["first", "second"]) await rejects(() => lstat(join(source, name)), { code: "ENOENT" });
+
+        const destination = join(layout.primary.debugRoot, "second");
+        await writeFile(destination, "changed");
+        const blocked = await run(root);
+        ok(blocked.code !== 0, blocked.output);
+        ok(blocked.output.includes("Published runtime destination changed before retirement"), blocked.output);
+        equal(await readFile(destination, "utf8"), "changed");
+
+        await writeFile(destination, "second");
+        const resumed = await run(root);
+        equal(resumed.code, 0, resumed.output);
+        for (const name of ["first", "second"]) {
+            equal(await readFile(join(layout.primary.debugRoot, name), "utf8"), name);
+        }
+        await rejects(() => lstat(layout.primary.layoutMigrationJournalPath), { code: "ENOENT" });
+    } finally {
+        await rm(root, { recursive: true, force: true });
+    }
+});
+
 for (const boundary of ["copying", "marker"]) {
     test(`passive inspection survives transfer completion after observing the ${boundary} journal`, async () => {
         const root = await realpath(await fixture.checkout());
