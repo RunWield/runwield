@@ -11,7 +11,27 @@ https://github.com/plannotator/effective-html
 | 9        | Slash-command happy paths       | `/share` only tests missing gh; `/copy` only tests no assistant message.       | Successful sharing and copying, plus their real failure/retry paths.                                                                |
 | 10       | Validation branch precision     | Broad validation and repair coverage is extensive.                             | Independently prove human-review:none versus human-review:ask-skip; they currently share scenarios.                                 |
 
+- docs/plans/product-planner-sequence.md
+- and the 2 plannotator sessions:
+    - 01a20ee5-8feb-7060-bef6-c20905f8d9eb
+    - 01a2053d-6ff4-7151-9b45-8ba39fea83cb
+- acp-detachable-sessions.md
+- formal-model-publication-state-machine.md
 - epic-branch-publication-workflow.md
+
+## Factory
+
+How should a factory learn from failures?
+
+Start by classifying where the failure entered the loop:
+
+Failure Likely correction
+Wrong problem selected Improve Signal evidence or Intent decision rights
+Agent used stale architecture Fix Context freshness and source precedence
+Work expanded unexpectedly Narrow Plan scope, permissions, or stop conditions
+Tests passed but behavior failed Add a representative scenario or acceptance criterion to Prove
+Unsafe change reached users Tighten Judge and ship policy, rollout controls, or recovery
+Same correction recurs Graduate the lesson into a test, type, policy, template, skill, or field-guide entry
 
 ## Core PRD gaps: recommended implementation order
 

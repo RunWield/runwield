@@ -35,7 +35,7 @@ archivedFromPath: "docs/plans/attached-mode-claude-feature-preview/01-activate-a
 ## Context
 
 This is the first child of
-[RunWield Connect for Claude Code: FEATURE Preview](../../attached-mode-claude-feature-preview.md). Claude owns
+[RunWield Connect for Claude Code: FEATURE Preview](https://github.com/RunWield/runwield/blob/45b2519efcd0b3f96f299a6c3efb572fc835fbff/docs/plans/attached-mode-claude-feature-preview.md). Claude owns
 conversations and model turns. RunWield needs a durable coordinator that does not create a HostedSession and does not
 import a host transcript.
 
