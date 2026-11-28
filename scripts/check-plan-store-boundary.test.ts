@@ -271,6 +271,8 @@ test("only Plan owners and exact qualifications can select the retained checkout
     }
     for (const [file, operation] of [
         ["src/shared/workflow/execution-worktree-rescue.ts", "findMissingExecutionSnapshot"],
+        ["src/cmd/load-plan/plan-epic-flow.ts", "TargetBranchSnapshotUnavailableError"],
+        ["src/shared/workflow/epic-branch.ts", "TargetBranchSnapshotUnavailableError"],
         ["src/shared/workflow/planning-target.ts", "TargetBranchSnapshotUnavailableError"],
         ["src/shared/workflow/planning-worktree-inspection.test.ts", "TargetBranchSnapshotUnavailableError"],
     ]) {

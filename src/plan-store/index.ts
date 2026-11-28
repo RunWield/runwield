@@ -297,7 +297,7 @@ export {
 
 export { savePlanBodyById } from "./queries.ts";
 
-export { archivePlan, listPlanDocuments, readPlanMenuDocument } from "./queries.ts";
+export { archivePlan, readPlanMenuDocument } from "./queries.ts";
 
 export { readRetainedManagedExecution, type RetainedManagedExecution } from "./retained-managed-execution.ts";
 

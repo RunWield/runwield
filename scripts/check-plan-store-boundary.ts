@@ -218,7 +218,9 @@ function isWorkflowSnapshotImport(file: string, target: string, specifier: ts.No
     const name = (member.propertyName ?? member.name).text;
     return (
         (file === "src/shared/workflow/execution-worktree-rescue.ts" && name === "findMissingExecutionSnapshot") ||
-        ((file === "src/shared/workflow/planning-target.ts" ||
+        ((file === "src/cmd/load-plan/plan-epic-flow.ts" ||
+            file === "src/shared/workflow/epic-branch.ts" ||
+            file === "src/shared/workflow/planning-target.ts" ||
             file === "src/shared/workflow/planning-worktree-inspection.test.ts") &&
             name === "TargetBranchSnapshotUnavailableError")
     );
