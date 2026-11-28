@@ -10,6 +10,7 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const configuration = ts.readConfigFile(resolve(root, "tsconfig.bun.json"), ts.sys.readFile);
 const compilerOptions = ts.parseJsonConfigFileContent(configuration.config, ts.sys, root).options;
 const projectStoreSurface = "packages/plans/store.ts";
+const collaborationLock = "packages/plans/collaboration-lock.ts";
 const publicStoreErrors = new Set(["PlanNotFoundError", "StalePlanWriteError"]);
 const privateMembers = new Set([
     projectStoreSurface,
@@ -23,6 +24,7 @@ const privateMembers = new Set([
     "packages/plans/package-files.ts",
     "packages/plans/package-storage.ts",
     "packages/plans/operation-receipts.ts",
+    collaborationLock,
     "packages/plans/share-attempt-journal.ts",
     "packages/plans/project-store-binding.ts",
     "packages/plans/managed-project-binding.ts",
@@ -47,6 +49,23 @@ const managedExecutionAdoption = "packages/plans/managed-execution-adoption.ts";
 const executionRecovery = "packages/plans/execution-recovery.ts";
 const projectPlanFiles = "packages/plans/project-plan-files.ts";
 const projectStoreService = "src/plan-store/project-service.ts";
+const collaborationBypassCallers = new Set([
+    "src/cmd/plans/collaboration-commands.integration.test.ts",
+    "src/plan-store.test.ts",
+    "src/plan-store.ts",
+    "src/plan-store/collaboration/operation-state.ts",
+    "src/plan-store/collaboration/pull.ts",
+    "src/plan-store/collaboration/push.ts",
+    "src/plan-store/collaboration/share.ts",
+    "src/plan-store/collaboration/unshare.ts",
+    "src/plan-store/remote-operations.test.ts",
+    "src/shared/workflow/epic-branch-planning.integration.test.ts",
+    "src/shared/workflow/plan-document-authority.integration.test.ts",
+]);
+const collaborationLockUiImports: Readonly<Record<string, readonly string[]>> = {
+    "src/ui/review/plan-review.ts": ["assertSharedPlanWriteAllowed"],
+    "src/ui/workspace/server/plan-adapter.ts": ["isSharedPlanLocked", "SHARED_PLAN_LOCK_REPAIR", "SharedPlanLockError"],
+};
 const remoteBootstrap = "src/shared/remote/managed-project-owner.ts";
 const remoteBootstrapCallers = new Set([
     "src/shared/remote/entry.ts",
@@ -70,6 +89,21 @@ function ownerMember(path: string): boolean {
 }
 function relativeName(path: string): string {
     return relative(root, path).replaceAll("\\", "/");
+}
+
+function isCollaborationLockImport(file: string, specifier: ts.Node): boolean {
+    const statement = specifier.parent;
+    if (!ts.isImportDeclaration(statement) || statement.importClause?.name) return false;
+    const bindings = statement.importClause?.namedBindings;
+    if (!bindings || !ts.isNamedImports(bindings) || !bindings.elements.length) return false;
+    const uiImports = collaborationLockUiImports[file];
+    const qualified = PLAN_STORE_QUALIFICATIONS[file]?.modules.includes(collaborationLock);
+    return bindings.elements.every((member) => {
+        const name = (member.propertyName ?? member.name).text;
+        if (uiImports) return uiImports.includes(name);
+        if (name === "COLLABORATION_LOCK_BYPASS") return collaborationBypassCallers.has(file);
+        return qualified || (ownerMember(file) && !isTestCaller(file));
+    });
 }
 
 function isManagedStateFacadeExport(file: string, specifier: ts.Node): boolean {
@@ -277,6 +311,16 @@ export function inspectPlanStoreImports(file: string, source: string): PlanStore
                 line: parsed.getLineAndCharacterOfPosition(node.getStart(parsed)).line + 1,
                 message: "Execution recovery evidence is available only through its private host and reader.",
             });
+            return;
+        }
+        if (target === collaborationLock) {
+            if (!isCollaborationLockImport(file, node))
+                violations.push({
+                    file,
+                    line: parsed.getLineAndCharacterOfPosition(node.getStart(parsed)).line + 1,
+                    message:
+                        "Use the named shared Plan lock checks. Only collaboration operations can bypass the lock.",
+                });
             return;
         }
         if (

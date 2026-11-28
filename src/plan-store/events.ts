@@ -36,7 +36,7 @@ import {
     normalizeDeliveryEvidence,
     normalizeExecutionMode,
 } from "@runwield/plans/format";
-import { SHARED_PLAN_LOCK_REPAIR, SharedPlanLockError } from "../shared/collaboration/lock.ts";
+import { SHARED_PLAN_LOCK_REPAIR, SharedPlanLockError } from "@runwield/plans/collaboration-lock";
 import { runPlanLifecycleEventTransition, type TransitionResource, type TransitionResult } from "./transitions.ts";
 import { resolveWorkflowPlanLocation } from "./location.ts";
 import { hasRetainedCheckoutSource } from "@runwield/plans/retained-checkout";

@@ -1,11 +1,11 @@
 import { test } from "node:test";
-import { assertEquals, assertInstanceOf, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
+import { equal, match, throws } from "node:assert/strict";
 import {
     COLLABORATION_STATE_REMOTE_CANONICAL,
     normalizeCollaborationFrontMatter,
     type CollaborationFrontMatter,
-} from "@runwield/plans/format";
-import { assertSharedPlanWriteAllowed, SHARED_PLAN_LOCK_REPAIR, SharedPlanLockError } from "./lock.ts";
+} from "./format/collaboration.ts";
+import { assertSharedPlanWriteAllowed, SHARED_PLAN_LOCK_REPAIR, SharedPlanLockError } from "./collaboration-lock.ts";
 
 interface FixtureFrontMatter extends Omit<CollaborationFrontMatter, "collaborationRevision"> {
     collaborationRevision?: number | string;
@@ -14,31 +14,36 @@ interface FixtureFrontMatter extends Omit<CollaborationFrontMatter, "collaborati
 type FixtureFrontMatterNormalizer = (attrs?: FixtureFrontMatter) => CollaborationFrontMatter;
 
 test("shared plan lock fails closed for partial remote-canonical metadata", () => {
-    const error = assertThrows(
+    throws(
         () => assertSharedPlanWriteAllowed({ collaborationState: COLLABORATION_STATE_REMOTE_CANONICAL }),
-        SharedPlanLockError,
+        (error: Error) => {
+            equal(error instanceof SharedPlanLockError, true);
+            match(error.message, /remote-canonical/);
+            match(error.message, /Repair collaboration metadata/);
+            equal(error.message.includes(SHARED_PLAN_LOCK_REPAIR), true);
+            match(error.message, /wld plans pull/);
+            match(error.message, /wld plans push/);
+            match(error.message, /wld plans unshare/);
+            return true;
+        },
     );
-    assertStringIncludes(error.message, "remote-canonical");
-    assertStringIncludes(error.message, "Repair collaboration metadata");
-    assertStringIncludes(error.message, SHARED_PLAN_LOCK_REPAIR);
-    assertStringIncludes(error.message, "wld plans pull");
-    assertStringIncludes(error.message, "wld plans push");
-    assertStringIncludes(error.message, "wld plans unshare");
 });
 
 test("shared plan lock messages redact accidental URL fragments", () => {
-    const error = assertThrows(
+    throws(
         () =>
             assertSharedPlanWriteAllowed({
                 collaborationState: COLLABORATION_STATE_REMOTE_CANONICAL,
                 collaborationServerUrl: "https://plans.example.test/#key=secret&cap=bearer",
                 collaborationSpaceId: "space-1",
             }),
-        SharedPlanLockError,
+        (error: Error) => {
+            equal(error instanceof SharedPlanLockError, true);
+            equal(error.message.includes("#[redacted]"), true);
+            equal(error.message.includes("secret"), false);
+            return true;
+        },
     );
-    assertStringIncludes(error.message, "#[redacted]");
-    assertEquals(error.message.includes("secret"), false);
-    assertInstanceOf(error, SharedPlanLockError);
 });
 
 test("collaboration metadata normalizes non-secret front matter values", () => {
@@ -50,10 +55,10 @@ test("collaboration metadata normalizes non-secret front matter values", () => {
         collaborationBodyHash: " hash ",
         collaborationSyncedAt: " 2026-07-04T00:00:00.000Z ",
     });
-    assertEquals(attrs.collaborationServerUrl, "https://plans.example.test/base");
-    assertEquals(attrs.collaborationSpaceId, "space-1");
-    assertEquals(attrs.collaborationRevision, 3);
-    assertEquals(attrs.collaborationBodyHash, "hash");
+    equal(attrs.collaborationServerUrl, "https://plans.example.test/base");
+    equal(attrs.collaborationSpaceId, "space-1");
+    equal(attrs.collaborationRevision, 3);
+    equal(attrs.collaborationBodyHash, "hash");
 });
 
 test("collaboration metadata omits invalid server URLs instead of preserving secret fragments", () => {
@@ -61,6 +66,6 @@ test("collaboration metadata omits invalid server URLs instead of preserving sec
         collaborationServerUrl: "https://plans.example.test/base#contentKey=secret",
         collaborationSpaceId: "space-1",
     });
-    assertEquals(attrs.collaborationServerUrl, undefined);
-    assertEquals(attrs.collaborationSpaceId, "space-1");
+    equal(attrs.collaborationServerUrl, undefined);
+    equal(attrs.collaborationSpaceId, "space-1");
 });

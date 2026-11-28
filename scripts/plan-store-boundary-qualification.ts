@@ -6,6 +6,10 @@ export const PLAN_STORE_QUALIFICATIONS: Readonly<Record<string, { reason: string
         reason: "Verify archive and restore roll back earlier artifact moves after a destination collision.",
         modules: ["packages/plans/artifact-files.ts"],
     },
+    "packages/plans/collaboration-lock.test.ts": {
+        reason: "Check denial when collaboration metadata is incomplete and verify error redaction.",
+        modules: ["packages/plans/collaboration-lock.ts"],
+    },
     "packages/plans/execution-recovery.test.ts": {
         reason: "Verify scoped host recovery and replacement adoption against persisted attempt and checklist evidence.",
         modules: [
@@ -25,6 +29,10 @@ export const PLAN_STORE_QUALIFICATIONS: Readonly<Record<string, { reason: string
     "packages/plans/share-attempt-journal.test.ts": {
         reason: "Verify legacy share attempt recovery, receipt matching, and the locked callback lifetime.",
         modules: ["packages/plans/share-attempt-journal.ts"],
+    },
+    "src/cmd/plans/collaboration-commands.integration.test.ts": {
+        reason: "Arrange remote-canonical Plan state before exercising public collaboration commands.",
+        modules: ["packages/plans/collaboration-lock.ts"],
     },
     "src/cmd/load-plan/missing-directory-recovery.integration.test.ts": {
         reason: "Compare exact imported package bytes before/after public missing-checkout recovery, including deliberately replaced registry identity.",
@@ -95,8 +103,9 @@ export const PLAN_STORE_QUALIFICATIONS: Readonly<Record<string, { reason: string
         modules: ["src/plan-store/workflows.ts"],
     },
     "src/plan-store/remote-operations.test.ts": {
-        reason: "Seed a legacy owner receipt and retained publication, then verify replay and retention against exact owner evidence.",
+        reason: "Seed legacy owner receipts, retained publication and shared Plans, then verify replay against owner evidence.",
         modules: [
+            "packages/plans/collaboration-lock.ts",
             "packages/plans/operation-receipts.ts",
             "packages/plans/package-storage.ts",
             "src/plan-store/retention.ts",
@@ -108,7 +117,7 @@ export const PLAN_STORE_QUALIFICATIONS: Readonly<Record<string, { reason: string
     },
     "src/plan-store.test.ts": {
         reason: "Legacy owner unit qualification for parsing, journaled writes, identity, locks and archive persistence.",
-        modules: ["src/plan-store.ts", "src/plan-store/controllers.ts"],
+        modules: ["packages/plans/collaboration-lock.ts", "src/plan-store.ts", "src/plan-store/controllers.ts"],
     },
     "src/shared/attached/document-host-fixture.ts": {
         reason: "Separate-process MCP fixture admits a known real package and checks durable host-read evidence.",
@@ -163,6 +172,10 @@ export const PLAN_STORE_QUALIFICATIONS: Readonly<Record<string, { reason: string
     "src/shared/workflow/controller-registry.integration.test.ts": {
         reason: "Owner qualification for controller/registry authority, interrupted migration and execution document binding.",
         modules: ["src/plan-store.ts", "src/plan-store/controllers.ts", "src/plan-store/transitions.ts"],
+    },
+    "src/shared/workflow/epic-branch-planning.integration.test.ts": {
+        reason: "Arrange a shared child Plan to verify planning honors the owner's write lock.",
+        modules: ["packages/plans/collaboration-lock.ts"],
     },
     "src/shared/workflow/epic-review-context.test.ts": {
         reason: "Direct unit tests of private Integration Notes formatting; context reads and persistence use public operations.",
@@ -224,6 +237,14 @@ export const PLAN_STORE_QUALIFICATIONS: Readonly<Record<string, { reason: string
     "src/shared/workflow/package-work-record-recovery.test.ts": {
         reason: "Inspect durable publication manifests across interrupted Work Record copy/recording recovery.",
         modules: ["packages/plans/package-storage.ts"],
+    },
+    "src/shared/workflow/plan-document-authority.integration.test.ts": {
+        reason: "Arrange a shared Plan and verify a pull updates only the matching document revision.",
+        modules: ["packages/plans/collaboration-lock.ts"],
+    },
+    "src/shared/workflow/plan-lifecycle.test.ts": {
+        reason: "Recognize the shared Plan lock error returned by lifecycle operations.",
+        modules: ["packages/plans/collaboration-lock.ts"],
     },
     "src/shared/workflow/state-transition.test.ts": {
         reason: "Owner unit qualification for transition lock sets, revisions, compensation and interrupted effects.",

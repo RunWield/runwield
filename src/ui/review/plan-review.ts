@@ -17,7 +17,7 @@ import type { SequenceReviewDecision, SequenceReviewDocument } from "../../plan-
  * The browser surface is isolated here so core only requests a review.
  */
 
-import { assertSharedPlanWriteAllowed } from "../../shared/collaboration/lock.ts";
+import { assertSharedPlanWriteAllowed } from "@runwield/plans/collaboration-lock";
 import { isAnsweredPlanReview } from "../../shared/workflow/plan-review-recovery.ts";
 import { applySharedPlanReviewDecision } from "../../plan-store/index.ts";
 import { startPlanReviewSurface } from "./review-launcher.ts";

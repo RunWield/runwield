@@ -108,7 +108,7 @@ import {
 import { enter } from "@runwield/project-runtime";
 import { enterProjectRuntime } from "../shared/project-runtime-layout.ts";
 import { packageController } from "./workflows.ts";
-import { assertSharedPlanWriteAllowed } from "../shared/collaboration/lock.ts";
+import { assertSharedPlanWriteAllowed } from "@runwield/plans/collaboration-lock";
 import { canonicalizeStoredPlanName } from "@runwield/plans/format";
 import { getStoredPlanPath } from "../plan-store.ts";
 

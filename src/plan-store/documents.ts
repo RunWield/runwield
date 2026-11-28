@@ -17,7 +17,7 @@ import {
     assertSharedPlanWriteAllowed,
     isSharedPlanLocked,
     type CollaborationWriteOptions,
-} from "../shared/collaboration/lock.ts";
+} from "@runwield/plans/collaboration-lock";
 
 /** Save an edit against the exact context shown by a retained review. Storage checks stay with the owner. */
 export async function saveReviewedPlanDocument(planName: string, before: string, after: string): Promise<void> {

@@ -38,7 +38,7 @@ import {
 import { ensurePlanIdentity } from "./index.ts";
 import { findPlansByParent, loadPlan } from "./queries.ts";
 import type { PlanFrontMatter } from "@runwield/plans";
-import { assertSharedPlanWriteAllowed } from "../shared/collaboration/lock.ts";
+import { assertSharedPlanWriteAllowed } from "@runwield/plans/collaboration-lock";
 import { stripRuntimeFields } from "@runwield/plans/controller-state";
 import { buildPlanEventUpdates, reopensReviewOnEdit } from "@runwield/plans/lifecycle";
 import { loadPlanActionEvidence } from "../shared/workflow/plan-actions.ts";

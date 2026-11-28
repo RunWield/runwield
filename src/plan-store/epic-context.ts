@@ -26,7 +26,7 @@ import { isGitRepository } from "../shared/git.ts";
 import { resolveWorkflowPlanLocation } from "./index.ts";
 import { prepareTargetBranchPlansByParent } from "../shared/workflow/planning-worktree.ts";
 import type { ReviewIntegrationNote } from "@runwield/tools";
-import { SharedPlanLockError } from "../shared/collaboration/lock.ts";
+import { SharedPlanLockError } from "@runwield/plans/collaboration-lock";
 
 /** The Epic a child belongs to, and the request section that describes it. */
 export interface EpicReviewContext {

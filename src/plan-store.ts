@@ -456,7 +456,7 @@ import {
     writeControllerState,
 } from "./plan-store/controllers.ts";
 
-import { assertSharedPlanWriteAllowed, COLLABORATION_LOCK_BYPASS } from "./shared/collaboration/lock.ts";
+import { assertSharedPlanWriteAllowed, COLLABORATION_LOCK_BYPASS } from "@runwield/plans/collaboration-lock";
 
 import { moveCheckoutEpicArtifacts } from "@runwield/plans/artifact-files";
 

@@ -3058,7 +3058,7 @@ and SSH access to a trusted development server. The qualified live combination i
 x64 (`sct`), `openai-codex/gpt-5.6-luna` through Pi**. Linux ARM64 remote runtimes are supported through the native SSH
 release gate with a **synthetic provider**, not a real-provider ARM64 journey. Other glibc distributions with the stated
 prerequisites are expected to work but are untested. This matrix does not qualify other providers or laptop platforms.
-[Qualification evidence](../plans/remote-ssh-development/manual-qa.md#third-owner-packet-drop-and-real-saved-continuation-2026-10-30)
+[Qualification evidence](https://github.com/RunWield/runwield/blob/45b2519efcd0b3f96f299a6c3efb572fc835fbff/docs/plans/remote-ssh-development/manual-qa.md#third-owner-packet-drop-and-real-saved-continuation-2026-10-30)
 keeps original build identities, affected-path reruns, historical failures, and remaining validation limits separate.
 It is not publication or proof that every recovery path is mature.
 
@@ -3475,7 +3475,7 @@ remote project.
 artifact registration, Plan Associations, review references, saved-record reads, and segment rollover. A successor starts
 under a fresh operation without releasing the laptop’s native writer lock; stale predecessor requests are refused.
 [Remote connection](#remote-connection) owns matrix qualification; the
-[qualification record](../plans/remote-ssh-development/manual-qa.md) separates automated save faults from live journeys.
+[qualification record](https://github.com/RunWield/runwield/blob/45b2519efcd0b3f96f299a6c3efb572fc835fbff/docs/plans/remote-ssh-development/manual-qa.md) separates automated save faults from live journeys.
 
 **Requirement: A remote append returns only after its exact bytes are saved on the laptop.**
 
@@ -3509,7 +3509,7 @@ Rollover retains laptop ownership while committing predecessor evidence and succ
 - Given an execution or semantic-repair rollover, the successor is saved in the remote project's laptop Session
   directory with identity, continuation, and lineage. Resume selects that successor; history includes sealed segments.
 
-**Qualification records:** The [Remote SSH manual QA record](../plans/remote-ssh-development/manual-qa.md) retains
+**Qualification records:** The [Remote SSH manual QA record](https://github.com/RunWield/runwield/blob/45b2519efcd0b3f96f299a6c3efb572fc835fbff/docs/plans/remote-ssh-development/manual-qa.md) retains
 conversation, image, save-bridge, workflow, and recovery evidence with original build IDs and provider limits. These
 records do not extend the [qualified matrix](#remote-connection) or claim power-loss durability. Run
 `bun run src/shared/remote/verify-remote-session-save.ts` for the owned-scratch SSH save qualification.

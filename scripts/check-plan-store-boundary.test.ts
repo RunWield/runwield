@@ -92,6 +92,50 @@ test("tests in the Plan owner directory require exact driver qualification", () 
     equal(inspectPlanStoreImports("src/plan-store/operations.test.ts", specifier).length, 0);
 });
 
+test("only collaboration operations and qualified fixtures can import the shared Plan lock bypass", () => {
+    const entry = "@runwield/plans/collaboration-lock";
+    const bypass = `import { COLLABORATION_LOCK_BYPASS as bypass } from "${entry}";`;
+    const check = `import { assertSharedPlanWriteAllowed } from "${entry}";`;
+    const review = "src/ui/review/plan-review.ts";
+    const workspace = "src/ui/workspace/server/plan-adapter.ts";
+    const share = "src/plan-store/collaboration/share.ts";
+    equal(inspectPlanStoreImports(share, bypass).length, 0);
+    equal(inspectPlanStoreImports("src/cmd/plans/collaboration-commands.integration.test.ts", bypass).length, 0);
+    equal(inspectPlanStoreImports("packages/plans/collaboration-lock.test.ts", check).length, 0);
+    equal(inspectPlanStoreImports("src/plan-store/access.ts", check).length, 0);
+    equal(inspectPlanStoreImports("packages/plans/project-plan-files.ts", check).length, 0);
+    equal(inspectPlanStoreImports(review, check).length, 0);
+    equal(
+        inspectPlanStoreImports(
+            workspace,
+            `import { isSharedPlanLocked, SHARED_PLAN_LOCK_REPAIR, SharedPlanLockError } from "${entry}";`,
+        ).length,
+        0,
+    );
+    for (const file of [
+        review,
+        workspace,
+        "src/plan-store/access.ts",
+        "src/plan-store/collaboration/sharing.ts",
+        "src/plan-store/unqualified.test.ts",
+        "src/tools/example.ts",
+        "packages/plans/collaboration-lock.test.ts",
+        "packages/plans/project-plan-files.ts",
+    ]) {
+        equal(inspectPlanStoreImports(file, bypass).length, 1, file);
+    }
+    equal(inspectPlanStoreImports("src/tools/example.ts", check).length, 1);
+    for (const source of [
+        `import * as lock from "${entry}";`,
+        `await import("${entry}");`,
+        `export { COLLABORATION_LOCK_BYPASS } from "${entry}";`,
+        'export * from "../../../packages/plans/collaboration-lock.ts";',
+    ]) {
+        equal(inspectPlanStoreImports(review, source).length, 1, source);
+        equal(inspectPlanStoreImports(share, source).length, 1, source);
+    }
+});
+
 test("the public Project Plan store excludes driver values", async () => {
     const file = "packages/plans/store.ts";
     for (const source of [

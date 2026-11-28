@@ -72,7 +72,7 @@ import {
     resolvePlan,
     restoreArchivedPlan,
 } from "./shared/testing/plan-query-fixture.ts";
-import { COLLABORATION_LOCK_BYPASS, SharedPlanLockError } from "./shared/collaboration/lock.ts";
+import { COLLABORATION_LOCK_BYPASS, SharedPlanLockError } from "@runwield/plans/collaboration-lock";
 
 type PlanOrderingFixture = [string, PlanFrontMatter["classification"], PlanFrontMatter["status"]];
 
