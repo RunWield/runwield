@@ -1630,7 +1630,7 @@ export async function appendManagedEpicQa(
 export async function importManagedPlans(
     cwd: string,
     selection: string,
-    options: import("./import-source.ts").PlanImportOptions = {},
+    options: import("@runwield/plans/package-storage").PlanImportOptions = {},
 ) {
     return await withManagedProjectConnection(async () => {
         const completed = await mutateManagedPlan(cwd, {

@@ -9,7 +9,7 @@ import { importPlanPackages } from "./import-packages.ts";
 import { enterProjectRuntime } from "@runwield/project-runtime/layout";
 import { writeJsonAtomically } from "../shared/private-json-file.ts";
 import { getExactProjectCustomSetting, setExactProjectCustomSetting } from "../shared/settings.ts";
-import type { PlanImportIssue, PlanImportOptions } from "./import-source.ts";
+import type { PlanImportIssue, PlanImportOptions } from "@runwield/plans/package-storage";
 
 export class PlanImportRefusedError extends Error {
     constructor(readonly issue: PlanImportIssue) {

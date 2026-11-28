@@ -38,7 +38,6 @@ interface SelectedImportSource {
     authorityKind: LegacyImportEvidence["authorityKind"];
 }
 import type { PlanImportOptions } from "@runwield/plans/package-storage";
-export type { PlanImportOptions, PlanImportIssue } from "@runwield/plans/package-storage";
 
 class PlanImportSourceIssue extends Error {
     constructor(

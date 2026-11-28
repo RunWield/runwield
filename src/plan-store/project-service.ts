@@ -19,7 +19,7 @@ import { HISTORY_PAGE_CHARS } from "../shared/remote/project-store-protocol.ts";
 import { listPlanPackages } from "@runwield/plans/package-storage";
 import { projectPlanAuthoring } from "@runwield/plans/project-plan-authoring";
 import { projectPlanFiles } from "@runwield/plans/project-plan-files";
-import type { PlanImportOptions } from "./import-source.ts";
+import type { PlanImportOptions } from "@runwield/plans/package-storage";
 import type { RetainedFamilyRequest, RetainedFamilyCheckpoint } from "./retained-family.ts";
 import { readPlanRecordingContext, type PlanRecordingContext } from "./recording.ts";
 import type {

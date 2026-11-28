@@ -35,8 +35,8 @@ Tools, Agents, Projects, and the [Plan document and lifecycle package](https://g
 | 1. `packages/tools`           | Own built-in tool names, descriptions, parameter schemas, and computation over tool input. Expose typed results alongside the operation that produces them. Keep execution against live resources in their existing owners. Every tool can be used independently of agent definitions. Tools that operate on Plans or workflow state call the owning domain operation. The triage function takes fields and returns a JSON value. The calling adapter owns tool registration and dispatch. | Compare tool inventory, exposure, validation errors, result envelopes, and completion behavior for each existing caller. Exercise triage directly with no Session or model.                                     |
 | 2. `packages/agents`          | Load the bundled role definitions, resolve project/user overrides, and assemble the effective prompts and declared tool names. Export the effective role, instructions, model preferences, and allowed names. The runtime binds those names to available implementations.                                                                                                                                                                                                                  | Compare effective prompts, override precedence, and tool lists in source and compiled `wld`. Keep prompt tuning as a separately reviewed behavior change.                                                       |
 | 3. `packages/projects`        | Own the stable `ProjectId`, project registration and lookup, and checkout bindings. Expose the existing register, list, get-by-ID, and relink operations.                                                                                                                                                                                                                                                                                                                                  | Open an existing registration through Workspace and factory setup. Both must return the original ID, including for a project with zero Plans. Relink a moved checkout and confirm it still resolves to that ID. |
-| 4. `packages/plans`           | Open the Plan store with the resolved `ProjectId`. Own `PlanId`, the store, and Plan lifecycle. Expose create, read, edit, list, apply lifecycle event, archive, and restore. Own Work Record persistence, Plan history, artifact content and references, and publication copies. Keep lifecycle rules, Work Records, artifact APIs, and storage drivers as modules inside this package. The workflow asks Plans to apply an event to a particular Plan revision.                          | Load and edit existing Plans, approve and restore through current entry points, and read their Work Records and artifact links. Preserve IDs, layout, conflict handling, and delivered files.                   |
-| 5. `packages/workflow`        | Own the state of a workflow attempt. Expose starting/resuming an attempt, accepting a completion report, answering an interaction, and reading progress and outstanding work. Apply the existing routing, validation, repair, review, and publication rules. Return the recorded next action or result to the caller.                                                                                                                                                                      | Replay existing workflow events and receipts. Check that repeated completion and interrupted publication resume the same attempt and that the same evidence is required to finish.                              |
+| 4. `packages/plans`           | Bind the Plan store and lifecycle to the resolved `ProjectId`. The store serves ordinary reads and edits. The lifecycle applies Plan transitions through the store, including approvals and feedback. Plans also owns `PlanId`, Work Record persistence, milestone history, artifact content and references, and publication copies. Workflow asks the Plan lifecycle to apply a transition to a particular Plan revision.                          | Load and edit existing Plans, approve and restore through current entry points, and read their Work Records and artifact links. Preserve IDs, layout, conflict handling, and delivered files.                   |
+| 5. `packages/workflow`        | Own the state of a workflow attempt. Expose starting/resuming an attempt, accepting a completion report, answering an interaction, and reading progress and outstanding work. Apply the existing routing, validation, repair, Code Review, and publication rules for the attempt. Return the recorded next action or result to the caller.                                                                                                                                                                      | Replay existing workflow events and receipts. Check that repeated completion and interrupted publication resume the same attempt and that the same evidence is required to finish.                              |
 | 6. `packages/pi-ai`           | Wrap the existing model registry, provider/model resolution, execution settings, and mapping between RunWield inputs/results and Pi turns/tools. Keep Pi-specific types and provider errors behind these exports. Provide the existing coding-agent and MCP bindings as integration modules.                                                                                                                                                                                               | Compare selected model, tool arguments/results, cancellation, streaming events, and credential lookup for the same configuration. Keep the current Pi dependency versions during extraction.                    |
 | 7. `packages/session-runtime` | Keep SessionHost and SessionRuntime together. Expose create/load, prompt, steer, cancel, observe, snapshot, answer, and dispose. Own live session identity, writer lifetime, queues, transcript access, and interactions. Compose agents, tools, model execution, and the workflow owner.                                                                                                                                                                                                  | Resume an existing session through the TUI and ACP. Verify event order, selected agent, active-turn ownership, cancellation, and disconnection behavior.                                                        |
 | 8. `packages/acp`             | Export the reusable ACP client/server bindings, capability negotiation, wire schemas, extension codecs, and mapping between ACP requests and RunWield operations. The caller supplies the runtime and transport. Keep stdio startup and process lifetime in the ACP app.                                                                                                                                                                                                                   | Run the existing client/server protocol checks against the normal executable. Compare advertised capabilities, structured factory results, request errors, and session updates.                                 |
@@ -205,9 +205,9 @@ continues to own manifests, restoration, writes and writer lifetime.
 
 ## Plans document and lifecycle contract
 
-A consumer imports `plans` from `@runwield/plans`. These operations run on the supplied document in memory.
-The store uses the document codec during authoring and the lifecycle rules when it commits an event. Workspace uses them to present the actions available
-for the current status. [Package entry point](../../packages/plans/index.ts)
+The `plans` export from `@runwield/plans` provides in-memory operations. The store uses the document codec during
+authoring. Workspace uses the lifecycle rules to show the actions available for the current status.
+[Package entry point](../../packages/plans/index.ts)
 
 | Operation                                            | Result                                                                                                                                                     |
 | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -216,7 +216,66 @@ for the current status. [Package entry point](../../packages/plans/index.ts)
 | `plans.documents.revision(markdown)`                 | Returns the existing content revision used by the store for optimistic concurrency.                                                                        |
 | `plans.identity.parse(value)` and `isValid(value)`   | Normalize a stored Plan ID or check whether a string is already canonical. IDs remain scoped to the Project. Historical non-UUID Plan IDs remain readable. |
 | `plans.lifecycle.actionsFor(status, fields)`         | Returns available manual actions and reasons for blocked actions.                                                                                          |
-| `plans.lifecycle.changesFor(event, status, details)` | Validates a lifecycle event and returns its metadata changes. The store checks the observed revision and persists the result.                              |
+| `plans.lifecycle.changesFor(event, status, details)` | Checks the given event and status and returns the metadata changes in memory.                              |
+
+### Project-bound Plan lifecycle (proposed)
+
+Today `store.applyEvent(planId, request)` checks the observed revision and calls `recordPlanEvent` under `src/`.
+It accepts `review_approved` and `review_feedback` as basic events. Live review uses `applySharedPlanReviewDecision`
+under `src/plan-store` to check the reviewed source and save the review content and event together on canonical Plans.
+The managed path sends a `review-decision` command to the owner and uses the same decision logic there.
+[Basic events](../../src/plan-store/project-plans.ts) · [Live review](../../src/plan-store/review.ts) ·
+[Managed review](../../src/plan-store/managed.ts) · [Owner dispatch](../../src/plan-store/project-service.ts)
+
+Apps bind the lifecycle and store to the same admitted Project and Plan owner.
+
+```text
+Plan transitions    Apps or Workflow → Plan lifecycle → Plan store → Storage driver
+Ordinary Plan I/O   Apps or Workflow → Plan store → Storage driver
+```
+
+The Plan lifecycle owns the complete transition. It reads saved state, checks the event and its evidence, and asks the
+Plan store to persist the resulting state and content. Plans coordinates any milestone history, Plan-side commits,
+locks, journals, receipts, and recovery required by the existing operation. Apps submit the user's intent and use the
+result. Workflow owns its execution attempt and publication transitions and calls the Plan lifecycle when those
+operations change a Plan. Ordinary reads and edits use the store, including its existing review invalidation on a
+meaningful edit. [Core Plan lifecycle](../prd/runwield-core-prd.md#plan-lifecycle)
+
+For public interface review, expose `lifecycle.applyEvent(planId, request)` to apply one event against the observed
+Plan revision. The basic branch reuses `ApplyProjectPlanEvent` with `event` narrowed to
+`Exclude<PlanEvent, "review_approved" | "review_feedback">`. Both review branches require the displayed version and
+accept the applicable fields of the existing decision, such as the approval action, feedback, submitted Markdown,
+and question answers. The event identifies approval or feedback. Return the committed revision and the existing
+caller-visible outcome, including when a stale review needs refreshing or recovery is required. Confirm the Project
+binding and how the displayed version refers to the source retained by Plans before moving code.
+[Existing event request](../../packages/plans/store.ts) · [Decision and result](../../src/plan-store/review.ts)
+
+The lifecycle uses the existing review context to choose individual or grouped Sequence review. It checks the
+retained source for the displayed version and, for a Sequence, every reviewed member. Reject a missing or stale
+source before writing anything, including a review event submitted using the basic request shape. Preserve the existing tolerance for formatting-only
+changes where supported. Plans resolves trusted classification, work kind, package input, controller revision,
+status, and worktree evidence from their existing owners. Plans keeps review evidence and recovery bookkeeping
+behind the lifecycle and store. [Review preparation](../../src/plan-store/review-snapshots.ts) ·
+[Grouped review](../../src/plan-store/sequence-review.ts)
+
+Keep basic review event writes private to existing paths. Retained-checkout review uses them after validating and
+writing the reviewed content. The authenticated managed `record-event` command also accepts these events today,
+and existing managed fixtures exercise that path. Keep any required compatibility in the private write path. Managed
+app review goes through the lifecycle to the bound owner using `review-decision` or `sequence-decision`. [Retained checkout review](../../src/plan-store/review.ts) ·
+[Managed protocol](../../src/shared/remote/project-store-protocol.ts) · [Owner dispatch](../../src/plan-store/project-service.ts)
+
+Archive and catalog restore are lifecycle operations. Expose `lifecycle.archive(planId, options)` with the existing
+`ArchiveProjectPlan` options and `lifecycle.restore(planId, expectedRevision)` to return the same Plan ID to the active
+catalog. Both call the store and driver. `store.history.restore(planId, version, expectedRevision)` restores the
+contents of a historical version and follows the existing review invalidation rules. [Store signatures](../../packages/plans/store.ts)
+
+Preserve the existing review outcomes across local and managed stores, including retained checkouts. Approval saves
+the reviewed content with Plan Questions resolved, retains approved input, and captures the approval milestone where
+required. Feedback saves the submitted content and leaves questions open. A conversation turn remains a chat or
+ordinary edit, with the existing rules for reopening review after a meaningful edit. Cancellation leaves the Plan
+unchanged. Preserve existing readiness and approval follow-up for each caller. Replaying a retained operation after
+interruption or a lost response must keep the same reviewed content and avoid repeating the decision or milestone. [Core Plan review](../prd/runwield-core-prd.md#plan-review) ·
+[Readiness follow-up](../../src/plan-store/review.ts) · [Sequence review](../../src/plan-store/sequence-review.ts)
 
 ## Project-bound Plan Store
 
@@ -234,10 +293,10 @@ Import the `ProjectPlanStore` contract, `StalePlanWriteError`, and the retained 
 | `read`, `readArchived` | The Plan ID                                                                                | The saved Plan in the requested collection.                                                       |
 | `editBody`             | Plan ID, new body, observed revision                                                       | Updated prose and revision.                                                                       |
 | `revise`               | Plan ID, observed revision, authored prose, validation instructions, and definition fields | An authored revision of the same Plan. The store checks identity, revision, and review locks.     |
-| `applyEvent`           | Plan ID, named lifecycle event, observed revision, and any required event evidence         | The persisted lifecycle result.                                                                   |
-| `archive`, `restore`   | Plan ID and observed revision                                                              | An archived or restored Plan with its original ID.                                                |
+| `applyEvent`           | Plan ID, named lifecycle event, observed revision, and any required event evidence         | The persisted lifecycle result. This is today's basic event write.                                 |
+| `archive`, `restore`   | Plan ID and observed revision, plus optional archive reason and `force`                    | An archived or restored Plan with its original ID. The proposed lifecycle calls these operations. |
 
-Plans owns the opener options, Project and personal-owner checks, and the retained checkout scope for explicit import and original execution. The Plans filesystem driver owns canonical package reads and writes, catalog and Plan locks, revision checks, immutable workflow inputs and controller evidence, and recovery of package writes and operation receipts. The application still opens the configured local or managed store and coordinates its workflow operations. For explicit import, the application observes and revalidates the checkout or SSH source while the Plans driver holds the existing locks and commits the resulting import evidence.
+Plans owns the opener options, Project and personal-owner checks, and the retained checkout scope for explicit import and original execution. The Plans filesystem driver owns canonical package reads and writes, catalog and Plan locks, revision checks, immutable workflow inputs and controller evidence, and recovery of package writes and operation receipts. Today the application opens the configured local or managed store and coordinates workflow operations. For explicit import, the application observes and revalidates the checkout or SSH source while the Plans driver holds the existing locks and commits the resulting import evidence.
 
 Desktop, TUI, ACP and worker callers read a Plan by its stable ID with `store.read(planId)`. For a Plan imported
 during an active local run, the private Plans reader verifies the original attempt, repository, branch and checkout
@@ -262,8 +321,11 @@ its original payload. A completed retry returns the saved result even after a la
 The public store and `plan_written` keep their create and revise methods. Local authoring and the legacy local
 save path use the same canonical write. [Authoring filesystem driver](../../packages/plans/project-plan-authoring.ts)
 
-Plans owns the canonical operation receipt files and validates the retained operation identity before completion. The application owns typed command result files, including `sequence-review-results/<operationId>.json`. It reads the retained Sequence decision and passes its operation identity, digest, Plan ID, and revision to Plans to settle the canonical receipt.
-The host coordinates milestone capture with the lifecycle event that makes the version visible.
+Plans owns the canonical operation receipt files and validates the retained operation identity before completion. Today
+host code under `src/plan-store` writes typed command results, including `sequence-review-results/<operationId>.json`,
+and coordinates milestone capture and receipt settlement. The extraction moves these Plan transition steps behind the
+project-bound lifecycle. [Current operation results](../../src/plan-store/operation-results.ts)
+
 Plans also decides whether a change to reviewed text, definition, or family references reopens approval. Authoring,
 document edits, and history restore use the same comparison and commit the review update with the changed data.
 Callers comparing a saved review source import `reviewSourceStillMatches` from `@runwield/plans/review-markdown`.
@@ -310,7 +372,7 @@ A caller opens the Project Plan Store once, then uses its `history` collection w
 
 Lifecycle operations trigger capture on approval, delivery, closure, and archive. The store assigns the version. Restore keeps the current Plan identity and delivery evidence and reopens review when changed content requires it. Managed callers use the personal owner’s store and its existing restore receipts. [Core milestone requirements](../prd/runwield-core-prd.md#plan-lifecycle)
 
-Plans owns local catalog selection, milestone reads, and atomic document restoration. The host settles interrupted
+Plans owns local catalog selection, milestone reads, and atomic document restoration. Today the host settles interrupted
 Sequence approvals before returning history. Before restoring a milestone, the host checks live controller state
 with the Plans collaboration guard. Plans reopens review when the restored documents change reviewed content.
 
@@ -332,7 +394,7 @@ Use `store.publicationCopies.read(reference)` with the retained reference from a
 | Workspace Board, sidebar, attention dashboard, and search    | Read each registered Project through its active Projects registration. Each surface owns its presentation and joins with Session or Git state.                                                                       |
 | Workspace Plan review, progress, usage, documents, and edits | Open the requested Project for the entire operation, including lookups that take only a Plan ID or resource name. Two Projects may have the same imported Plan ID.                                                   |
 | Hosted and attached `plan_written`                           | Bind the Session or attached request to its Project, then create or revise by Plan ID. Sequence child decisions use the captured child IDs. Retained execution continues through its admitted source.                |
-| Core CLI, Session, and workflow operations                   | Use the project-bound host document reader for Markdown, file locations, and workflow evidence. Named commands own transaction locks, attempt recovery, archive-by-name compatibility, and publication evidence.     |
+| Core CLI, Session, and workflow operations                   | Use the project-bound store for Plan reads and edits and the lifecycle for Plan transitions as each caller migrates. Commands retain archive-by-name compatibility. Workflow owns attempt recovery and publication evidence.     |
 
 The Tools registry owns schemas and pure results. The Agent registry owns role IDs and definitions. The host constructs the registry using the bundled assets. Projects owns checkout identity and registration. Plan types, document formats, and lifecycle rules come directly from Plans. The package import check also rejects application re-exports of those domains.
 
@@ -347,7 +409,7 @@ A client opens a Workflow for the selected Plan in its Project. Starting or resu
 | Interactive Session, TUI and ACP | The Session presents agent handoffs and prompts. Workflow interprets accepted triage, planning and implementation outcomes. The Tools registry still returns a structured triage report independently. |
 | Attached coordinator | The host executes agent turns. Workflow advances validation, accepts the host’s review or repair report, and checks an interaction answer against its saved request. |
 | Tool adapters and Session runners | Publish, claim, wait for and settle typed reports through a Session-bound queue. An accepted root report stays in the existing Session outbox until settled. Isolated agent reports keep their invocation scope. |
-| Publication and recovery | Open the publication attempt in its Project to prepare copies, advance with evidence, reconcile or finish cleanup. Plans supplies the frozen documents. Workflow owns the transition and its receipt. |
+| Publication and recovery | Open the publication attempt in its Project to prepare copies, advance with evidence, reconcile or finish cleanup. Plans supplies the frozen documents. Workflow owns the publication transition and its receipt. |
 
 The interface pass retains the existing file-backed Plan checkpoints, Session outbox and publication receipts. New worktree completion receipts can also record the implementation commit. A retry of an older completed worktree with no recorded commit leaves later edits alone and returns no commit ID. Worktree and Git operations, Plan Store binding, the validation engine and Session execution still use runtime code under `src/`. The next pass moves those implementations to their owners. [Workflow events](../../packages/workflow/events.ts) · [Routing](../../packages/workflow/routing.ts) · [Publication](../../packages/workflow/publication-runtime.ts)
 
@@ -401,8 +463,8 @@ first. Track new drivers in follow-up implementation work so each package move c
 | Owner                              | Existing behavior to preserve during extraction                                                                                                                                                                                                          | Driver direction after extraction                                                                                                                                                                                                                         |
 | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Projects                           | Preserve Core project identity admission, checkout bindings and the existing Workspace registry.                                                                                                                                                         | Keep the Projects API independent of the Plan storage driver. Hosted identity persistence can evolve behind that API.                                                                                                                                     |
-| Plans                              | Personal Markdown Plans, existing metadata and revision rules, Work Records, related artifacts, and repository delivery copies. Preserve the merged external store, including managed-remote owner selection, canonical revisions and checkout identity. | Local Markdown/filesystem driver and hosted PostgreSQL driver expose the same Plan, lifecycle, Work Record, and artifact operations.                                                                                                                      |
-| Workflow                           | Existing checkpoints, accepted event history, pending actions, and publication receipts.                                                                                                                                                                 | Keep the personal file-backed driver. SQLite is an option for transactional worker checkpoints. A hosted PostgreSQL driver records event acceptance, next state, and pending effects together. Workflow remains the sole transition owner across drivers. |
+| Plans                              | Personal Markdown Plans, existing metadata and revision rules, Work Records, related artifacts, and repository delivery copies. Preserve the merged external store, including managed-remote owner selection, canonical revisions and checkout identity. | The local Markdown/filesystem driver and future hosted PostgreSQL driver sit behind the same Plan store. The Plans package owns Plan lifecycle across drivers.                                                                                                                      |
+| Workflow                           | Existing checkpoints, accepted event history, pending actions, and publication receipts.                                                                                                                                                                 | Keep the personal file-backed driver. SQLite is an option for transactional worker checkpoints. A hosted PostgreSQL driver records event acceptance, next state, and pending effects together. Workflow owns its execution and publication transitions across drivers. |
 | Session Runtime and Pi integration | Existing Session bundles, transcripts, restore behavior, and the factory's current operation receipts.                                                                                                                                                   | Session Runtime owns session identity and history. A later Pi Durable worker can reopen its execution journal on its PVC. Pin the harness version and reconcile external writes using the existing effect receipts.                                       |
 
 **Project identity and storage binding.** Extract Core identity admission and the existing owner registry operations into

@@ -17,11 +17,12 @@ import { rm as fsRm } from "node:fs/promises";
 
 import { join, relative } from "node:path";
 import { parsePlanFrontMatter, projectPlanType, isPlannedChangeClassification } from "@runwield/plans/format";
-import { ensurePlanIdentity, listPlanDocuments, planDocumentsForCheckout } from "../../plan-store/index.ts";
+import { ensurePlanIdentity, listSelectablePlanDocuments, planDocumentsForCheckout } from "../../plan-store/index.ts";
 import type { PlanFrontMatter } from "@runwield/plans";
 import { isGitRepository } from "../git.ts";
 import { prepareTargetBranchRef, resolveTargetBranchName } from "../worktree.ts";
-import { resolveExistingTargetSnapshot, TargetBranchSnapshotUnavailableError } from "./planning-target.ts";
+import { resolveExistingTargetSnapshot } from "./planning-target.ts";
+import { TargetBranchSnapshotUnavailableError } from "@runwield/plans/retained-checkout";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { listPlanExecutionDocuments } from "../../plan-store/index.ts";
 import { listEntries as listWorktreeRegistryEntries } from "../worktree-registry.ts";
@@ -338,7 +339,7 @@ export async function resolveChildEpicExecutionBranch(
     projectRoot: string,
     parentName: string,
 ): Promise<string | undefined> {
-    const plans = await listPlanDocuments(projectRoot);
+    const plans = await listSelectablePlanDocuments(projectRoot);
     const parent = plans.find((plan) => plan.name === parentName);
     if (!parent || !isProjectEpic(parent.attrs)) return;
     const namedBranch = epicTargetBranch(parent.attrs);

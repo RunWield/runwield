@@ -19,7 +19,7 @@ import {
 import {
     planDocumentsForCheckout,
     hasCanonicalPlanAccess,
-    listPlanDocuments,
+    listSelectablePlanDocuments,
     recordPlanEvent,
 } from "../../plan-store/index.ts";
 import { isInValidation } from "@runwield/plans/lifecycle";
@@ -31,7 +31,7 @@ import {
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../../shared/work-records/mnemoteca-port.ts";
 import { defaultEpicBranchName, readLegacyEpicBranch } from "../../shared/workflow/epic-branch.ts";
 import { findTargetBranchPlansByParent } from "../../shared/workflow/planning-worktree.ts";
-import { TargetBranchSnapshotUnavailableError } from "../../shared/workflow/planning-target.ts";
+import { TargetBranchSnapshotUnavailableError } from "@runwield/plans/retained-checkout";
 import { isIntegrationRepairChild } from "../../shared/workflow/epic-integration.ts";
 import { archiveEpicWithChildren } from "./plan-epic-archive.ts";
 import { readPlanMenuDocument, resolvePlanWithPrimaryRecovery } from "../../plan-store/index.ts";
@@ -106,7 +106,7 @@ export async function handleEpicPlan({
     const familyChildren =
         savedChildren ??
         (canonical
-            ? (await listPlanDocuments(projectRoot)).filter((child) => child.attrs.parentPlan === plan.planName)
+            ? (await listSelectablePlanDocuments(projectRoot)).filter((child) => child.attrs.parentPlan === plan.planName)
             : legacyBranch
               ? await findTargetBranchPlansByParent(projectRoot, legacyBranch, plan.planName).catch((error) => {
                     if (!(error instanceof TargetBranchSnapshotUnavailableError)) throw error;
