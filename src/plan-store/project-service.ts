@@ -92,7 +92,8 @@ import {
 /** Prepared owner service. Only trusted local registration supplies the Project location. */
 import { inspectLocalHomeStore, withLocalPlanWorkflow, readLocalHomeStore } from "./access.ts";
 import { packageWorkflowLocks, selectedPackage } from "./workflows.ts";
-import { readPlanDocuments, savePlanDocument, savePlanProse, type PlanDocumentView } from "./documents.ts";
+import type { PlanDocumentView, PreparedPlanDocumentEdit } from "@runwield/plans/project-plan-documents";
+import { readPlanDocuments, savePlanDocument, savePlanProse } from "./documents.ts";
 import { savePlanDefinition, type PlanDefinitionChanges } from "./definition.ts";
 import { recordPlanEvent, recordManagedExecutionCheckpoint, type ManagedExecutionCheckpoint } from "./events.ts";
 import {
@@ -665,7 +666,7 @@ export type ProjectStoreCommand =
     | ProjectStoreFrozenRead
     | ProjectStoreDocumentsRead
     | ProjectStoreRead
-    | (PlanMutation & { kind: "edit-documents"; edits: import("./documents.ts").PreparedPlanDocumentEdit[] })
+    | (PlanMutation & { kind: "edit-documents"; edits: PreparedPlanDocumentEdit[] })
     | ProjectStoreDocumentWrite
     | ProjectStoreHistoryRestore
     | ({ kind: "preview-retention" } & HistoryCursor)

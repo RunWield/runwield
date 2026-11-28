@@ -18,6 +18,7 @@
         "./managed-project-connection": "./managed-project-connection.ts",
         "./project-plan-files": "./project-plan-files.ts",
         "./project-plan-authoring": "./project-plan-authoring.ts",
+        "./project-plan-documents": "./project-plan-documents.ts",
         "./project-store-binding": "./project-store-binding.ts",
         "./retained-checkout": "./retained-checkout.ts",
         "./store-format": "./store-format.ts",

@@ -36,8 +36,6 @@ import {
     readPlanPackageInput,
     readPlanPackagePublication,
     updatePlanPackageMetadata,
-    withPlanPackageLocks,
-    planPackageFamilyIds,
     type LoadedPlanPackage,
     type PackageDefinition,
     type PackageWorkflowEvidence,
@@ -221,8 +219,7 @@ export async function selectedPackage(target: PackagePlanTarget): Promise<Loaded
 export async function packageWorkflowLocks<T>(planNames: PackagePlanTarget[], run: () => Promise<T>): Promise<T> {
     const identity = currentPackageProject();
     if (!identity) return await run();
-    const packages = await Promise.all(planNames.map(selectedPackage));
-    return await withPlanPackageLocks(identity, await planPackageFamilyIds(identity, packages), run);
+    return await projectPlanFiles.forOwner(identity).withFamilyLocks(planNames, run, currentPackageSelection());
 }
 
 function hash(value: string): string {

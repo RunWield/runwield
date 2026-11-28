@@ -6,6 +6,7 @@ import {
 } from "@runwield/plans/managed-operation";
 import { PlanNotFoundError, StalePlanWriteError } from "@runwield/plans/store";
 import { projectPlanDocumentFields } from "@runwield/plans/project-plan-files";
+import type { PlanDocumentView, PreparedPlanDocumentEdit } from "@runwield/plans/project-plan-documents";
 import type { PublicationAttempt } from "@runwield/workflow/publication";
 import type {
     CreateProjectPlan,
@@ -515,7 +516,7 @@ export async function readManagedDocument(
     resource: string,
     cwd = managedExecutionRoot(),
     access: "read" | "admit" = "admit",
-): Promise<import("./documents.ts").PlanDocumentView> {
+): Promise<PlanDocumentView> {
     if (!cwd) throw new Error("Managed Plan owner is unavailable.");
     const owner = access === "read" ? await client(cwd) : await client(cwd, true);
     if (!owner) throw new Error("Managed Plan owner is unavailable.");
@@ -523,10 +524,7 @@ export async function readManagedDocument(
     if (!("documentView" in result)) throw new Error("Managed Plan document is unavailable.");
     return result.documentView;
 }
-export async function saveManagedDocumentBatch(
-    cwd: string,
-    edits: import("./documents.ts").PreparedPlanDocumentEdit[],
-) {
+export async function saveManagedDocumentBatch(cwd: string, edits: PreparedPlanDocumentEdit[]) {
     const first = edits[0];
     if (!first) throw new Error("Document batch is empty.");
     await mutateManagedPlan(cwd, {
@@ -542,7 +540,7 @@ export async function saveManagedDocument(
     resource: string,
     expectedRevision: string,
     body: string,
-): Promise<import("./documents.ts").PlanDocumentView> {
+): Promise<PlanDocumentView> {
     return await withManagedProjectConnection(async () => {
         await mutateManagedPlan(managedExecutionRoot(), {
             kind: "save-document",

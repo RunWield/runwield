@@ -19,7 +19,8 @@ import { dirname, basename, isAbsolute, join, relative, resolve, sep } from "nod
 import { inspectLocalHomeStore } from "./access.ts";
 import { readPlanPackage } from "@runwield/plans/package-storage";
 import { withPackageProject } from "./workflows.ts";
-import { savePlanDocument, savePlanDocumentBatch, type PreparedPlanDocumentEdit } from "./documents.ts";
+import type { PreparedPlanDocumentEdit } from "@runwield/plans/project-plan-documents";
+import { savePlanDocument, savePlanDocumentBatch } from "./documents.ts";
 import { withPlanCatalogLock, withPlanLock, writePlanMarkdownWithRevisionLocked } from "../plan-store.ts";
 import { atomicWriteTextFileIfAbsent } from "../shared/atomic-text-file.ts";
 
