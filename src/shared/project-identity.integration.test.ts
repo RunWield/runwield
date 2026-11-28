@@ -8,7 +8,7 @@ import process from "node:process";
 import { createHash } from "node:crypto";
 import { defineCommittedGitFixture, git } from "./git-test-fixture.ts";
 import { captureForegroundProcess } from "@runwield/resources/process";
-import { enterProjectRuntime } from "./project-runtime-layout.ts";
+import { enterProjectRuntime } from "@runwield/project-runtime/layout";
 import { getRunWieldSessionDir } from "./session/root-session.ts";
 import { locateAttachedWorkflows } from "./attached/record-store.ts";
 import { getHomeDir } from "../constants.ts";

@@ -33,7 +33,7 @@ import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { getCwd } from ${JSON.stringify(new URL("../../../constants.ts", import.meta.url).href)};
 import { git } from ${JSON.stringify(new URL("../../../shared/git-test-fixture.ts", import.meta.url).href)};
-import { enterProjectRuntime } from ${JSON.stringify(new URL("../../../shared/project-runtime-layout.ts", import.meta.url).href)};
+import { enterProjectRuntime } from ${JSON.stringify(import.meta.resolve("@runwield/project-runtime/layout"))};
 const root = await fs.realpath(getCwd());
 const linked = root + "-linked";
 const mode = ${JSON.stringify(scenarioCase.mode)};

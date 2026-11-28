@@ -11,6 +11,7 @@ const configuration = ts.readConfigFile(resolve(root, "tsconfig.bun.json"), ts.s
 const compilerOptions = ts.parseJsonConfigFileContent(configuration.config, ts.sys, root).options;
 const projectStoreSurface = "packages/plans/store.ts";
 const collaborationLock = "packages/plans/collaboration-lock.ts";
+const projectPlanAuthoring = "packages/plans/project-plan-authoring.ts";
 const publicStoreErrors = new Set(["PlanNotFoundError", "StalePlanWriteError"]);
 const privateMembers = new Set([
     projectStoreSurface,
@@ -34,6 +35,7 @@ const privateMembers = new Set([
     "packages/plans/managed-store-host.ts",
     "packages/plans/managed-execution-adoption.ts",
     "packages/plans/project-plan-files.ts",
+    projectPlanAuthoring,
     "packages/plans/execution-recovery.ts",
     "packages/plans/retained-checkout.ts",
     "packages/plans/retained-execution.ts",
@@ -49,6 +51,11 @@ const managedExecutionAdoption = "packages/plans/managed-execution-adoption.ts";
 const executionRecovery = "packages/plans/execution-recovery.ts";
 const projectPlanFiles = "packages/plans/project-plan-files.ts";
 const projectStoreService = "src/plan-store/project-service.ts";
+const planAuthoringImports: Readonly<Record<string, readonly string[]>> = {
+    [projectStoreService]: ["projectPlanAuthoring"],
+    "src/plan-store/access.ts": ["canonicalPlanAuthoring", "saveCanonicalPlan", "CanonicalPlanWrite"],
+    "src/plan-store/children.ts": ["authoredPackageDefinition"],
+};
 const collaborationBypassCallers = new Set([
     "src/cmd/plans/collaboration-commands.integration.test.ts",
     "src/plan-store.test.ts",
@@ -104,6 +111,20 @@ function isCollaborationLockImport(file: string, specifier: ts.Node): boolean {
         if (name === "COLLABORATION_LOCK_BYPASS") return collaborationBypassCallers.has(file);
         return qualified || (ownerMember(file) && !isTestCaller(file));
     });
+}
+
+function isPlanAuthoringImport(file: string, specifier: ts.Node): boolean {
+    const allowed = planAuthoringImports[file];
+    if (!allowed) return false;
+    const statement = specifier.parent;
+    if (!ts.isImportDeclaration(statement) || statement.importClause?.name) return false;
+    const bindings = statement.importClause?.namedBindings;
+    return (
+        !!bindings &&
+        ts.isNamedImports(bindings) &&
+        bindings.elements.length > 0 &&
+        bindings.elements.every((member) => allowed.includes((member.propertyName ?? member.name).text))
+    );
 }
 
 function isManagedStateFacadeExport(file: string, specifier: ts.Node): boolean {
@@ -310,6 +331,14 @@ export function inspectPlanStoreImports(file: string, source: string): PlanStore
                 file,
                 line: parsed.getLineAndCharacterOfPosition(node.getStart(parsed)).line + 1,
                 message: "Execution recovery evidence is available only through its private host and reader.",
+            });
+            return;
+        }
+        if (target === projectPlanAuthoring && !isPlanAuthoringImport(file, node)) {
+            violations.push({
+                file,
+                line: parsed.getLineAndCharacterOfPosition(node.getStart(parsed)).line + 1,
+                message: "Only the SSH store and local Plan authoring adapters can import canonical Plan authoring.",
             });
             return;
         }

@@ -24,7 +24,7 @@ import { join } from "node:path";
 import { healSettledTransitionRecords } from "./transition-recovery.ts";
 
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { enterProjectRuntime } from "../project-runtime-layout.ts";
+import { enterProjectRuntime } from "@runwield/project-runtime/layout";
 
 async function writeJournal(
     projectRoot: string,

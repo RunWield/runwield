@@ -1,4 +1,4 @@
-import { enterProjectRuntime } from "./project-runtime-layout.ts";
+import { enterProjectRuntime } from "@runwield/project-runtime/layout";
 import { withRetainedPlanFixture } from "./testing/retained-plan-fixture.ts";
 import { spawnSync } from "node:child_process";
 import { test } from "node:test";

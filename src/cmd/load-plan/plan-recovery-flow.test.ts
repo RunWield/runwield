@@ -46,7 +46,7 @@ import {
     findById as findWorktreeRegistryEntryById,
     getWorktreeRegistryPath,
 } from "../../shared/worktree-registry.ts";
-import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
+import { enterProjectRuntime } from "@runwield/project-runtime/layout";
 import { type PlanFrontMatter } from "@runwield/plans/format";
 import { type UiAPI } from "../../ui/tui/api.ts";
 import { type PlanSessionSurface } from "./plan-session-types.ts";

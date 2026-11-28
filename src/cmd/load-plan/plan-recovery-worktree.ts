@@ -26,7 +26,7 @@ import { getWorktreeStatus } from "../../shared/worktree.ts";
 import { buildPlanSummary } from "../../shared/plan-presentation.ts";
 
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
-import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
+import { enterProjectRuntime } from "@runwield/project-runtime/layout";
 
 import { recordPlanEvent } from "../../plan-store/index.ts";
 import type { PlanFrontMatter } from "@runwield/plans";

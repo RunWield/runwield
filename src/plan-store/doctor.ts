@@ -28,8 +28,8 @@ import {
 import { CLI_BIN, WORKTREE_BRANCH_PREFIX } from "../constants.ts";
 import { getPlanDocumentRoot, getPlansDir, inspectPlanFileStrict } from "../plan-store.ts";
 import { ensurePlanIdentity } from "./index.ts";
-import { enterProjectRuntime } from "../shared/project-runtime-layout.ts";
 import {
+    enterProjectRuntime,
     inspectProjectRuntimeLayout,
     withProjectRuntimeReadScope,
     ProjectRuntimeEntryRefusedError,

@@ -729,7 +729,7 @@ try {
                 console.log(JSON.stringify(await store.revise(planId, changes)));
             }
         } else if (command === "managed-author-legacy-directory") {
-            const { enterProjectRuntime } = await import("../project-runtime-layout.ts");
+            const { enterProjectRuntime } = await import("@runwield/project-runtime/layout");
             const runtime = await enterProjectRuntime(input.cwd);
             const directory = join(runtime.selected.transitionJournalsDir, "managed-operations");
             await mkdir(directory, { recursive: true, mode: 0o700 });
@@ -797,7 +797,7 @@ try {
             await authorLocalPlan(input.cwd, { planName: "mixed", contextMarkdown: "Original Plan" });
             await writeFile(join(input.cwd, "source.txt"), "Original source");
         } else if (command === "managed-mixed-legacy-journal" || command === "managed-mixed-checkpoint-offset") {
-            const { enterProjectRuntime } = await import("../project-runtime-layout.ts");
+            const { enterProjectRuntime } = await import("@runwield/project-runtime/layout");
             const directory = join(
                 (await enterProjectRuntime(input.cwd)).selected.transitionJournalsDir,
                 "managed-file-edits",

@@ -26,7 +26,7 @@ import { assertGitRepository, GitRepositoryRequiredError } from "./git.ts";
 import { resolvePublicationUpstream } from "./publication-target.ts";
 import { getWorkflowDiff, listIgnoredUntrackedPaths, REVIEW_DIFF_FORMAT_ARGS } from "./workflow/git-snapshot.ts";
 import { addEntry, findById, updateEntry, listEntries, pruneStaleEntries, removeEntry } from "./worktree-registry.ts";
-import { enterProjectRuntime } from "./project-runtime-layout.ts";
+import { enterProjectRuntime } from "@runwield/project-runtime/layout";
 import {
     isRunWieldOwnedGitignoreChange,
     isRunWieldOwnedRuntimePath,

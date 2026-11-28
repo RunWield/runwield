@@ -3,7 +3,7 @@ import { projects } from "@runwield/projects";
 import { captureForegroundProcess } from "@runwield/resources/process";
 import { lstat as fsLstat } from "node:fs/promises";
 import { listPlanExecutionDocuments, planDocumentsForCheckout } from "../../plan-store/index.ts";
-import { enterProjectRuntime } from "../project-runtime-layout.ts";
+import { enterProjectRuntime } from "@runwield/project-runtime/layout";
 import { loadTargetPlan } from "./planning-worktree.ts";
 
 interface GitResult {

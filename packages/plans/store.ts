@@ -77,6 +77,11 @@ export interface CreateProjectPlan {
     dependencies?: string[];
 }
 
+/** Authored content with the observed revision when changing an existing Plan by name. */
+export interface PlanAuthoringInput extends CreateProjectPlan {
+    expectedRevision?: string;
+}
+
 export interface ReviseProjectPlan extends Omit<CreateProjectPlan, "planName"> {
     expectedRevision: string;
 }

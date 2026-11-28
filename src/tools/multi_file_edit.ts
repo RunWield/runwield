@@ -2,7 +2,7 @@ import { toolRegistry, type MultiFileEdit, type MultiFileEditInput, type MultiFi
 import { createHash } from "node:crypto";
 import { constants, type BigIntStats } from "node:fs";
 import { remoteProjectOwner } from "../shared/remote/personal-resources.ts";
-import { enterProjectRuntime } from "../shared/project-runtime-layout.ts";
+import { enterProjectRuntime } from "@runwield/project-runtime/layout";
 import { ensurePrivateDir, writeJsonAtomically, syncParentDirectory } from "../shared/private-json-file.ts";
 import { openNativeFileLock } from "../shared/native-file-lock.ts";
 import { ProjectStorePreconditionError } from "@runwield/plans/project-store-wire";

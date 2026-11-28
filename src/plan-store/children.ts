@@ -18,7 +18,8 @@ import {
     type PlanWriteOptions,
     type SavedChildFeaturePlan,
 } from "../plan-store.ts";
-import { authoredPackageDefinition, withLocalProjectAction } from "./access.ts";
+import { authoredPackageDefinition } from "@runwield/plans/project-plan-authoring";
+import { withLocalProjectAction } from "./access.ts";
 import { assertSharedPlanWriteAllowed } from "@runwield/plans/collaboration-lock";
 import {
     packageWorkflowRevision,

@@ -44,7 +44,7 @@ test("Epic child recovery repairs moved submodule links and preserves unfinished
         const config = join(moduleGitDir, "config");
         const before = await readFile(config, "utf8");
         const { inspectProjectRuntimeReadAccess } = await import("@runwield/project-runtime/layout");
-        const { enterProjectRuntime } = await import("./project-runtime-layout.ts");
+        const { enterProjectRuntime } = await import("@runwield/project-runtime/layout");
         await inspectProjectRuntimeReadAccess(child);
         assertEquals(await readFile(config, "utf8"), before);
         await git(movedRoot, ["config", "--local", "runwield.projectId", "invalid"]);

@@ -31,8 +31,7 @@ import {
     removeWorktreeGitArtifacts,
 } from "../worktree.ts";
 import { runExecutionPreparationTransition } from "../../plan-store/index.ts";
-import { enterProjectRuntime } from "../project-runtime-layout.ts";
-import { ProjectRuntimeReadPendingError } from "@runwield/project-runtime/layout";
+import { enterProjectRuntime, ProjectRuntimeReadPendingError } from "@runwield/project-runtime/layout";
 import { refreshPlanningWorktree } from "./planning-worktree-refresh.ts";
 
 export interface PlanningWorktreeResult {

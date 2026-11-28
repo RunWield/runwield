@@ -27,8 +27,7 @@ import { loadPlan } from "../testing/plan-query-fixture.ts";
 
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { createGitPort } from "../git-port.ts";
-import { enterProjectRuntime } from "../project-runtime-layout.ts";
-import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
+import { enterProjectRuntime, resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
 import { HostedSession } from "@runwield/session-runtime/host";
 import { removeWorktreeGitArtifacts } from "../worktree.ts";

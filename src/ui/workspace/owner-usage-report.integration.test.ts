@@ -1,5 +1,5 @@
 import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
-import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
+import { enterProjectRuntime } from "@runwield/project-runtime/layout";
 
 import process from "node:process";
 import { getCwd } from "../../constants.ts";

@@ -39,8 +39,8 @@ import {
 /** File-backed controller state shared by all worktrees of one project. */
 import { dirname, join, resolve } from "node:path";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { enterProjectRuntime } from "../shared/project-runtime-layout.ts";
 import {
+    enterProjectRuntime,
     checkedProjectRuntimeLayout,
     invalidateProjectRuntimeReadScope,
     resolveProjectRuntimeLayout,

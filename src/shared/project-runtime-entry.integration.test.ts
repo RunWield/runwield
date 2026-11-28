@@ -19,8 +19,7 @@ import { assertEquals, assertRejects, assertStringIncludes } from "../testing/as
 import { dirname, join } from "node:path";
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 import { defineCommittedGitFixture, git } from "./git-test-fixture.ts";
-import { enterProjectRuntime } from "./project-runtime-layout.ts";
-import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
+import { enterProjectRuntime, resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import { listEntries, prepareWorktreeRegistry } from "./worktree-registry.ts";
 import { packageFixture } from "./testing/plan-package-fixture.ts";
 

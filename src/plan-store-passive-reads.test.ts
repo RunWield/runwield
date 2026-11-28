@@ -18,8 +18,11 @@ import {
 } from "./shared/testing/plan-query-fixture.ts";
 import { getRunWieldRuntimeDir } from "@runwield/project-runtime/legacy-paths";
 import { defineGitFixture, git } from "./shared/git-test-fixture.ts";
-import { enterProjectRuntime } from "./shared/project-runtime-layout.ts";
-import { resolveProjectRuntimeLayout, ProjectRuntimeEntryRefusedError } from "@runwield/project-runtime/layout";
+import {
+    enterProjectRuntime,
+    resolveProjectRuntimeLayout,
+    ProjectRuntimeEntryRefusedError,
+} from "@runwield/project-runtime/layout";
 import { inspectControllerView, writeControllerState } from "./plan-store/controllers.ts";
 import { loadTargetPlan } from "./shared/workflow/planning-worktree.ts";
 

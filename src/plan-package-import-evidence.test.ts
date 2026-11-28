@@ -15,7 +15,7 @@ import {
 } from "@runwield/plans/package-storage";
 import { archivePlan } from "./plan-store/index.ts";
 import { git } from "./shared/git-test-fixture.ts";
-import { enterProjectRuntime } from "./shared/project-runtime-layout.ts";
+import { enterProjectRuntime } from "@runwield/project-runtime/layout";
 import { addEntry, getWorktreeRegistryPath, updateEntry } from "./shared/worktree-registry.ts";
 
 import { createPublicationAttempt, hasApplicablePublicationReceipt } from "@runwield/workflow/publication";

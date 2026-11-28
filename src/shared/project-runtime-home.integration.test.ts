@@ -8,8 +8,11 @@ import { tmpdir } from "node:os";
 import { getHomeDir } from "../constants.ts";
 import { getRunWieldRuntimeDir } from "@runwield/project-runtime/legacy-paths";
 import { defineCommittedGitFixture, git } from "./git-test-fixture.ts";
-import { enterProjectRuntime } from "./project-runtime-layout.ts";
-import { resolveProjectRuntimeLayout, inspectProjectRuntimeReadAccess } from "@runwield/project-runtime/layout";
+import {
+    enterProjectRuntime,
+    resolveProjectRuntimeLayout,
+    inspectProjectRuntimeReadAccess,
+} from "@runwield/project-runtime/layout";
 
 import { DatabaseSync } from "./sqlite.ts";
 

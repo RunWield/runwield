@@ -1,5 +1,5 @@
 import { projects } from "@runwield/projects";
-import { enterProjectRuntime } from "../project-runtime-layout.ts";
+import { enterProjectRuntime } from "@runwield/project-runtime/layout";
 import { withRetainedCheckoutSource, withoutRetainedCheckoutSource } from "@runwield/plans/retained-checkout";
 import { mkdir, realpath, writeFile } from "node:fs/promises";
 import { join } from "node:path";

@@ -1,10 +1,6 @@
 import { managedPersonalStoreActive, withManagedProjectConnection } from "@runwield/plans/managed-project-connection";
-import { StalePlanWriteError } from "@runwield/plans/store";
-import type { PackageDocuments } from "@runwield/plans/history";
-import { packageDocumentText } from "@runwield/plans/file-snapshots";
 import { bindProjectPlanStore, PlanAccessMismatchError } from "./project-binding.ts";
-import { plans, type PlanFrontMatterInput, type PlanFrontMatter } from "@runwield/plans";
-import type { CreateProjectPlan, PlanAuthoringDefinition } from "@runwield/plans/store";
+import type { CreateProjectPlan, PlanAuthoringInput } from "@runwield/plans/store";
 import { projects, type ProjectStoreIdentity as ProjectIdentity } from "@runwield/projects";
 import {
     managedPlanStoreActive,
@@ -16,7 +12,11 @@ import {
 import { hasRetainedCheckoutSource } from "@runwield/plans/retained-checkout";
 import { remoteProjectOwner } from "../shared/remote/personal-resources.ts";
 import { currentPackageProject, withPackageProject } from "./workflows.ts";
-import { projectPlanFiles } from "@runwield/plans/project-plan-files";
+import {
+    canonicalPlanAuthoring,
+    saveCanonicalPlan,
+    type CanonicalPlanWrite,
+} from "@runwield/plans/project-plan-authoring";
 import { withMissingImportedExecutionRecovery } from "./legacy.ts";
 
 interface LocalHomeStore {
@@ -94,21 +94,9 @@ export function missingHomePlan(path: string) {
 
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import {
-    packageWorkflowRevision,
-    commitPlanPackageBatch,
-    listPlanPackages,
-    readPlanPackage,
-    withPlanPackageLocks,
-    withPlanPackageCatalogDiscovery,
-    packageDefinitionStrings,
-    resolvePlanPackageReference,
-    type PackageDefinition,
-} from "@runwield/plans/package-storage";
+import { listPlanPackages, readPlanPackage } from "@runwield/plans/package-storage";
 import { enter } from "@runwield/project-runtime";
-import { enterProjectRuntime } from "../shared/project-runtime-layout.ts";
-import { packageController } from "./workflows.ts";
-import { assertSharedPlanWriteAllowed } from "@runwield/plans/collaboration-lock";
+import { enterProjectRuntime } from "@runwield/project-runtime/layout";
 import { canonicalizeStoredPlanName } from "@runwield/plans/format";
 import { getStoredPlanPath } from "../plan-store.ts";
 
@@ -133,42 +121,8 @@ export async function planDocumentReference(cwd: string, reference: string): Pro
           );
 }
 
-interface LocalPlanWriteOptions {
-    authoredPlanId?: string;
-    definition?: PlanAuthoringDefinition;
-    expectedRevision?: string;
-    validationMarkdown?: string;
-}
-
-export function authoredPackageDefinition(attrs: PlanFrontMatter, status: string = attrs.status): PackageDefinition {
-    const definition: PackageDefinition = {
-        classification: attrs.classification === "PROJECT" ? "PROJECT" : "PLANNED_CHANGE",
-        status,
-    };
-    for (const key of [
-        ...packageDefinitionStrings,
-        "affectedPaths",
-        "order",
-        "frontend",
-        "devServerHmr",
-        "tickets",
-        "supersedes",
-        "planDeviations",
-    ]) {
-        const value = attrs[key as keyof PlanFrontMatter];
-        if (value !== undefined && value !== null) Object.assign(definition, { [key]: value });
-    }
-    return definition;
-}
-
-/** Canonical authoring keeps definition changes with Core and prose in editable Markdown. */
-export async function saveLocalHomePlan(
-    cwd: string,
-    name: string,
-    markdown: string,
-    overrides: PlanFrontMatterInput,
-    options: LocalPlanWriteOptions,
-): Promise<string | null> {
+/** Prepare the local owner before writing canonical Markdown and definition fields. */
+export async function saveLocalHomePlan(cwd: string, request: CanonicalPlanWrite): Promise<string | null> {
     if (remoteProjectOwner()?.kind === "managed-remote" || hasRetainedCheckoutSource(cwd)) return null;
     if (!projects.home.current()) {
         const bound = currentPackageProject();
@@ -184,106 +138,10 @@ export async function saveLocalHomePlan(
     }
     const store = inspectLocalHomeStore(cwd);
     if (store.kind !== "local") throw new Error("Local Plan authoring requires an admitted Project.");
-    return await withPackageProject(cwd, store.identity, () =>
-        withPlanPackageCatalogDiscovery(store.identity, async () => {
-            const parsed = plans.documents.parse(plans.documents.create(markdown, overrides));
-            const catalog = await listPlanPackages(store.identity, true);
-            if (catalog.issues.length) throw new Error(catalog.issues[0].message);
-            const existing = catalog.packages.find((plan) => plan.metadata.name === name);
-            if (!existing && options.expectedRevision !== undefined)
-                throw new StalePlanWriteError(options.expectedRevision, "missing");
-            const planId = existing?.metadata.planId || options.authoredPlanId || parsed.attrs.planId || randomUUID();
-            if (existing && options.authoredPlanId && options.expectedRevision === undefined)
-                throw new StalePlanWriteError("absent", packageWorkflowRevision(existing));
-            if (options.authoredPlanId && options.authoredPlanId !== planId)
-                throw new Error("Authoring identity changed.");
-            return await withPlanPackageLocks(store.identity, [planId], async () => {
-                const current = existing ? await readPlanPackage(store.identity, { planId }) : null;
-                if (current && current.kind !== "loaded") throw new Error(current.message);
-                if (current) {
-                    if (current.metadata.archive && !current.metadata.archive.restoredAt)
-                        throw new Error("This Plan package is archived.");
-                    assertSharedPlanWriteAllowed(await packageController(current));
-                    const revision = packageWorkflowRevision(current);
-                    if (options.expectedRevision !== revision)
-                        throw new StalePlanWriteError(options.expectedRevision || "required", revision);
-                }
-                const definition =
-                    options.definition && current
-                        ? { ...current.metadata.definition }
-                        : authoredPackageDefinition(parsed.attrs, current?.metadata.definition.status);
-                if (options.definition) {
-                    for (const [key, value] of Object.entries(options.definition)) {
-                        if (value !== undefined) Object.assign(definition, { [key]: value });
-                    }
-                }
-                const parentReference =
-                    parsed.attrs.parentPlan ??
-                    (options.definition && current
-                        ? catalog.packages.find((plan) => plan.metadata.planId === current.metadata.parentPlanId)
-                              ?.metadata.name
-                        : undefined);
-                const related = (reference: string) =>
-                    resolvePlanPackageReference(catalog.packages, reference, parentReference);
-                const parentPlanId =
-                    overrides.parentPlan === undefined && options.definition && current
-                        ? current.metadata.parentPlanId
-                        : parsed.attrs.parentPlan
-                          ? related(parsed.attrs.parentPlan)
-                          : null;
-                const dependencyPlanIds =
-                    overrides.dependencies === undefined && options.definition && current
-                        ? current.metadata.dependencyPlanIds
-                        : (parsed.attrs.dependencies || []).map(related);
-                const documents: PackageDocuments = current
-                    ? packageDocumentText(current.documents)
-                    : {
-                          "context.md": "",
-                          "validation.md": "# Validation\n\nSee the Verification Plan in [context.md](context.md).\n",
-                      };
-                const nextValidation = options.validationMarkdown ?? documents["validation.md"];
-                const review =
-                    current &&
-                    (await projectPlanFiles.forOwner(store.identity).prepareReviewInvalidation(current, {
-                        kind: "edit",
-                        definition: { definition, parentPlanId, dependencyPlanIds },
-                        documents: [
-                            { previous: documents["context.md"], next: parsed.body },
-                            { previous: documents["validation.md"], next: nextValidation },
-                        ],
-                    }));
-                await commitPlanPackageBatch(store.identity, [
-                    {
-                        before: current ? { metadata: current.metadata, documents } : null,
-                        metadata: {
-                            ...(current?.metadata || {
-                                version: 1,
-                                createdAt: new Date().toISOString(),
-                                controller: {},
-                                references: { sessionIds: [] },
-                                archive: null,
-                            }),
-                            name,
-                            planId,
-                            revision: (current?.metadata.revision || 0) + 1,
-                            ...review,
-                            definition: review ? { ...definition, status: review.definition.status } : definition,
-                            parentPlanId,
-                            dependencyPlanIds,
-                        },
-                        documents: {
-                            ...documents,
-                            "context.md": parsed.body,
-                            "validation.md": nextValidation,
-                        },
-                    },
-                ]);
-                const saved = await readPlanPackage(store.identity, { planId });
-                if (saved.kind !== "loaded") throw new Error(saved.message);
-                return join(saved.path, "context.md");
-            });
-        }),
-    );
+    return await withPackageProject(cwd, store.identity, async () => {
+        const saved = await saveCanonicalPlan(store.identity, request);
+        return saved.contextPath;
+    });
 }
 
 import { currentPackageSelection, withPackageWorkflow, type PackageWorkflowSelection } from "./workflows.ts";
@@ -406,10 +264,6 @@ export async function withLocalProjectAction<T>(cwd: string, action: () => Promi
     return await bindProjectPlanStore(admitted.identity.projectId, { admitted: admitted.identity })(action);
 }
 
-export interface PlanAuthoringInput extends CreateProjectPlan {
-    expectedRevision?: string;
-}
-
 /** Agent-facing authoring accepts prose and typed definition facts, never protected JSON or YAML. */
 export async function authorLocalPlan(cwd: string, input: PlanAuthoringInput): Promise<void> {
     if (managedPlanStoreActive()) return await authorManagedPlan(cwd, input);
@@ -432,56 +286,8 @@ export async function reviseSavedPlan(cwd: string, planId: string, input: PlanAu
     }
     await authorPackagePlan(cwd, input, planId);
 }
-export async function authorPackagePlan(
-    cwd: string,
-    input: PlanAuthoringInput,
-    authoredPlanId?: string,
-): Promise<void> {
-    if (
-        /^\ufeff?---\s*\r?\n/.test(input.contextMarkdown) ||
-        (input.validationMarkdown && /^\ufeff?---\s*\r?\n/.test(input.validationMarkdown))
-    )
-        throw new Error("Live Plan documents contain Markdown only. Supply definition facts through the tool fields.");
-    const definition = input.definition || {};
-    const allowedDefinitionFields = new Set<string>([
-        "classification",
-        "type",
-        "summary",
-        "title",
-        "tickets",
-        "supersedes",
-        "workKind",
-        "complexity",
-        "affectedPaths",
-        "executionAgent",
-        "collaborationRecommendation",
-        "targetBranch",
-        "order",
-        "frontend",
-        "devServerCommand",
-        "devServerUrl",
-        "devServerHmr",
-    ]);
-    for (const field of Object.keys(definition))
-        if (!allowedDefinitionFields.has(field))
-            throw new Error(`Plan authoring cannot change protected field: ${field}`);
-    const path = await saveLocalHomePlan(
-        cwd,
-        input.planName,
-        input.contextMarkdown,
-        {
-            ...definition,
-            status: "draft",
-            parentPlan: input.parentPlan,
-            dependencies: input.dependencies,
-        },
-        {
-            expectedRevision: input.expectedRevision,
-            validationMarkdown: input.validationMarkdown,
-            definition,
-            authoredPlanId,
-        },
-    );
+async function authorPackagePlan(cwd: string, input: PlanAuthoringInput, planId?: string): Promise<void> {
+    const path = await saveLocalHomePlan(cwd, canonicalPlanAuthoring(input, planId));
     if (!path) throw new Error("This launch owner does not support local package authoring.");
 }
 

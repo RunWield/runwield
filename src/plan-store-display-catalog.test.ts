@@ -10,7 +10,7 @@ import { dirname, join } from "node:path";
 import { ensurePlanIdentity } from "./plan-store/index.ts";
 import { listPlanResources, listPlans, readPlanResourceCatalog } from "./shared/testing/plan-query-fixture.ts";
 import { defineGitFixture, git } from "./shared/git-test-fixture.ts";
-import { enterProjectRuntime } from "./shared/project-runtime-layout.ts";
+import { enterProjectRuntime } from "@runwield/project-runtime/layout";
 import { getRunWieldRuntimeDir } from "@runwield/project-runtime/legacy-paths";
 import { addEntry } from "./shared/worktree-registry.ts";
 import {

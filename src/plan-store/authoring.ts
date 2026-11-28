@@ -1,7 +1,8 @@
 import { canonicalizeStoredPlanName } from "@runwield/plans/format";
 import type { ProjectPlanDocument } from "@runwield/plans/store";
-import { enterProjectRuntime } from "../shared/project-runtime-layout.ts";
-import { withLocalPlanWorkflow, type PlanAuthoringInput } from "./access.ts";
+import { enterProjectRuntime } from "@runwield/project-runtime/layout";
+import type { PlanAuthoringInput } from "@runwield/plans/store";
+import { withLocalPlanWorkflow } from "./access.ts";
 import { savePlanDefinition, type PlanDefinitionChanges } from "./definition.ts";
 import { recordPlanEvent, type RecordPlanEventRequest } from "./events.ts";
 import { resolveWorkflowPlanLocation } from "./location.ts";

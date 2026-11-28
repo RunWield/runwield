@@ -13,6 +13,7 @@ import {
     readdir as fsReaddir,
     readFile as fsReadFile,
     realpath as fsRealpath,
+    stat as fsStat,
 } from "node:fs/promises";
 import { platform } from "node:process";
 import { homeProjectRuntimeLayout, inspectHomeProjectRuntime, enterHomeProjectRuntime } from "./home.ts";
@@ -416,6 +417,28 @@ export async function enter(checkout: ProjectIdentity): Promise<ProjectRuntimeLa
         await prepareProjectCheckout(checkout.checkoutRoot);
         await reconcileRuntimeIgnore(layout.primary.checkoutRoot);
         return layout;
+    } finally {
+        invalidateProjectRuntimeReadScope();
+    }
+}
+
+/** Admit a path-based host caller's checkout before preparing its runtime. */
+export async function enterProjectRuntime(
+    checkoutRoot: string,
+    options: ProjectIdentityOptions = {},
+): Promise<ProjectRuntimeLayout> {
+    invalidateProjectRuntimeReadScope();
+    try {
+        const info = await fsStat(checkoutRoot).catch((error) => {
+            if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
+            throw error;
+        });
+        if (!info?.isDirectory()) throw new Error("Project root must be an existing directory");
+        const admission = await projects.checkout.admit(checkoutRoot, options);
+        if (admission.kind !== "existing") throw new ProjectIdentityEntryRequired(admission);
+        return await (options.context
+            ? projects.launch.withContext(options.context, () => enter(admission.identity))
+            : enter(admission.identity));
     } finally {
         invalidateProjectRuntimeReadScope();
     }

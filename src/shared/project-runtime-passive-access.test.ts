@@ -9,8 +9,8 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { getRunWieldRuntimeDir } from "@runwield/project-runtime/legacy-paths";
 import { defineCommittedGitFixture, git } from "./git-test-fixture.ts";
-import { enterProjectRuntime } from "./project-runtime-layout.ts";
 import {
+    enterProjectRuntime,
     checkedProjectRuntimeLayout,
     inspectProjectRuntimeReadAccess,
     withProjectRuntimeReadScope,

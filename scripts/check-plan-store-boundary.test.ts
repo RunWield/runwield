@@ -71,6 +71,21 @@ test("only the Plan store can use its filesystem drivers and retained evidence",
     }
 });
 
+test("SSH authoring is limited to its host and local adapters import only their named helpers", () => {
+    const entry = "@runwield/plans/project-plan-authoring";
+    const host = 'import { projectPlanAuthoring as authoring } from "' + entry + '";';
+    const hostFile = "src/plan-store/project-service.ts";
+    const localFile = "src/plan-store/access.ts";
+    equal(inspectPlanStoreImports(hostFile, host).length, 0);
+    equal(inspectPlanStoreImports(localFile, host).length, 1);
+    equal(inspectPlanStoreImports("src/plan-store/documents.ts", host).length, 1);
+    const local = 'import { saveCanonicalPlan, type CanonicalPlanWrite } from "' + entry + '";';
+    equal(inspectPlanStoreImports(localFile, local).length, 0);
+    equal(inspectPlanStoreImports(hostFile, local).length, 1);
+    equal(inspectPlanStoreImports(hostFile, 'await import("' + entry + '");').length, 1);
+    equal(inspectPlanStoreImports("packages/plans/index.ts", 'export * from "./project-plan-authoring.ts";').length, 1);
+});
+
 test("the retained execution reader stays private to the Plan owner and independent of the application", () => {
     for (const module of ["retained-execution", "checkout-controller", "execution-git-snapshot"]) {
         const reader = `packages/plans/${module}.ts`;
@@ -276,7 +291,7 @@ test("only Plan owners and exact qualifications can select the retained checkout
 
 test("the Plans package cannot import application code, including type-only imports", () => {
     const file = "packages/plans/lifecycle.ts";
-    const source = 'import type { Project } from "../../src/shared/project-runtime-layout.ts";';
+    const source = 'import type { ArchiveRetentionPolicy } from "../../src/shared/settings.ts";';
     equal(inspectPlanStoreImports(file, source).length, 1);
 });
 

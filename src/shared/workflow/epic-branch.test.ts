@@ -1,4 +1,4 @@
-import { enterProjectRuntime } from "../project-runtime-layout.ts";
+import { enterProjectRuntime } from "@runwield/project-runtime/layout";
 import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";

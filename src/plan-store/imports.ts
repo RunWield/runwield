@@ -6,7 +6,7 @@ import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { inspectLocalHomeStore } from "./access.ts";
 import { withPlanPackageLocks } from "@runwield/plans/package-storage";
 import { importPlanPackages } from "./import-packages.ts";
-import { enterProjectRuntime } from "../shared/project-runtime-layout.ts";
+import { enterProjectRuntime } from "@runwield/project-runtime/layout";
 import { writeJsonAtomically } from "../shared/private-json-file.ts";
 import { getExactProjectCustomSetting, setExactProjectCustomSetting } from "../shared/settings.ts";
 

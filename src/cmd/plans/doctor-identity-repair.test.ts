@@ -4,7 +4,7 @@ import { equal, match, ok, rejects } from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
+import { enterProjectRuntime } from "@runwield/project-runtime/layout";
 import { listPlans } from "../../shared/testing/plan-query-fixture.ts";
 import { runPlansDoctor } from "./doctor.ts";
 

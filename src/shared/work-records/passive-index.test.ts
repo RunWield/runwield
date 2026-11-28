@@ -5,8 +5,7 @@ import { mkdir, readFile, readdir, realpath, rm, writeFile } from "node:fs/promi
 import { dirname, join } from "node:path";
 import { getRunWieldRuntimeDir } from "@runwield/project-runtime/legacy-paths";
 import { defineCommittedGitFixture } from "../git-test-fixture.ts";
-import { enterProjectRuntime } from "../project-runtime-layout.ts";
-import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
+import { enterProjectRuntime, resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import { runMnemotecaWorkRecordCommand } from "./index-adapter.ts";
 import { searchWorkRecords } from "./search.ts";
 import { restoreWorkRecordDocument } from "./store.ts";

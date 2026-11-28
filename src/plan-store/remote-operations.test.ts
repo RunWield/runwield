@@ -1,5 +1,6 @@
 import { authenticatedProjectStoreRequest } from "../shared/remote/project-store-request.ts";
 import { workRecords } from "@runwield/plans/work-records";
+import { openNativeFileLock } from "@runwield/resources/fs";
 import { workRecordFiles } from "@runwield/plans/work-record-files";
 import { parseProjectId, projects, type HomeProjectOwner } from "@runwield/projects";
 import { constants, tmpdir } from "node:os";
@@ -915,6 +916,115 @@ function completedAuthoring({ result }: ProjectStoreReply) {
     ok("status" in result && result.status === "completed" && result.planId && result.revision);
     return { planId: result.planId, revision: result.revision };
 }
+
+test("checkout-backed authoring prepares the runtime only when an admitted request needs to write", async () => {
+    const fixture = await packageFixture();
+    try {
+        const store = new PreparedProjectStore(fixture.root);
+        const gitignore = join(fixture.root, ".gitignore");
+        const invalidMarkdown = "---\nstatus: approved\n---\n# Draft\n";
+        const create = {
+            kind: "create-plan" as const,
+            operationId: randomUUID(),
+            input: { planName: "checkout-preparation", contextMarkdown: "# Draft\n" },
+        };
+        await rejects(
+            store.execute({
+                ...create,
+                operationId: randomUUID(),
+                input: { ...create.input, contextMarkdown: invalidMarkdown },
+            }),
+            /Live Plan documents contain Markdown only/,
+        );
+        await rejects(
+            store.execute({
+                kind: "revise-plan",
+                operationId: randomUUID(),
+                planId: randomUUID(),
+                expectedRevision: "a".repeat(64),
+                input: { contextMarkdown: invalidMarkdown },
+            }),
+            PlanNotFoundError,
+        );
+        await rejects(readFile(gitignore, "utf8"), { code: "ENOENT" });
+
+        const created = await store.execute(create);
+        const { planId, revision } = completedAuthoring(created);
+        await unlink(gitignore);
+
+        deepEqual(await new PreparedProjectStore(fixture.root).execute(create), created);
+        await rejects(readFile(gitignore, "utf8"), { code: "ENOENT" });
+
+        const revise = {
+            kind: "revise-plan" as const,
+            operationId: randomUUID(),
+            planId,
+            expectedRevision: revision,
+            input: { contextMarkdown: "# Revised Plan\n" },
+        };
+        const revised = await store.execute(revise);
+        equal(completedAuthoring(revised).planId, planId);
+        await unlink(gitignore);
+        deepEqual(await new PreparedProjectStore(fixture.root).execute(revise), revised);
+        await rejects(readFile(gitignore, "utf8"), { code: "ENOENT" });
+    } finally {
+        await fixture.cleanup();
+    }
+});
+
+test("an unstarted authoring request rechecks its original checkout alias after waiting for the catalog lock", async () => {
+    const fixture = await packageFixture();
+    const other = await packageFixture();
+    const parent = await mkdtemp(join(tmpdir(), "wld-registered-checkout-"));
+    try {
+        const subdirectory = join(fixture.root, "registered");
+        await mkdir(subdirectory);
+        const alias = join(parent, "checkout");
+        await symlink(subdirectory, alias, "junction");
+        const store = new PreparedProjectStore(alias);
+        const initial = {
+            kind: "create-plan" as const,
+            operationId: randomUUID(),
+            input: { planName: "already-written", contextMarkdown: "# Written\n" },
+        };
+        const completed = await store.execute(initial);
+        completedAuthoring(completed);
+
+        const { planOperationReceiptDirectory } = await import("@runwield/plans/operation-receipts");
+        const catalogPath = join(planOperationReceiptDirectory(fixture.identity), "locks", "catalog.lock");
+
+        for (const target of [undefined, other.root]) {
+            const create = {
+                ...initial,
+                operationId: randomUUID(),
+                input: { planName: "must-not-write", contextMarkdown: "# Forbidden write\n" },
+            };
+            const lock = openNativeFileLock(catalogPath, false);
+            const outcomes = await (async () => {
+                try {
+                    await lock.lock(true);
+                    const denied = rejects(store.execute(create), /Project store authority changed/);
+                    const replayed = store.execute(initial);
+                    await unlink(alias);
+                    if (target) await symlink(target, alias, "junction");
+                    return { denied, replayed };
+                } finally {
+                    lock.close();
+                }
+            })();
+
+            await outcomes.denied;
+            deepEqual(await outcomes.replayed, completed);
+            equal(await loadPlan(fixture.root, create.input.planName), null);
+            equal(await loadPlan(other.root, create.input.planName), null);
+            if (!target) await symlink(subdirectory, alias, "junction");
+        }
+    } finally {
+        await rm(parent, { recursive: true, force: true });
+        await other.cleanup();
+        await fixture.cleanup();
+    }
+});
 
 test("owner creation restores a missing guard for an unstarted receipt with the original Plan ID", async () => {
     const fixture = await packageFixture();

@@ -35,8 +35,8 @@ import { fileURLToPath as fromFileUrl } from "node:url";
 import { getRunWieldRuntimeDir } from "@runwield/project-runtime/legacy-paths";
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 import { defineCommittedGitFixture, git } from "./git-test-fixture.ts";
-import { enterProjectRuntime } from "./project-runtime-layout.ts";
 import {
+    enterProjectRuntime,
     inspectProjectRuntimeReadAccess,
     type ProjectRuntimeReadInspection,
     migrateLegacyProjectRuntimeState,
