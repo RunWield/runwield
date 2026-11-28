@@ -24,7 +24,7 @@ import {
 } from "@runwield/plans/format";
 import { recordPlanEvent, stageValidationPassedInExecutionWorktree } from "../../plan-store/index.ts";
 import { loadPlan } from "../testing/plan-query-fixture.ts";
-import { SharedPlanLockError } from "../collaboration/lock.ts";
+import { SharedPlanLockError } from "@runwield/plans/collaboration-lock";
 
 import { type ValidationCheckpoint } from "@runwield/plans/controller-state";
 

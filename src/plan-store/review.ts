@@ -28,7 +28,7 @@ import { getStoredPlanPath, loadPlanFileStrict, writePlanMarkdownWithRevision } 
 import { loadPlan } from "./queries.ts";
 import { buildPlanEventUpdates, isPlanReviewableWithoutReopen, reopensReviewOnEdit } from "@runwield/plans/lifecycle";
 import { recordPlanEvent } from "./index.ts";
-import { assertSharedPlanWriteAllowed } from "../shared/collaboration/lock.ts";
+import { assertSharedPlanWriteAllowed } from "@runwield/plans/collaboration-lock";
 import { runPlanReviewDecisionTransition } from "./transitions.ts";
 import { PLAN_APPROVAL_ACTIONS } from "../shared/workflow/plan-approval.ts";
 import { pickControllerState, stripRuntimeFields } from "@runwield/plans/controller-state";

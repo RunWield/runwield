@@ -21,7 +21,7 @@ import {
     normalizeSharedSpaceMetadata,
 } from "@runwield/plans/plan-server";
 import { COLLABORATION_STATE_REMOTE_CANONICAL, normalizePlanServerUrl } from "@runwield/plans/format";
-import { COLLABORATION_LOCK_BYPASS } from "../../shared/collaboration/lock.ts";
+import { COLLABORATION_LOCK_BYPASS } from "@runwield/plans/collaboration-lock";
 import {
     deleteCompatibleSecretRecords,
     getGlobalSecretStoreLocation,

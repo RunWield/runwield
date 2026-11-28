@@ -2,7 +2,7 @@
 import type { CollaborationResult } from "./operations.ts";
 import type { PlanFrontMatter } from "@runwield/plans";
 import { normalizeCollaborationFrontMatter } from "@runwield/plans/format";
-import { COLLABORATION_LOCK_BYPASS } from "../../shared/collaboration/lock.ts";
+import { COLLABORATION_LOCK_BYPASS } from "@runwield/plans/collaboration-lock";
 import { findPlanEvidenceById, loadPlan } from "../queries.ts";
 import { operationDigest } from "@runwield/plans/operation-receipts";
 import { inspectCollaborationMutation, retainCollaborationOperationResult } from "../operation-results.ts";

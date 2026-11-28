@@ -474,7 +474,7 @@ test("home-only admission refuses another account and a rebound repository", asy
 
 import { updatePlanCollaborationMetadata } from "./index.ts";
 import { getProjectSecretStoreLocation, putSecretRecord } from "../shared/collaboration/secrets.ts";
-import { COLLABORATION_LOCK_BYPASS } from "../shared/collaboration/lock.ts";
+import { COLLABORATION_LOCK_BYPASS } from "@runwield/plans/collaboration-lock";
 
 test("home-only collaboration uses owner credentials without returning them", async () => {
     const owner = await projects.home.register({

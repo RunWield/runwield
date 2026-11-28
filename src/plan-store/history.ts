@@ -9,7 +9,7 @@ import {
     type LoadedPlanPackage,
 } from "@runwield/plans/package-storage";
 import { PlanPackageError } from "@runwield/plans/file-snapshots";
-import { assertSharedPlanWriteAllowed } from "../shared/collaboration/lock.ts";
+import { assertSharedPlanWriteAllowed } from "@runwield/plans/collaboration-lock";
 import { hasInterruptedSequenceHistory, settleSequenceHistory } from "./transitions.ts";
 import { currentPackageProject, packageController } from "./workflows.ts";
 

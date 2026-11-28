@@ -28,7 +28,7 @@ import {
     parseCollaborationUrl,
     redactCollaborationUrl,
 } from "@runwield/plans/plan-server";
-import { COLLABORATION_LOCK_BYPASS } from "../../shared/collaboration/lock.ts";
+import { COLLABORATION_LOCK_BYPASS } from "@runwield/plans/collaboration-lock";
 import {
     assertCompatiblePullSecretRecord,
     ensureProjectSecretStoreIgnored,

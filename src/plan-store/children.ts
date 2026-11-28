@@ -19,7 +19,7 @@ import {
     type SavedChildFeaturePlan,
 } from "../plan-store.ts";
 import { authoredPackageDefinition, withLocalProjectAction } from "./access.ts";
-import { assertSharedPlanWriteAllowed } from "../shared/collaboration/lock.ts";
+import { assertSharedPlanWriteAllowed } from "@runwield/plans/collaboration-lock";
 import {
     packageWorkflowRevision,
     commitPlanPackageBatch,

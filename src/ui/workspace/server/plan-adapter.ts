@@ -35,11 +35,7 @@ import {
     ON_HOLD_PLAN_STATUSES as ON_HOLD_STATUSES,
     PLAN_STATUSES,
 } from "@runwield/plans/lifecycle";
-import {
-    isSharedPlanLocked,
-    SHARED_PLAN_LOCK_REPAIR,
-    SharedPlanLockError,
-} from "../../../shared/collaboration/lock.ts";
+import { isSharedPlanLocked, SHARED_PLAN_LOCK_REPAIR, SharedPlanLockError } from "@runwield/plans/collaboration-lock";
 import { getWorktreeStatus, inspectExecutionWorktreeMergeRisk } from "../../../shared/worktree.ts";
 import {
     autoGenerateWorkRecordForCompletedPlan,

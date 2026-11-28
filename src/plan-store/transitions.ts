@@ -53,7 +53,7 @@ import {
     writePlanMarkdownWithRevision,
 } from "../plan-store.ts";
 import { atomicWriteTextFile } from "../shared/atomic-text-file.ts";
-import { SharedPlanLockError } from "../shared/collaboration/lock.ts";
+import { SharedPlanLockError } from "@runwield/plans/collaboration-lock";
 import { findById as findWorktreeRegistryEntryById } from "../shared/worktree-registry.ts";
 import { recordWorkflowOutcome } from "../shared/workflow/outcome-observations.ts";
 import { resolveWorkflowPlanLocation } from "./location.ts";

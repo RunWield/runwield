@@ -26,7 +26,7 @@ import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fix
 import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { HostedSession } from "@runwield/session-runtime/host";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
-import { COLLABORATION_LOCK_BYPASS } from "../collaboration/lock.ts";
+import { COLLABORATION_LOCK_BYPASS } from "@runwield/plans/collaboration-lock";
 import { listEntries } from "../worktree-registry.ts";
 import { createExecutionStartPorts, startActiveExecutionWorkflow } from "./execution-start.ts";
 import { resolveEpicContinuation, runEpicChildContinuation } from "./epic-continuation.ts";

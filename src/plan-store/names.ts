@@ -4,7 +4,7 @@ import { loadPlan } from "../plan-store.ts";
 import { withLocalPlanWorkflow } from "./access.ts";
 import { currentPackageProject, currentPackageSelection, packageWorkflowLocks, selectedPackage } from "./workflows.ts";
 import { renamePlanPackage } from "@runwield/plans/package-storage";
-import { assertSharedPlanWriteAllowed } from "../shared/collaboration/lock.ts";
+import { assertSharedPlanWriteAllowed } from "@runwield/plans/collaboration-lock";
 
 /** Rename a live package without changing its durable identity or choosing a physical destination in the caller. */
 export async function renamePlan(

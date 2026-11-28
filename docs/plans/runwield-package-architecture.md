@@ -270,8 +270,10 @@ PostgreSQL remains a future driver. [Store operations](../../src/plan-store/inde
 The personal host exposes `openPlanSharing({ projectId, serverUrl }).share(planId)`. The CLI passes the user’s name or ID
 to the bound host, which resolves it in the selected Project. Desktop can supply the Plan ID directly. The Projects and SSH bindings still run
 in the host alongside the Plan store opener. Plans owns the portable connection, encryption, and link protocol.
-The Plan store records the remote space and revision and enforces the shared Plan’s write lock.
+The Plan store records the remote space and revision. Plans owns the shared write lock and its redacted errors.
+The existing share, pull, push, and unshare handlers keep their lock bypasses.
 [Sharing contract](../../packages/plans/sharing.ts) · [Plan Server connection](../../packages/plans/plan-server/connection.ts) · [Host opener](../../src/plan-store/collaboration/sharing.ts) · [Sharing decision](../adr/008-remote-canonical-collaborative-shared-spaces.md)
+· [Shared Plan lock](../../packages/plans/collaboration-lock.ts)
 
 Plans owns the filesystem journal for pending shares. The personal host binds it to an admitted Project, then uses
 `withAttempt(planId, run)` to retain or replay a share under one lock across both credential locations. Managed SSH
@@ -305,8 +307,8 @@ A caller opens the Project Plan Store once, then uses its `history` collection w
 Lifecycle operations trigger capture on approval, delivery, closure, and archive. The store assigns the version. Restore keeps the current Plan identity and delivery evidence and reopens review when changed content requires it. Managed callers use the personal owner’s store and its existing restore receipts. [Core milestone requirements](../prd/runwield-core-prd.md#plan-lifecycle)
 
 Plans owns local catalog selection, milestone reads, and atomic document restoration. The host settles interrupted
-Sequence approvals before returning history. Restore still uses the host’s collaboration guard and review reopening
-because they read live controller and execution evidence.
+Sequence approvals before returning history. Before restoring a milestone, the host checks live controller state
+with the Plans collaboration guard. Plans reopens review when the restored documents change reviewed content.
 
 ### Plan artifacts and publication copies
 

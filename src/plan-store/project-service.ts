@@ -5,6 +5,7 @@ import type {
 } from "@runwield/plans/project-store-wire";
 import { ProjectStorePreconditionError } from "@runwield/plans/project-store-wire";
 import { adoptManagedExecutionReplacement, withManagedExecutionRecovery } from "@runwield/plans/managed-store-host";
+import { assertSharedPlanWriteAllowed } from "@runwield/plans/collaboration-lock";
 import { openShareAttemptJournal } from "@runwield/plans/share-attempt-journal";
 import { PlanNotFoundError, StalePlanWriteError } from "@runwield/plans/store";
 import type { ExecutionPublicationPolicy, PackagePublicationReference } from "@runwield/plans/publication-copies";
@@ -1732,8 +1733,6 @@ export class PreparedProjectStore {
                                     plan.metadata.archive &&
                                     !plan.metadata.archive.restoredAt
                                 ) {
-                                    const { assertSharedPlanWriteAllowed } =
-                                        await import("../shared/collaboration/lock.ts");
                                     const { renamePlanPackage } = await import("@runwield/plans/package-storage");
                                     assertSharedPlanWriteAllowed(
                                         (await findPlanEvidenceById(this.cwd, command.planId)).attrs,

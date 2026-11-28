@@ -7,6 +7,7 @@
         "./format": "./format.ts",
         "./store": "./store.ts",
         "./sharing": "./sharing.ts",
+        "./collaboration-lock": "./collaboration-lock.ts",
         "./share-attempt-journal": "./share-attempt-journal.ts",
         "./plan-server": "./plan-server.ts",
         "./package-storage": "./package-storage.ts",
