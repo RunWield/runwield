@@ -64,15 +64,32 @@ export function settleSequenceOperationResult(directory: string, operationId: st
     completeSequenceOperationReceipt(directory, operationId, retained, result.revision);
 }
 
-export function retainCollaborationOperationResult(result: CollaborationResult): void {
+/** A share receipt settled by the Plan Server's durable deletion or expiry record. */
+export interface GoneShareOperationResult {
+    action: "share-gone";
+    value: { planId: string };
+}
+
+interface RetainedGoneShareOperationResult extends GoneShareOperationResult {
+    requestId: string;
+}
+
+type RetainedCollaborationOperationResult = CollaborationResult | RetainedGoneShareOperationResult;
+
+export function retainCollaborationOperationResult(result: RetainedCollaborationOperationResult): void {
     const path = currentOperationReceiptResultPath("collaboration-results");
     if (!path) return;
     writeJsonAtomically(path, result);
 }
+/** Keep the request identity on the owner so a retry can settle its exact local attempt. */
+export function retainGoneShareOperationResult(planId: string, requestId: string): void {
+    retainCollaborationOperationResult({ action: "share-gone", value: { planId }, requestId });
+}
+
 export function inspectCollaborationOperationResult(
     directory: string,
     operationId: string,
-): CollaborationResult | undefined {
+): RetainedCollaborationOperationResult | undefined {
     if (!/^[a-f0-9-]{36}$/.test(operationId)) throw new Error("Invalid collaboration operation identity.");
     const path = operationReceiptResultPath(directory, operationId, "collaboration-results");
     return existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : undefined;
@@ -81,16 +98,18 @@ export function readCollaborationOperationResult(
     directory: string,
     operationId: string,
     projectId: string,
-): CollaborationResult {
+): CollaborationResult | GoneShareOperationResult {
     if (inspectOperationReceipt(directory, operationId, projectId).status !== "completed")
         throw new Error("Collaboration operation has not completed.");
     const result = inspectCollaborationOperationResult(directory, operationId);
     if (!result) throw new Error("Collaboration result is unavailable.");
+    if (result.action === "share-gone") return { action: result.action, value: result.value };
     return result;
 }
 
 interface CollaborationEffectState {
     started: boolean;
+    replayableShare?: boolean;
     mutation?: CollaborationMutation;
 }
 function collaborationEffectPath(directory: string, operationId: string): string {
@@ -105,6 +124,10 @@ export function markCollaborationNetworkEffect(started = true): void {
             started,
         } satisfies CollaborationEffectState);
 }
+export function markReplayableShareNetworkEffect(): void {
+    const path = currentOperationReceiptResultPath("collaboration-effects");
+    if (path) writeJsonAtomically(path, { started: true, replayableShare: true } satisfies CollaborationEffectState);
+}
 export function retainCollaborationMutation(mutation: CollaborationMutation): void {
     const path = currentOperationReceiptResultPath("collaboration-effects");
     if (path)
@@ -116,6 +139,10 @@ export function retainCollaborationMutation(mutation: CollaborationMutation): vo
 function collaborationEffect(directory: string, operationId: string): CollaborationEffectState {
     const path = collaborationEffectPath(directory, operationId);
     return existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : { started: false };
+}
+export function collaborationNetworkEffectBlocksRetry(directory: string, operationId: string): boolean {
+    const { started, replayableShare } = collaborationEffect(directory, operationId);
+    return started && !replayableShare;
 }
 export function collaborationNetworkEffectStarted(directory: string, operationId: string): boolean {
     return collaborationEffect(directory, operationId).started;

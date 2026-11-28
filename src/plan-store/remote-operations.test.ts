@@ -11,10 +11,12 @@ import { dirname, join } from "node:path";
 import { readFile, writeFile, unlink, mkdir, mkdtemp, rm, rename, symlink, stat, utimes } from "node:fs/promises";
 import { PreparedProjectStore, authorLocalPlan, savePlanProse, type ProjectStoreReply } from "./index.ts";
 import type { ProjectStoreBinding } from "@runwield/plans/project-store-wire";
+import type { SharedPlan } from "@runwield/plans/sharing";
 import { PlanNotFoundError, type ProjectPlanDocument } from "@runwield/plans/store";
 import type { ProjectStoreRequest } from "../shared/remote/project-store-protocol.ts";
 import { ProjectStoreClient } from "../shared/remote/project-store-client.ts";
 import type { composedRemoteFixture } from "../shared/remote/composed-store-fixture.ts";
+import { withCollaborationServer } from "../cmd/plans/collaboration-command-test-fixture.ts";
 import { loadPlan } from "../shared/testing/plan-query-fixture.ts";
 import { packageFixture, startDriver } from "../shared/testing/plan-package-fixture.ts";
 
@@ -531,6 +533,45 @@ test("home-only collaboration uses owner credentials without returning them", as
     }
 });
 
+test("the personal owner resumes the same managed share receipt after an uncertain remote create", async () => {
+    const owner = await projects.home.register({
+        projectId: parseProjectId(randomUUID())!,
+        repositoryId: randomUUID(),
+        displayName: "Share recovery",
+    });
+    const service = new PreparedProjectStore(owner);
+    const document = await service.author({ planName: "shared", contextMarkdown: "# Shared\n" });
+    let requests = 0;
+    await withCollaborationServer(
+        async ({ adapter, serverUrl }) => {
+            const command = {
+                kind: "collaboration",
+                operationId: randomUUID(),
+                intent: { action: "share", options: { target: document.planId, planServer: serverUrl } },
+            } satisfies ProjectStoreRequest["command"];
+            await rejects(service.execute(command), /Retry sharing this Plan/);
+            const original = adapter.database.handle.prepare("SELECT id FROM shared_spaces").get();
+            ok(original);
+
+            const restarted = new PreparedProjectStore(owner);
+            const recovered = await restarted.execute(command);
+            equal("status" in recovered.result && recovered.result.status, "completed");
+            deepEqual(await restarted.execute(command), recovered);
+            const { result } = await restarted.execute({
+                kind: "read-collaboration-result",
+                operationId: command.operationId,
+            });
+            ok("collaborationResult" in result && result.collaborationResult.action === "share");
+            equal(result.collaborationResult.value.spaceId, original.id);
+            equal(requests, 2);
+        },
+        async (request, serve) => {
+            const response = await serve(request);
+            return ++requests === 1 ? new Response("Create reply lost", { status: 502 }) : response;
+        },
+    );
+});
+
 import { startRemoteControlService } from "../shared/remote/control.ts";
 async function connectOwner(owner: HomeProjectOwner) {
     const build = { buildId: "a".repeat(64), protocol: 1 };
@@ -952,6 +993,318 @@ async function connectAuthoringOwner(fixture: Awaited<ReturnType<typeof composed
     return { binding, client, send };
 }
 
+test("Desktop resumes a managed CLI share from a linked checkout after losing the owner receipt and links", async () => {
+    const { withProcessGlobalTestLock } = await import("../testing/process-global-lock.ts");
+    const { composedRemoteFixture } = await import("../shared/remote/composed-store-fixture.ts");
+    await withProcessGlobalTestLock(() =>
+        withCollaborationServer(async ({ adapter, serverUrl }) => {
+            const f = await composedRemoteFixture();
+            const requests: ProjectStoreRequest[] = [];
+            const linkRequests: string[] = [];
+            let lostOwnerReply: ProjectStoreReply | undefined;
+            let lostLinksReply: ProjectStoreReply | undefined;
+            const proxy = observeOwnerResponse(f.endpoint, async (_kind, response, _id, request) => {
+                const { command } = request;
+                if (command.kind === "collaboration" && command.intent.action === "share") {
+                    requests.push(request);
+                    if (response.ok && !lostOwnerReply) {
+                        lostOwnerReply = await response.json();
+                        return new Response("Owner share reply lost", { status: 503 });
+                    }
+                }
+                if (command.kind === "read-collaboration-result") {
+                    linkRequests.push(command.operationId);
+                    if (response.ok && !lostLinksReply) {
+                        lostLinksReply = await response.json();
+                        return new Response("Owner share links lost", { status: 503 });
+                    }
+                }
+                return response;
+            });
+            try {
+                const planId = await f.run("managed-author");
+                const linked = await f.addLinkedCheckout();
+                const first = await f.runRaw("managed-share", proxy.port, { planServer: serverUrl });
+                const stderr = new TextDecoder().decode(first.stderr);
+                equal(first.code, 1, stderr);
+                ok(lostOwnerReply);
+                equal("status" in lostOwnerReply.result && lostOwnerReply.result.status, "completed");
+                equal(requests.length, 1);
+                deepEqual(linkRequests, []);
+                const { command } = requests[0];
+                ok(command.kind === "collaboration" && command.intent.action === "share");
+
+                const { client } = await connectAuthoringOwner(f);
+                const { result } = await client.execute({
+                    kind: "read-collaboration-result",
+                    operationId: command.operationId,
+                });
+                ok("collaborationResult" in result && result.collaborationResult.action === "share");
+                const original = result.collaborationResult.value;
+                equal(original.planId, planId);
+                ok(original.reviewerUrl && original.maintainerUrl);
+                const readSpaces = () =>
+                    adapter.database.handle
+                        .prepare("SELECT id FROM shared_spaces")
+                        .all()
+                        .map(({ id }) => id);
+                deepEqual(readSpaces(), [original.spaceId]);
+
+                const alternateRequests: string[] = [];
+                const resumed = await withCollaborationServer(
+                    async ({ adapter: alternate, serverUrl: alternateUrl }) => {
+                        const options = { planServer: alternateUrl, planId, cwd: linked };
+                        const second = await f.runRaw("managed-share-desktop", proxy.port, options);
+                        equal(second.code, 1, new TextDecoder().decode(second.stderr));
+                        ok(lostLinksReply);
+                        deepEqual(lostLinksReply.result, result);
+                        deepEqual(requests.slice(1), [requests[0]]);
+                        deepEqual(linkRequests, [command.operationId]);
+                        const retry: SharedPlan = JSON.parse(await f.run("managed-share-desktop", proxy.port, options));
+                        deepEqual(alternate.database.handle.prepare("SELECT id FROM shared_spaces").all(), []);
+                        return retry;
+                    },
+                    (request, serve) => {
+                        alternateRequests.push(request.method);
+                        return serve(request);
+                    },
+                );
+                equal(resumed.planId, original.planId);
+                equal(resumed.spaceId, original.spaceId);
+                equal(resumed.serverUrl, serverUrl);
+                deepEqual(resumed.links, {
+                    reviewerUrl: original.reviewerUrl,
+                    maintainerUrl: original.maintainerUrl,
+                });
+                deepEqual(alternateRequests, []);
+                deepEqual(requests.slice(1), [requests[0], requests[0]]);
+                deepEqual(linkRequests, [command.operationId, command.operationId]);
+                deepEqual(readSpaces(), [original.spaceId]);
+            } finally {
+                proxy.stop(true);
+                await f.cleanup();
+            }
+        }),
+    );
+});
+
+test("recovering a successful owner receipt clears the original attempt before unshare and reshare", async () => {
+    const { withProcessGlobalTestLock } = await import("../testing/process-global-lock.ts");
+    const { composedRemoteFixture } = await import("../shared/remote/composed-store-fixture.ts");
+    await withProcessGlobalTestLock(async () => {
+        let attemptPath: string;
+        let rememberedAttempt: string;
+        let originalRequestId: string | null = null;
+        let interrupted = false;
+        await withCollaborationServer(
+            async ({ adapter, serverUrl }) => {
+                const f = await composedRemoteFixture();
+                const { client, binding } = await connectAuthoringOwner(f);
+                const owner = projects.home.inspect(binding.projectId, binding.repositoryId);
+                const ownerDirectory = join(owner.executionAccountHome, ".wld");
+                const planId = await f.run("managed-author");
+                attemptPath = join(
+                    ownerDirectory,
+                    "plan-share-attempts",
+                    `${hash(JSON.stringify([binding.projectId, planId]))}.json`,
+                );
+                const proxy = observeOwnerResponse(f.endpoint, async (_kind, response, _id, { command }) => {
+                    if (
+                        command.kind !== "collaboration" ||
+                        command.intent.action !== "share" ||
+                        !response.ok ||
+                        interrupted
+                    )
+                        return response;
+                    const receiptPath = join(
+                        ownerDirectory,
+                        "projects",
+                        binding.projectId,
+                        "internal",
+                        "plan-packages",
+                        "operations",
+                        `${command.operationId}.json`,
+                    );
+                    const receipt = JSON.parse(await readFile(receiptPath, "utf8"));
+                    // Reproduce interruption after the share result was retained and before the attempt was cleared.
+                    await writeFile(attemptPath, rememberedAttempt, { mode: 0o600 });
+                    await writeFile(
+                        receiptPath,
+                        JSON.stringify({
+                            ...receipt,
+                            outcome: { operationId: command.operationId, status: "pending" },
+                        }),
+                    );
+                    interrupted = true;
+                    return new Response("Owner stopped after retaining the result", { status: 503 });
+                });
+                try {
+                    const options = { planServer: serverUrl, planId };
+                    const first = await f.runRaw("managed-share-desktop", proxy.port, options);
+                    equal(first.code, 1);
+                    ok(interrupted);
+                    const restored: SharedPlan = JSON.parse(await f.run("managed-share-desktop", proxy.port, options));
+                    await rejects(stat(attemptPath), { code: "ENOENT" });
+
+                    const unshared = await client.execute({
+                        kind: "collaboration",
+                        operationId: randomUUID(),
+                        intent: { action: "unshare", options: { target: planId, force: true } },
+                    });
+                    ok("status" in unshared.result && unshared.result.status === "completed");
+                    deepEqual(adapter.database.handle.prepare("SELECT id FROM shared_spaces").all(), []);
+
+                    const alternateRequests: (string | null)[] = [];
+                    await withCollaborationServer(
+                        async ({ serverUrl: alternateUrl }) => {
+                            const shared: SharedPlan = JSON.parse(
+                                await f.run("managed-share-desktop", undefined, { planServer: alternateUrl, planId }),
+                            );
+                            equal(shared.serverUrl, alternateUrl);
+                            ok(shared.spaceId !== restored.spaceId);
+                            equal(alternateRequests.length, 1);
+                            ok(alternateRequests[0] && alternateRequests[0] !== originalRequestId);
+                        },
+                        (request, serve) => {
+                            alternateRequests.push(request.headers.get("Idempotency-Key"));
+                            return serve(request);
+                        },
+                    );
+                } finally {
+                    proxy.stop(true);
+                    await f.cleanup();
+                }
+            },
+            async (request, serve) => {
+                const response = await serve(request);
+                if (new URL(request.url).pathname === "/api/spaces/replay") {
+                    equal(originalRequestId, null, "Owner recovery should use the retained share result.");
+                    originalRequestId = request.headers.get("Idempotency-Key");
+                    ok(originalRequestId && response.ok);
+                    const attempt = JSON.parse(await readFile(attemptPath, "utf8"));
+                    rememberedAttempt = JSON.stringify({ ...attempt, created: await response.clone().json() });
+                }
+                return response;
+            },
+        );
+    });
+});
+
+test("managed sharing resumes after a server upgrade and settles a tombstone across a lost owner reply", async () => {
+    const { withProcessGlobalTestLock } = await import("../testing/process-global-lock.ts");
+    const { composedRemoteFixture } = await import("../shared/remote/composed-store-fixture.ts");
+    await withProcessGlobalTestLock(async () => {
+        let upgraded = false;
+        let dropCreateReply = true;
+        let dropOwnerReply = false;
+        const serverRequests: string[] = [];
+        await withCollaborationServer(
+            async ({ adapter, serverUrl }) => {
+                const f = await composedRemoteFixture();
+                const ownerOperations: string[] = [];
+                const proxy = observeOwnerResponse(f.endpoint, (_kind, response, _id, { command }) => {
+                    if (command.kind === "collaboration" && command.intent.action === "share") {
+                        ownerOperations.push(command.operationId);
+                        if (dropOwnerReply && response.ok) {
+                            dropOwnerReply = false;
+                            return new Response("Owner receipt lost", { status: 503 });
+                        }
+                    }
+                    return response;
+                });
+                try {
+                    const planId = await f.run("managed-author");
+                    const options = { planServer: serverUrl, planId };
+                    const retry = () => f.runRaw("managed-share-desktop", proxy.port, options);
+                    const old = await retry();
+                    equal(old.code, 1);
+                    ok(new TextDecoder().decode(old.stderr).includes("Upgrade it and retry"));
+                    deepEqual(adapter.database.handle.prepare("SELECT id FROM shared_spaces").all(), []);
+
+                    upgraded = true;
+                    const lost = await retry();
+                    equal(lost.code, 1);
+                    const original = adapter.database.handle.prepare("SELECT id FROM shared_spaces").get() as {
+                        id: string;
+                    } | null;
+                    ok(original);
+                    adapter.deleteSharedSpace(original.id);
+                    dropOwnerReply = true;
+                    const lostTombstone = await retry();
+                    equal(lostTombstone.code, 1);
+                    ok(new TextDecoder().decode(lostTombstone.stderr).includes("503"));
+                    const tombstone = await retry();
+                    equal(tombstone.code, 1);
+                    ok(new TextDecoder().decode(tombstone.stderr).includes("previous share attempt was removed"));
+                    deepEqual(adapter.database.handle.prepare("SELECT id FROM shared_spaces").all(), []);
+                    deepEqual(ownerOperations, Array(4).fill(ownerOperations[0]));
+                    deepEqual(serverRequests, Array(3).fill(serverRequests[0]));
+
+                    const shared: SharedPlan = JSON.parse(await f.run("managed-share-desktop", proxy.port, options));
+                    ok(shared.spaceId !== original.id);
+                    ok(ownerOperations[4] !== ownerOperations[0]);
+                    ok(serverRequests[3] !== serverRequests[0]);
+                    deepEqual(adapter.database.handle.prepare("SELECT id FROM shared_spaces").all(), [
+                        { id: shared.spaceId },
+                    ]);
+                } finally {
+                    proxy.stop(true);
+                    await f.cleanup();
+                }
+            },
+            async (request, serve) => {
+                equal(new URL(request.url).pathname, "/api/spaces/replay");
+                const requestId = request.headers.get("Idempotency-Key");
+                ok(requestId);
+                serverRequests.push(requestId);
+                if (!upgraded) return new Response(null, { status: 404 });
+                const response = await serve(request);
+                if (dropCreateReply && response.ok) {
+                    dropCreateReply = false;
+                    return new Response("Create reply lost", { status: 502 });
+                }
+                return response;
+            },
+        );
+    });
+});
+
+test("a managed CLI share refused before publication does not block Desktop from reopening the share", async () => {
+    const { withProcessGlobalTestLock } = await import("../testing/process-global-lock.ts");
+    const { composedRemoteFixture } = await import("../shared/remote/composed-store-fixture.ts");
+    await withProcessGlobalTestLock(() =>
+        withCollaborationServer(async ({ adapter, serverUrl }) => {
+            const f = await composedRemoteFixture();
+            try {
+                const planId = await f.run("managed-author");
+                const planServer = { planServer: serverUrl };
+                const first = await f.run("managed-share", undefined, planServer);
+                const repeat = await f.runRaw("managed-share", undefined, planServer);
+                equal(repeat.code, 1);
+                ok(new TextDecoder().decode(repeat.stderr).includes("Plan sharing was refused before publication."));
+
+                const opened: SharedPlan = JSON.parse(
+                    await f.run("managed-share-desktop", undefined, { ...planServer, planId }),
+                );
+                equal(opened.planId, planId);
+                equal(opened.serverUrl, serverUrl);
+                ok(opened.links?.reviewerUrl && opened.links.maintainerUrl);
+                ok(first.split("\n").includes(opened.links.reviewerUrl));
+                ok(first.split("\n").includes(opened.links.maintainerUrl));
+                deepEqual(
+                    adapter.database.handle
+                        .prepare("SELECT id FROM shared_spaces")
+                        .all()
+                        .map(({ id }) => id),
+                    [opened.spaceId],
+                );
+            } finally {
+                await f.cleanup();
+            }
+        }),
+    );
+});
+
 test("managed Plan creation reuses its owner receipt when either the write reply or subsequent read is lost", async () => {
     const { withProcessGlobalTestLock } = await import("../testing/process-global-lock.ts");
     const { composedRemoteFixture } = await import("../shared/remote/composed-store-fixture.ts");
@@ -1152,6 +1505,134 @@ test("managed Plan revision requires an exact ID and revision and replays after 
             await f.cleanup();
         }
     });
+});
+
+test("managed legacy share retries use retained owner evidence and refuse a reused Plan label", async () => {
+    const { withProcessGlobalTestLock } = await import("../testing/process-global-lock.ts");
+    const { composedRemoteFixture } = await import("../shared/remote/composed-store-fixture.ts");
+    await withProcessGlobalTestLock(() =>
+        withCollaborationServer(async ({ adapter: privateServer, serverUrl: privateUrl }) => {
+            const f = await composedRemoteFixture();
+            const replays: ProjectStoreRequest[] = [];
+            const proxy = observeOwnerResponse(f.endpoint, (_kind, response, _id, request) => {
+                if (request.command.kind === "collaboration") replays.push(request);
+                return response;
+            });
+            try {
+                const originalId = await f.run("managed-author");
+                const { client, binding } = await connectAuthoringOwner(f);
+                const journalDirectory = await f.run("managed-author-legacy-directory");
+                const retainShare = async (target: string) => {
+                    const intent = { action: "share" as const, options: { target, planServer: privateUrl } };
+                    const command = { kind: "collaboration" as const, operationId: randomUUID(), intent };
+                    const { ownerId, projectId, repositoryId } = binding;
+                    const key = hash(
+                        JSON.stringify({
+                            binding: { ownerId, projectId, repositoryId },
+                            command: {
+                                intent: { action: "share", options: { planServer: privateUrl, target } },
+                                kind: "collaboration",
+                            },
+                        }),
+                    );
+                    const path = join(journalDirectory, `managed-operation-${key}.json`);
+                    const body = JSON.stringify({ binding, command });
+                    await writeFile(path, body);
+                    return { path, body, command };
+                };
+                const { result: original } = await client.execute({ kind: "plan-resource", planId: originalId });
+                ok("planResource" in original);
+                const oldName = original.planResource.name;
+                const ambiguous = await retainShare(oldName);
+                await client.execute({
+                    kind: "rename-plan",
+                    operationId: randomUUID(),
+                    planId: originalId,
+                    expectedRevision: original.planResource.revision,
+                    name: "renamed-original",
+                });
+                const create = async (planName: string) => {
+                    const reply = await client.execute({
+                        kind: "create-plan",
+                        operationId: randomUUID(),
+                        input: { planName, contextMarkdown: "# Replacement text\n" },
+                    });
+                    return completedAuthoring(reply).planId;
+                };
+                const replacement = await create(oldName);
+                const unrelated = await create("unrelated");
+                const owner = projects.home.inspect(binding.projectId, binding.repositoryId);
+                const { operationReceiptResultPath, planOperationReceiptDirectory } =
+                    await import("@runwield/plans/operation-receipts");
+                const effect = operationReceiptResultPath(
+                    planOperationReceiptDirectory(owner),
+                    ambiguous.command.operationId,
+                    "collaboration-effects",
+                );
+                await withCollaborationServer(async ({ serverUrl }) => {
+                    const attempt = await f.runRaw("managed-share-desktop", proxy.port, {
+                        planServer: serverUrl,
+                        planId: replacement,
+                    });
+                    equal(attempt.code, 1);
+                    ok(new TextDecoder().decode(attempt.stderr).includes("without durable identity"));
+                    equal(await readFile(ambiguous.path, "utf8"), ambiguous.body);
+                    deepEqual(replays, []);
+                    deepEqual(privateServer.database.handle.prepare("SELECT id FROM shared_spaces").all(), []);
+
+                    const fresh: SharedPlan = JSON.parse(
+                        await f.run("managed-share-desktop", proxy.port, { planServer: serverUrl, planId: unrelated }),
+                    );
+                    equal(fresh.planId, unrelated);
+                    equal(fresh.serverUrl, serverUrl);
+                    deepEqual(privateServer.database.handle.prepare("SELECT id FROM shared_spaces").all(), []);
+
+                    await mkdir(dirname(effect), { recursive: true });
+                    await writeFile(effect, JSON.stringify({ started: true }));
+                    const uncertain = await f.runRaw("managed-share-desktop", proxy.port, {
+                        planServer: serverUrl,
+                        planId: originalId,
+                    });
+                    equal(uncertain.code, 1);
+                    ok(new TextDecoder().decode(uncertain.stderr).includes("may have published"));
+                    equal(replays.length, 1);
+                    equal(await readFile(ambiguous.path, "utf8"), ambiguous.body);
+                    await unlink(effect);
+
+                    const verified = await retainShare("renamed-original");
+                    await client.execute(verified.command);
+                    const { result } = await client.execute({
+                        kind: "read-collaboration-result",
+                        operationId: verified.command.operationId,
+                    });
+                    ok("collaborationResult" in result && result.collaborationResult.action === "share");
+                    const originalShare = result.collaborationResult.value;
+                    // Model historical storage whose label changed after the owner recorded the legacy outcome.
+                    const { readPlanPackage, renamePlanPackage } = await import("@runwield/plans/package-storage");
+                    const saved = await readPlanPackage(owner, { planId: originalId });
+                    ok(saved.kind === "loaded");
+                    await renamePlanPackage(owner, originalId, saved.metadata.revision, "relabelled-after-sharing");
+                    await create("renamed-original");
+                    const resumed: SharedPlan = JSON.parse(
+                        await f.run("managed-share-desktop", proxy.port, { planServer: serverUrl, planId: originalId }),
+                    );
+                    deepEqual(replays.at(-1), { binding, command: verified.command });
+                    equal(resumed.serverUrl, privateUrl);
+                    equal(resumed.spaceId, originalShare.spaceId);
+                    equal(resumed.links?.reviewerUrl, originalShare.reviewerUrl);
+                    equal(resumed.links?.maintainerUrl, originalShare.maintainerUrl);
+                    deepEqual(privateServer.database.handle.prepare("SELECT id FROM shared_spaces").all(), [
+                        { id: originalShare.spaceId },
+                    ]);
+                    await rejects(readFile(verified.path), { code: "ENOENT" });
+                    equal(await readFile(ambiguous.path, "utf8"), ambiguous.body);
+                });
+            } finally {
+                proxy.stop(true);
+                await f.cleanup();
+            }
+        }),
+    );
 });
 
 test("managed authoring delivers unsent legacy create and revise journals and replays their original receipts", async () => {

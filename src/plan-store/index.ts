@@ -309,13 +309,8 @@ export type { PublishedDeliverySources } from "./published-source.ts";
 
 export { settleRetainedExecutionRecording } from "./managed.ts";
 
-export {
-    sharePlanForReview,
-    parsePlansShareArgs,
-    runPlansShareCommand,
-    type SharePlanForReviewOptions,
-    type SharedPlanReviewLink,
-} from "./collaboration/share.ts";
+export { openPlanSharing, sharePlanForReview, type SharePlanForReviewOptions } from "./collaboration/sharing.ts";
+export type { SharedPlanReviewLink } from "./collaboration/share.ts";
 export {
     pushPlanRevision,
     parsePlansPushArgs,

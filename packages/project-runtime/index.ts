@@ -1,2 +1,6 @@
 export { enter } from "./layout.ts";
-export { ProjectRuntimeEntryRefusedError, type ProjectRuntimeLayout } from "./layout-contract.ts";
+export {
+    collaborationSecretStoreLockPath,
+    ProjectRuntimeEntryRefusedError,
+    type ProjectRuntimeLayout,
+} from "./layout-contract.ts";

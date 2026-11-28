@@ -1,6 +1,6 @@
 /** @module ui/workspace/server/remote-schema */
 
-export const REMOTE_SCHEMA_VERSION = 2;
+export const REMOTE_SCHEMA_VERSION = 3;
 
 export const REMOTE_SCHEMA_V1_SQL: string = `
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -56,4 +56,11 @@ CREATE INDEX IF NOT EXISTS idx_space_capabilities_hash ON space_capabilities(cap
 export const REMOTE_SCHEMA_V2_SQL: string = `
 ALTER TABLE shared_spaces ADD COLUMN expires_at TEXT;
 CREATE INDEX IF NOT EXISTS idx_shared_spaces_expires_at ON shared_spaces(expires_at);
+`;
+
+export const REMOTE_SCHEMA_V3_SQL: string = `
+CREATE TABLE share_attempts (
+    id TEXT NOT NULL PRIMARY KEY,
+    space_id TEXT UNIQUE REFERENCES shared_spaces(id) ON DELETE SET NULL
+);
 `;

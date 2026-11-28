@@ -1,11 +1,13 @@
 /** Named personal-owner collaboration operations. Network capabilities never come from the execution checkout. */
+import type { PlanId } from "@runwield/plans";
 import { projects } from "@runwield/projects";
-import type { SharePlanForReviewOptions, SharedPlanReviewLink } from "./share.ts";
+import type { SharedPlanReviewLink } from "./share.ts";
+import type { PlanShareIntent } from "./sharing.ts";
 import type { PushPlanRevisionOptions, PushedPlanRevision } from "./push.ts";
 import type { PullPlanForRevisionOptions, PulledPlanRevision } from "./pull.ts";
 import type { UnsharePlanOptions, UnsharedPlan } from "./unshare.ts";
 export type CollaborationIntent =
-    | { action: "share"; options: Omit<SharePlanForReviewOptions, "cwd"> }
+    | { action: "share"; options: PlanShareIntent }
     | { action: "push"; options: Omit<PushPlanRevisionOptions, "cwd"> }
     | { action: "pull"; options: Omit<PullPlanForRevisionOptions, "cwd"> }
     | { action: "unshare"; options: Omit<UnsharePlanOptions, "cwd"> };
@@ -17,11 +19,12 @@ export type CollaborationResult =
 export async function executeCollaborationIntent(
     cwd: string,
     intent: CollaborationIntent,
+    expectedPlanId?: PlanId,
 ): Promise<CollaborationResult> {
     if (intent.action === "share")
         return {
             action: "share",
-            value: await (await import("./share.ts")).sharePlanForReview({ ...intent.options, cwd }),
+            value: await (await import("./sharing.ts")).executeOwnedPlanShare(cwd, intent.options, expectedPlanId),
         };
     if (intent.action === "push")
         return {
@@ -39,13 +42,16 @@ export async function executeCollaborationIntent(
 }
 
 /** Collaboration edits personal documents; only local execution-account sources need workflow preparation. */
-export async function prepareCollaborationPlan(cwd: string, name: string): Promise<void> {
+export async function prepareCollaborationPlan(cwd: string, name: string, planId?: PlanId): Promise<void> {
     if (projects.home.current()) {
         if (!(await (await import("../queries.ts")).loadPlan(cwd, name)))
             throw new Error("Collaboration Plan is unavailable.");
         return;
     }
-    await (await import("../preparation.ts")).preparePlanWorkflow(cwd, name);
+    const selection = planId
+        ? await (await import("../access.ts")).selectLocalPlanWorkflow(cwd, planId, true)
+        : undefined;
+    await (await import("../preparation.ts")).preparePlanWorkflow(cwd, name, selection);
 }
 export async function collaborationPlanLocation(cwd: string, name: string, options: { readOnly?: boolean } = {}) {
     if (projects.home.current())

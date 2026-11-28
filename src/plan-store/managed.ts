@@ -1,3 +1,4 @@
+import { SharedSpaceGoneError } from "@runwield/plans/plan-server";
 import {
     acknowledgeManagedMutation,
     executeRetainedManagedMutation,
@@ -1352,11 +1353,64 @@ async function managedCollaboration(cwd: string, intent: import("./collaboration
         return result.collaborationResult;
     });
 }
-export async function shareManagedPlan(options: import("./collaboration/share.ts").SharePlanForReviewOptions) {
-    const { cwd = managedExecutionRoot(), ...intent } = options;
-    const result = await managedCollaboration(cwd, { action: "share", options: intent });
-    if (result.action !== "share") throw new Error("Collaboration action changed.");
-    return result.value;
+export async function shareManagedPlan(cwd: string, options: import("./collaboration/sharing.ts").PlanShareIntent) {
+    return await withManagedProjectConnection(async () => {
+        const { owner, checkout } = await clientAccess(cwd, true);
+        const { resolveActivePlanName } = await import("./collaboration/sharing.ts");
+        const planId =
+            options.planId ??
+            plans.identity.parse(
+                (await readManagedPlan(cwd, await resolveActivePlanName(cwd, options.target)))?.attrs.planId,
+            );
+        if (!planId) throw new Error("Plan sharing requires a durable Plan ID.");
+        const command: ProjectStoreCommand = {
+            kind: "collaboration",
+            operationId: randomUUID(),
+            planId,
+            intent: { action: "share", options },
+        };
+        const result = await executeRetainedManagedMutation(
+            {
+                cwd,
+                binding: owner.binding,
+                checkout,
+                command,
+                artifactRevisionSource: "explicit",
+                share: {
+                    planId,
+                    reference: options.target,
+                    async inspectLegacyShare(operationId) {
+                        const { result } = await owner.execute({ kind: "inspect-share-identity", operationId });
+                        if (!("sharePlanId" in result)) throw new Error("Owner returned another share identity.");
+                        return result;
+                    },
+                    async readCurrentPlan() {
+                        return (await listManagedPlans(cwd)).find((entry) => entry.attrs.planId === planId);
+                    },
+                },
+            },
+            (binding, retained) => validateProjectStoreRequest({ binding, command: retained }),
+            async (retained) => {
+                const { result: receipt } = await owner.execute(retained);
+                if (!("operationId" in receipt) || !("status" in receipt) || receipt.status !== "completed")
+                    throw new Error("Collaboration operation receipt is unavailable.");
+                const { result } = await owner.execute({
+                    kind: "read-collaboration-result",
+                    operationId: receipt.operationId,
+                });
+                if (
+                    !("collaborationResult" in result) ||
+                    (result.collaborationResult.action !== "share" &&
+                        result.collaborationResult.action !== "share-gone") ||
+                    result.collaborationResult.value.planId !== planId
+                )
+                    throw new Error("The Plan owner returned a different share.");
+                return result.collaborationResult;
+            },
+        );
+        if (result.action === "share-gone") throw new SharedSpaceGoneError();
+        return result.value;
+    });
 }
 export async function pushManagedPlan(options: import("./collaboration/push.ts").PushPlanRevisionOptions) {
     const { cwd = managedExecutionRoot(), ...intent } = options;

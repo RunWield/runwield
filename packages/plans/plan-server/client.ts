@@ -1,12 +1,13 @@
-/** @module shared/collaboration/client */
-
+import type { JsonValue } from "@runwield/parsing/jsonc";
+import { normalizeServerUrl } from "../format/collaboration.ts";
 import { redactSecrets } from "./capabilities.ts";
 import {
     normalizeAppendCommentPayload,
     normalizeAppendRevisionPayload,
     normalizeCreateSharedSpacePayload,
+    SHARED_SPACE_IDEMPOTENCY_HEADER,
+    SHARED_SPACE_GONE_CODE,
 } from "./protocol.ts";
-import { normalizeServerUrl } from "@runwield/plans/format";
 import { buildApiUrl } from "./urls.ts";
 
 import type {
@@ -17,18 +18,16 @@ import type {
     SharedSpaceLifecyclePayload,
 } from "./protocol.ts";
 
-export type { AppendCommentPayload, AppendRevisionPayload, CreateSharedSpacePayload } from "./protocol.ts";
-
 export interface CollaborationClientOptions {
     serverUrl: string;
     bearerCapability?: string;
+    accountToken?: string;
     fetch: typeof globalThis.fetch;
 }
 
-/** JSON transport and error payloads remain opaque until validated by their consumers. */
 export interface CollaborationApiErrorOptions {
     status?: number;
-    payload?: unknown;
+    payload?: JsonValue;
     secrets?: string[];
 }
 
@@ -36,35 +35,43 @@ export interface CollaborationRequestHeaders {
     [name: string]: string;
 }
 
-export interface CollaborationRequestOptions {
+export interface CollaborationRequestOptions<Body> {
     method?: string;
-    body?: unknown;
+    body?: Body;
     headers?: CollaborationRequestHeaders;
-    auth?: boolean;
+    redirect?: RequestRedirect;
 }
 
 export type CollaborationCommentStatePayload = Pick<CommentStateChangePayload, "action">;
 export type CollaborationLifecyclePayload = Pick<SharedSpaceLifecyclePayload, "action">;
 
-interface RawApiErrorPayload {
-    message?: unknown;
-}
-
-interface RedactedJsonFields {
-    [key: string]: unknown;
-}
-
 export const SYSTEM_COLLABORATION_FETCH = globalThis.fetch.bind(globalThis);
 
 export class CollaborationApiError extends Error {
     declare status: number | undefined;
-    declare payload: unknown;
+    declare payload: JsonValue | undefined;
 
     constructor(message: string, options: CollaborationApiErrorOptions = {}) {
         super(redactSecrets(message, options.secrets));
         this.name = "CollaborationApiError";
         this.status = options.status;
-        this.payload = redactPayload(options.payload, options.secrets);
+        this.payload = options.payload === undefined ? undefined : redactPayload(options.payload, options.secrets);
+    }
+}
+
+/** The selected server needs the replay route before it can publish this attempt. */
+export class PlanServerUpgradeRequiredError extends Error {
+    constructor() {
+        super("The original Plan Server needs replay support to publish this share. Upgrade it and retry.");
+    }
+}
+
+/** The server confirmed the Shared Space for this request was permanently removed. */
+export class SharedSpaceGoneError extends Error {
+    constructor() {
+        super(
+            "The Shared Space from the previous share attempt was removed. Share the Plan again to create a new Shared Space.",
+        );
     }
 }
 
@@ -72,42 +79,56 @@ export class CollaborationClient {
     declare serverUrl: string;
     declare bearerCapability: string | undefined;
     declare fetch: typeof globalThis.fetch;
+    private readonly accountToken: string | undefined;
 
     constructor(options: CollaborationClientOptions) {
         this.serverUrl = normalizeServerUrl(options.serverUrl);
         this.bearerCapability = options.bearerCapability;
         this.fetch = options.fetch;
+        this.accountToken = options.accountToken;
     }
 
-    async requestJson(path: string, options: CollaborationRequestOptions = {}): Promise<unknown> {
+    async requestJson<Body>(
+        path: string,
+        options: CollaborationRequestOptions<Body> = {},
+    ): Promise<JsonValue | undefined> {
+        if (!this.bearerCapability) {
+            throw new CollaborationApiError("Bearer capability is required for this Plan Server request.");
+        }
+        return await this.sendJson(path, options, this.bearerCapability);
+    }
+
+    private async sendJson<Body>(
+        path: string,
+        options: CollaborationRequestOptions<Body>,
+        bearerCredential: string | undefined,
+    ): Promise<JsonValue | undefined> {
         const url = buildApiUrl(this.serverUrl, path);
         const headers: CollaborationRequestHeaders = {
             Accept: "application/json",
             ...(options.headers ?? {}),
         };
-        if (options.auth !== false) {
-            if (!this.bearerCapability) {
-                throw new CollaborationApiError("Bearer capability is required for this Plan Server request.");
-            }
-            headers.Authorization = `Bearer ${this.bearerCapability}`;
+        if (bearerCredential) {
+            headers.Authorization = `Bearer ${bearerCredential}`;
         }
-        const init: RequestInit = { method: options.method ?? "GET", headers };
+        const init: RequestInit = { method: options.method ?? "GET", headers, redirect: options.redirect };
         if (options.body !== undefined) {
             headers["Content-Type"] = "application/json";
             init.body = JSON.stringify(options.body);
         }
 
-        const secrets = this.bearerCapability ? [this.bearerCapability] : [];
+        const secrets = [this.bearerCapability, this.accountToken].filter((credential) => credential !== undefined);
         let response;
+        let text;
         try {
             response = await this.fetch(url, init);
+            text = await response.text();
         } catch (error) {
             throw new CollaborationApiError(`Network failure calling ${url}: ${redactSecrets(error, secrets)}`, {
                 secrets,
             });
         }
 
-        const text = await response.text();
         const payload = parseJsonOrUndefined(text);
         if (!response.ok) {
             const message = getErrorMessage(payload) ?? (text || response.statusText || "Request failed");
@@ -120,12 +141,34 @@ export class CollaborationClient {
         return payload;
     }
 
-    async createSharedSpace(payload: CreateSharedSpacePayload) {
-        return await this.requestJson("/api/spaces", {
-            method: "POST",
-            auth: false,
-            body: normalizeCreateSharedSpacePayload(payload),
-        });
+    /** Publish or recover the same Shared Space with the original encrypted request and request ID. */
+    async replaySharedSpace(payload: CreateSharedSpacePayload, requestId: string) {
+        try {
+            return await this.sendJson(
+                "/api/spaces/replay",
+                {
+                    method: "POST",
+                    redirect: "error",
+                    body: normalizeCreateSharedSpacePayload(payload),
+                    headers: { [SHARED_SPACE_IDEMPOTENCY_HEADER]: requestId },
+                },
+                this.accountToken,
+            );
+        } catch (error) {
+            if (error instanceof CollaborationApiError) {
+                if (error.status === 404) throw new PlanServerUpgradeRequiredError();
+                const payload = error.payload;
+                if (
+                    error.status === 410 &&
+                    payload &&
+                    typeof payload === "object" &&
+                    !Array.isArray(payload) &&
+                    payload.error === SHARED_SPACE_GONE_CODE
+                )
+                    throw new SharedSpaceGoneError();
+            }
+            throw error;
+        }
     }
 
     async getSharedSpace(spaceId: string) {
@@ -180,7 +223,7 @@ export function createCollaborationClient(options: CollaborationClientOptions) {
     return new CollaborationClient(options);
 }
 
-function parseJsonOrUndefined(text: string): unknown {
+function parseJsonOrUndefined(text: string): JsonValue | undefined {
     if (text.trim() === "") return undefined;
     try {
         return JSON.parse(text);
@@ -189,17 +232,14 @@ function parseJsonOrUndefined(text: string): unknown {
     }
 }
 
-function getErrorMessage(payload: unknown): string | undefined {
+function getErrorMessage(payload: JsonValue | undefined): string | undefined {
     if (!payload || typeof payload !== "object" || Array.isArray(payload)) return undefined;
-    const record = payload as RawApiErrorPayload;
-    return typeof record.message === "string" ? record.message : undefined;
+    return typeof payload.message === "string" ? payload.message : undefined;
 }
 
-function redactPayload(payload: unknown, secrets: string[] | undefined): unknown {
+function redactPayload(payload: JsonValue, secrets: string[] | undefined): JsonValue {
     if (typeof payload === "string") return redactSecrets(payload, secrets);
     if (!payload || typeof payload !== "object") return payload;
     if (Array.isArray(payload)) return payload.map((item) => redactPayload(item, secrets));
-    const redacted: RedactedJsonFields = {};
-    for (const [key, value] of Object.entries(payload)) redacted[key] = redactPayload(value, secrets);
-    return redacted;
+    return Object.fromEntries(Object.entries(payload).map(([key, value]) => [key, redactPayload(value, secrets)]));
 }

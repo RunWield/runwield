@@ -6,6 +6,8 @@
         ".": "./index.ts",
         "./format": "./format.ts",
         "./store": "./store.ts",
+        "./sharing": "./sharing.ts",
+        "./plan-server": "./plan-server.ts",
         "./package-storage": "./package-storage.ts",
         "./operation-receipts": "./operation-receipts.ts",
         "./project-store-wire": "./project-store-wire.ts",

@@ -3,7 +3,7 @@ import type { CollaborationResult } from "./operations.ts";
 import type { PlanFrontMatter } from "@runwield/plans";
 import { normalizeCollaborationFrontMatter } from "@runwield/plans/format";
 import { COLLABORATION_LOCK_BYPASS } from "../../shared/collaboration/lock.ts";
-import { loadPlan } from "../queries.ts";
+import { findPlanEvidenceById, loadPlan } from "../queries.ts";
 import { operationDigest } from "@runwield/plans/operation-receipts";
 import { inspectCollaborationMutation, retainCollaborationOperationResult } from "../operation-results.ts";
 export interface CollaborationMutation {
@@ -23,7 +23,8 @@ export async function recoverCollaborationMutation(
 ): Promise<CollaborationResult | undefined> {
     const pending = inspectCollaborationMutation(directory, operationId);
     if (!pending) return undefined;
-    const current = await loadPlan(cwd, pending.planName);
+    const share = pending.action === "share" ? await findPlanEvidenceById(cwd, pending.planId) : undefined;
+    const current = share ?? (await loadPlan(cwd, pending.planName));
     if (!current || current.attrs.planId !== pending.planId)
         throw new Error("Collaboration recovery Plan changed ownership.");
     const before = operationDigest(JSON.stringify(normalizeCollaborationFrontMatter(pending.beforeAttrs)));
@@ -45,10 +46,10 @@ export async function recoverCollaborationMutation(
         else
             await updatePlanCollaborationMetadata(
                 cwd,
-                pending.planName,
+                share?.name ?? pending.planName,
                 pending.updates,
                 COLLABORATION_LOCK_BYPASS[pending.action],
-                { body: pending.body },
+                { body: pending.body, expectedPlanId: share?.planId },
             );
     }
     retainCollaborationOperationResult(pending.result);

@@ -1,5 +1,7 @@
+import { PlanServerUpgradeRequiredError } from "@runwield/plans/plan-server";
 import {
     PROJECT_STORE_MAX_BYTES,
+    ProjectStorePreconditionError,
     readProjectStoreBody,
     sameProjectStoreBinding,
 } from "@runwield/plans/project-store-wire";
@@ -53,6 +55,10 @@ export class LaptopProjectStoreService {
                 return new Response(null, { status: 413 });
             return new Response(result, { headers: { "Content-Type": "application/json" } });
         } catch (error) {
+            if (input.command.kind === "collaboration") {
+                if (error instanceof PlanServerUpgradeRequiredError) return new Response(null, { status: 426 });
+                if (error instanceof ProjectStorePreconditionError) return new Response(null, { status: 412 });
+            }
             if (input.command.kind === "revise-plan") {
                 if (error instanceof PlanNotFoundError)
                     return new Response(null, {

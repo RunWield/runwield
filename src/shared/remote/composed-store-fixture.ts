@@ -1,7 +1,8 @@
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { equal } from "node:assert/strict";
+import { equal, notEqual, ok } from "node:assert/strict";
+import { projects } from "@runwield/projects";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { startRemoteControlService } from "./control.ts";
 import { getHomeDir } from "../../constants.ts";
@@ -10,6 +11,13 @@ import type { RemoteInteractiveConfig } from "./entry.ts";
 import { writeManagedStoreSshFixture } from "./managed-store-ssh-fixture.ts";
 
 const repository = defineCommittedGitFixture({ "README.md": "Composed remote owner\n" });
+
+interface ManagedShareFixtureOptions {
+    planServer: string;
+    planId?: string;
+    cwd?: string;
+}
+
 export async function composedRemoteFixture(allowRecoveryFaults = false) {
     const root = await realpath(await repository.checkout());
     const temporary = await realpath(await mkdtemp(join(tmpdir(), "composed-remote-")));
@@ -83,13 +91,14 @@ export async function composedRemoteFixture(allowRecoveryFaults = false) {
         clearInterval(health);
         await control.close();
     }
-    async function runRaw(command: string, port = control.port, attemptId?: string) {
+    async function runRaw(command: string, port = control.port, argument?: string | ManagedShareFixtureOptions) {
+        const options = typeof argument === "string" ? { attemptId: argument } : argument;
         return await captureForegroundProcess(process.execPath, {
-            cwd: root,
+            cwd: options && "cwd" in options ? (options.cwd ?? root) : root,
             args: [
                 new URL("./composed-store-process.ts", import.meta.url).pathname,
                 command,
-                JSON.stringify({ ...input, connection: { ...input.connection, port }, attemptId }),
+                JSON.stringify({ ...input, connection: { ...input.connection, port }, ...options }),
             ],
             env: {
                 ...process.env,
@@ -108,6 +117,18 @@ export async function composedRemoteFixture(allowRecoveryFaults = false) {
         endpoint,
         headers,
         runRaw,
+        async addLinkedCheckout() {
+            const linked = join(temporary, "linked");
+            await git(root, ["worktree", "add", "-b", "linked", linked]);
+            const context = { executionAccountHome: remoteHome, personalOwner: input.resources.personalOwner! };
+            const original = projects.checkout.inspect(root, { context });
+            const checkout = await projects.checkout.admit(linked, { context });
+            ok(original.kind === "existing" && checkout.kind === "existing");
+            equal(checkout.identity.projectId, original.identity.projectId);
+            equal(checkout.identity.repositoryId, original.identity.repositoryId);
+            notEqual(checkout.identity.checkoutId, original.identity.checkoutId);
+            return checkout.identity.checkoutRoot;
+        },
         async interruptRecreateAfterGitAdd() {
             const executable = Bun.which("git");
             if (!executable) throw new Error("Fixture requires Git.");
@@ -155,8 +176,8 @@ sys.exit(result.returncode)
                 await rm(disabledSshLogPath);
             }
         },
-        async run(command: string, port?: number, attemptId?: string) {
-            const result = await runRaw(command, port, attemptId);
+        async run(command: string, port?: number, argument?: string | ManagedShareFixtureOptions) {
+            const result = await runRaw(command, port, argument);
             equal(result.code, 0, new TextDecoder().decode(result.stderr));
             return new TextDecoder().decode(result.stdout).trim();
         },

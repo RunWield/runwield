@@ -14,7 +14,7 @@ import {
     normalizeRevisionMetadata,
     normalizeSharedSpaceLifecyclePayload,
     normalizeSharedSpaceMetadata,
-} from "./protocol.ts";
+} from "@runwield/plans/plan-server";
 
 test("protocol helpers normalize shared space metadata", () => {
     assertEquals(

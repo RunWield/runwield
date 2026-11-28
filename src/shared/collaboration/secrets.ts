@@ -11,14 +11,20 @@ import {
 /** @module shared/collaboration/secrets */
 
 import { dirname, join } from "node:path";
-import { redactCapabilityValue, redactSecrets } from "./capabilities.ts";
-import { assertRecord, normalizeLocalSecretRecord } from "./protocol.ts";
+import {
+    redactCapabilityValue,
+    redactSecrets,
+    assertRecord,
+    normalizeLocalSecretRecord,
+} from "@runwield/plans/plan-server";
 import { getHomeDir } from "../../constants.ts";
 import { enterProjectRuntime } from "../project-runtime-layout.ts";
 import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import { ensureRunWieldOwnedGitignoreBlock } from "@runwield/project-runtime/owned-paths";
+import { collaborationSecretStoreLockPath } from "@runwield/project-runtime";
+import { openNativeFileLock } from "@runwield/resources/fs";
 
-import type { LocalSecretRecord } from "./protocol.ts";
+import type { LocalSecretRecord } from "@runwield/plans/plan-server";
 
 export interface SecretStoreDocument {
     schemaVersion: number;
@@ -94,8 +100,7 @@ async function resolveSecretStorePath(location: SecretStoreLocation): Promise<st
     return (await enterProjectRuntime(location.projectRoot)).primary.projectSecretStorePath;
 }
 
-export async function readSecretStore(location: SecretStoreLocation): Promise<SecretStoreDocument> {
-    const path = await resolveSecretStorePath(location);
+async function readStoreDocument(path: string): Promise<SecretStoreDocument> {
     try {
         const raw = await fsReadFile(path, "utf8");
         return normalizeSecretStore(JSON.parse(raw));
@@ -107,10 +112,8 @@ export async function readSecretStore(location: SecretStoreLocation): Promise<Se
     }
 }
 
-export async function writeSecretStore(location: SecretStoreLocation, document: SecretStoreDocument) {
-    const path = await resolveSecretStorePath(location);
+async function writeStoreDocument(path: string, document: SecretStoreDocument): Promise<void> {
     const normalized = normalizeSecretStore(document);
-    await fsMkdir(dirname(path), { recursive: true });
     const tempPath = `${path}.${crypto.randomUUID()}.tmp`;
     const content = `${JSON.stringify(normalized, null, 2)}\n`;
     try {
@@ -140,10 +143,46 @@ export async function writeSecretStore(location: SecretStoreLocation, document: 
     }
 }
 
+export async function readSecretStore(location: SecretStoreLocation): Promise<SecretStoreDocument> {
+    return await readStoreDocument(await resolveSecretStorePath(location));
+}
+
+async function withSecretStoreLock<Result>(
+    location: SecretStoreLocation,
+    run: (path: string) => Promise<Result>,
+): Promise<Result> {
+    // Runtime entry may adopt legacy authority. Finish it before acquiring this store's lock.
+    const path = await resolveSecretStorePath(location);
+    await fsMkdir(dirname(path), { recursive: true, mode: 0o700 });
+    const lock = openNativeFileLock(collaborationSecretStoreLockPath(path));
+    try {
+        await lock.lock(true);
+        return await run(path);
+    } finally {
+        lock.close();
+    }
+}
+
+/** Replace the complete document. Record mutations must use the current document under the same lock. */
+export async function writeSecretStore(location: SecretStoreLocation, document: SecretStoreDocument): Promise<void> {
+    await withSecretStoreLock(location, (path) => writeStoreDocument(path, document));
+}
+
+async function updateSecretStore(
+    location: SecretStoreLocation,
+    update: (records: SecretStoreDocument["records"]) => boolean,
+): Promise<void> {
+    await withSecretStoreLock(location, async (path) => {
+        const document = await readStoreDocument(path);
+        if (update(document.records)) await writeStoreDocument(path, document);
+    });
+}
+
 export async function putSecretRecord(path: SecretStoreLocation, key: string, record: LocalSecretRecord) {
-    const document = await readSecretStore(path);
-    document.records[key] = normalizeLocalSecretRecord(record);
-    await writeSecretStore(path, document);
+    await updateSecretStore(path, (records) => {
+        records[key] = normalizeLocalSecretRecord(record);
+        return true;
+    });
 }
 
 export async function getSecretRecord(path: SecretStoreLocation, key: string): Promise<LocalSecretRecord | undefined> {
@@ -241,8 +280,8 @@ export async function resolveCompatibleSecretRecord(
     return matches[0] || null;
 }
 
-export async function putCompatibleSecretRecord(path: SecretStoreLocation, key: string, record: LocalSecretRecord) {
-    const existing = await getSecretRecord(path, key);
+function setCompatibleRecord(records: SecretStoreDocument["records"], key: string, record: LocalSecretRecord): boolean {
+    const existing = Object.hasOwn(records, key) ? records[key] : undefined;
     const normalized = normalizeLocalSecretRecord(record);
     if (existing) {
         for (const field of [
@@ -257,14 +296,49 @@ export async function putCompatibleSecretRecord(path: SecretStoreLocation, key: 
             }
         }
     }
-    await putSecretRecord(path, key, { ...existing, ...normalized });
+    records[key] = { ...existing, ...normalized };
+    return true;
+}
+
+export async function putCompatibleSecretRecord(path: SecretStoreLocation, key: string, record: LocalSecretRecord) {
+    await updateSecretStore(path, (records) => setCompatibleRecord(records, key, record));
+}
+
+/** Bind freshly created credentials without replacing a legacy record for another Shared Space. */
+export async function putSharedPlanSecretRecord(
+    path: SecretStoreLocation,
+    record: LocalSecretRecord & { planId: string; spaceId: string },
+): Promise<void> {
+    const { planId, spaceId } = record;
+    const key = secretRecordKey(planId, spaceId);
+    await updateSecretStore(path, (records) => {
+        if ([records[planId], records[key]].some((stored) => stored?.spaceId && stored.spaceId !== spaceId))
+            throw new Error(
+                `Local collaboration secrets already exist for planId ${planId} and a different remote space.`,
+            );
+        return setCompatibleRecord(records, key, record);
+    });
+}
+
+/** Adopt transferred credentials only where the receiving store has no record. */
+export async function mergeMissingSecretRecords(
+    path: SecretStoreLocation,
+    incoming: ReadonlyArray<[string, LocalSecretRecord]>,
+): Promise<void> {
+    if (!incoming.length) return;
+    await updateSecretStore(path, (records) => {
+        let changed = false;
+        for (const [key, record] of incoming) {
+            if (Object.hasOwn(records, key)) continue;
+            records[key] = record;
+            changed = true;
+        }
+        return changed;
+    });
 }
 
 export async function deleteSecretRecord(path: SecretStoreLocation, key: string) {
-    const document = await readSecretStore(path);
-    if (!Object.hasOwn(document.records, key)) return;
-    delete document.records[key];
-    await writeSecretStore(path, document);
+    await updateSecretStore(path, (records) => Object.hasOwn(records, key) && delete records[key]);
 }
 
 /**
@@ -281,16 +355,17 @@ export async function deleteCompatibleSecretRecords(
     const keys = [secretRecordKey(planId, spaceId), planId];
     const deleted: DeletedSecretRecord[] = [];
     for (const path of paths) {
-        const document = await readSecretStore(path);
-        let changed = false;
-        for (const key of keys) {
-            const record = document.records[key];
-            if (!record || !isCompatibleSecretRecord(record, planId, spaceId)) continue;
-            delete document.records[key];
-            deleted.push({ path: path.path, key });
-            changed = true;
-        }
-        if (changed) await writeSecretStore(path, document);
+        await updateSecretStore(path, (records) => {
+            let changed = false;
+            for (const key of keys) {
+                const record = Object.hasOwn(records, key) ? records[key] : undefined;
+                if (!record || !isCompatibleSecretRecord(record, planId, spaceId)) continue;
+                delete records[key];
+                deleted.push({ path: path.path, key });
+                changed = true;
+            }
+            return changed;
+        });
     }
     return deleted;
 }

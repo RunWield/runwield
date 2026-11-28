@@ -4,20 +4,21 @@ import {
     hashCapability,
     MAINTAINER_SCOPE,
     REVIEWER_SCOPE,
+    SHARED_SPACE_GONE_CODE,
     timingSafeEqual,
-} from "../../../shared/collaboration/capabilities.ts";
+} from "@runwield/plans/plan-server";
 import { openRemoteDatabase } from "./remote-db.ts";
 
 import type { SQLInputValue, SQLOutputValue } from "node:sqlite";
 import type { DatabaseSync } from "../../../shared/sqlite.ts";
-import type { CapabilityScope } from "../../../shared/collaboration/capabilities.ts";
 import type {
+    CapabilityScope,
     CapabilityRecord,
     SharedSpaceMetadata,
     RevisionMetadata,
     EncryptedCommentRecord,
     CommentStateChangePayload,
-} from "../../../shared/collaboration/protocol.ts";
+} from "@runwield/plans/plan-server";
 import type { RemoteDatabase, OpenRemoteDatabaseOptions } from "./remote-db.ts";
 
 export interface RemoteRetentionPolicy {
@@ -66,7 +67,7 @@ export interface RemoteWorkspaceReadiness {
 
 export interface RemoteWorkspaceAdapter {
     database: RemoteDatabase;
-    createSharedSpace(input: CreateRemoteSharedSpaceInput): RemoteSharedSpace;
+    createSharedSpace(input: CreateRemoteSharedSpaceInput, requestId: string): RemoteSharedSpace;
     verifyCapability(spaceId: string, capability: string, requiredScope: CapabilityScope): Promise<void>;
     getSharedSpace(spaceId: string): RemoteSharedSpace;
     listRevisions(spaceId: string): RemoteRevisionMetadata[];
@@ -113,6 +114,7 @@ interface RemoteCommentRow extends Record<string, SQLOutputValue> {
 }
 
 const EXPIRED_SPACE_CLEANUP_BATCH_SIZE = 100;
+const SHARE_REQUEST_ID_PATTERN = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 
 export const SYSTEM_REMOTE_WORKSPACE_CLOCK: Readonly<RemoteWorkspaceClock> = Object.freeze({
     now: () => new Date(),
@@ -183,11 +185,39 @@ export function createRemoteWorkspaceAdapter(options: CreateRemoteWorkspaceAdapt
                 if (changes < EXPIRED_SPACE_CLEANUP_BATCH_SIZE) return deleted;
             }
         },
-        createSharedSpace(input) {
-            const spaceId = crypto.randomUUID();
-            const nowIso = currentIso();
-            const expiresAt = expiryFor(nowIso);
-            return database.transaction(() => {
+        createSharedSpace(input, requestId) {
+            if (!SHARE_REQUEST_ID_PATTERN.test(requestId)) {
+                throw new RemoteWorkspaceError(
+                    "invalid_share_request_id",
+                    "Shared Space creation requires a random request UUID.",
+                    400,
+                );
+            }
+            const reviewer = input.capabilities.find((entry) => entry.scope === REVIEWER_SCOPE);
+            const maintainer = input.capabilities.find((entry) => entry.scope === MAINTAINER_SCOPE);
+            if (input.capabilities.length !== 2 || !reviewer || !maintainer) {
+                throw new Error("capabilities must include one reviewer and one maintainer hash");
+            }
+            const result = database.transaction(() => {
+                const nowIso = currentIso();
+                const prior = db.prepare("SELECT space_id FROM share_attempts WHERE id = ?").get(requestId);
+                if (prior) {
+                    if (prior.space_id === null) return undefined;
+                    const spaceId = String(prior.space_id);
+                    const expired = db
+                        .prepare("DELETE FROM shared_spaces WHERE id = ? AND expires_at <= ?")
+                        .run(spaceId, nowIso);
+                    if (Number(expired.changes) > 0) return undefined;
+                    return replaySharedSpaceCreate(
+                        db,
+                        input,
+                        spaceId,
+                        reviewer.capabilityHash,
+                        maintainer.capabilityHash,
+                    );
+                }
+                const spaceId = crypto.randomUUID();
+                const expiresAt = expiryFor(nowIso);
                 db.prepare(
                     "INSERT INTO shared_spaces(id, plan_id, status, latest_revision, created_at, updated_at, expires_at) VALUES (?, ?, 'open', 1, ?, ?, ?)",
                 ).run(spaceId, input.planId, nowIso, nowIso, expiresAt);
@@ -200,6 +230,7 @@ export function createRemoteWorkspaceAdapter(options: CreateRemoteWorkspaceAdapt
                 for (const capability of input.capabilities) {
                     insertCapability.run(spaceId, capability.scope, capability.capabilityHash, nowIso);
                 }
+                db.prepare("INSERT INTO share_attempts(id, space_id) VALUES (?, ?)").run(requestId, spaceId);
 
                 const space: SharedSpaceMetadata = {
                     spaceId,
@@ -212,6 +243,14 @@ export function createRemoteWorkspaceAdapter(options: CreateRemoteWorkspaceAdapt
                 if (expiresAt) space.expiresAt = expiresAt;
                 return withRevisions(space, [{ spaceId, revision: 1, createdAt: nowIso }]);
             });
+            if (!result) {
+                throw new RemoteWorkspaceError(
+                    SHARED_SPACE_GONE_CODE,
+                    "The Shared Space for this creation request was deleted or expired.",
+                    410,
+                );
+            }
+            return result;
         },
         async verifyCapability(spaceId, capability, requiredScope) {
             await verifyCapability(db, spaceId, capability, requiredScope);
@@ -331,6 +370,42 @@ export function openRemoteWorkspaceAdapter(options: OpenRemoteWorkspaceAdapterOp
         retention: options.retention,
         clock: SYSTEM_REMOTE_WORKSPACE_CLOCK,
     });
+}
+
+function replaySharedSpaceCreate(
+    db: DatabaseSync,
+    input: CreateRemoteSharedSpaceInput,
+    spaceId: string,
+    reviewerHash: string,
+    maintainerHash: string,
+): RemoteSharedSpace {
+    const match = db
+        .prepare(
+            `SELECT space.*,
+                    revision.payload_ciphertext = ? AND reviewer.capability_hash = ? AS matches_request
+             FROM space_capabilities maintainer
+             JOIN shared_spaces space ON space.id = maintainer.space_id
+             JOIN space_revisions revision ON revision.space_id = space.id AND revision.revision = 1
+             JOIN space_capabilities reviewer ON reviewer.space_id = space.id AND reviewer.scope = 'reviewer'
+             WHERE maintainer.capability_hash = ? AND maintainer.scope = 'maintainer' AND space.plan_id = ?
+                AND space.id = ?`,
+        )
+        .get(input.payloadCiphertext, reviewerHash, maintainerHash, input.planId, spaceId);
+    if (!match?.matches_request) throw conflict("Shared Space creation request does not match.");
+    const space = mapSpace(match as RemoteSpaceRow);
+    const { planId, createdAt, expiresAt } = space;
+    return withRevisions(
+        {
+            spaceId,
+            planId,
+            createdAt,
+            updatedAt: createdAt,
+            status: "open",
+            latestRevision: 1,
+            ...(expiresAt ? { expiresAt } : {}),
+        },
+        [{ spaceId, revision: 1, createdAt }],
+    );
 }
 
 async function verifyCapability(db: DatabaseSync, spaceId: string, capability: string, requiredScope: CapabilityScope) {

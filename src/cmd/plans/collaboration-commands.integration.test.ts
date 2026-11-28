@@ -19,16 +19,29 @@ import { assertEquals, assertRejects, assertStringIncludes } from "../../testing
 import { dirname, join } from "node:path";
 import { hashPlanBody, injectFrontMatter } from "@runwield/plans/format";
 import { projects } from "@runwield/projects";
-import { updatePlanCollaborationMetadata } from "../../plan-store/index.ts";
+import { captureForegroundProcess } from "@runwield/resources/process";
+import { openPlanSharing, updatePlanCollaborationMetadata } from "../../plan-store/index.ts";
+import { plans } from "@runwield/plans";
 import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { PlanningNotStartedError } from "../../plan-store/index.ts";
 import { listEntries } from "../../shared/worktree-registry.ts";
 import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
-import { generateBearerCapability, hashCapability, MAINTAINER_SCOPE } from "../../shared/collaboration/capabilities.ts";
-import { createCollaborationClient, SYSTEM_COLLABORATION_FETCH } from "../../shared/collaboration/client.ts";
-import { encryptJsonPayload, generateContentKeyString, importContentKey } from "../../shared/collaboration/crypto.ts";
+import {
+    generateBearerCapability,
+    hashCapability,
+    MAINTAINER_SCOPE,
+    REVIEWER_SCOPE,
+    createCollaborationClient,
+    decryptJsonPayload,
+    SYSTEM_COLLABORATION_FETCH,
+    encryptJsonPayload,
+    generateContentKeyString,
+    importContentKey,
+    normalizeEncryptedPlanPayload,
+    parseCollaborationUrl,
+} from "@runwield/plans/plan-server";
 import { COLLABORATION_LOCK_BYPASS } from "../../shared/collaboration/lock.ts";
 import {
     getGlobalSecretStoreLocation,
@@ -37,7 +50,6 @@ import {
     getProjectSecretStorePath,
     readSecretStore,
 } from "../../shared/collaboration/secrets.ts";
-import { parseCollaborationUrl } from "../../shared/collaboration/urls.ts";
 import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { withCollaborationServer } from "./collaboration-command-test-fixture.ts";
@@ -114,6 +126,47 @@ test("Plan collaboration commands reject incomplete arguments without changing s
     });
 });
 
+test("the Plan sharing opener binds the selected Project, durable Plan ID, and Plan Server", async () => {
+    const { packageFixture, create, read } = await import("../../shared/testing/plan-package-fixture.ts");
+    const fixture = await packageFixture();
+    const foreign = await packageFixture();
+    try {
+        await create(fixture.identity);
+        await create(foreign.identity, { planId: "foreign-id" });
+        const registry = projects.registrations.open();
+        try {
+            registry.register({ root: fixture.root, displayName: "Plan sharing fixture" });
+            registry.register({ root: foreign.root, displayName: "Foreign Plan fixture" });
+        } finally {
+            registry.close();
+        }
+        await withCollaborationServer(async ({ adapter, serverUrl }) => {
+            const sharing = openPlanSharing({ projectId: fixture.identity.projectId, serverUrl: serverUrl + "/" });
+            const planId = plans.identity.parse("plan-one")!;
+            await assertRejects(() => sharing.share(plans.identity.parse("one")!), Error, "Plan not found");
+            await assertRejects(() => sharing.share(plans.identity.parse("foreign-id")!), Error, "Plan not found");
+            const shared = await sharing.share(planId);
+            assertEquals(shared.planId, planId);
+            assertEquals(shared.serverUrl, serverUrl);
+            assertEquals(shared.revision, 1);
+            assert(shared.links);
+            assertEquals(parseCollaborationUrl(shared.links.reviewerUrl).spaceId, shared.spaceId);
+            assertEquals((await read(fixture.identity)).metadata.controller.collaborationSpaceId, shared.spaceId);
+            const repeated = await sharing.share(planId);
+            assertEquals(repeated.spaceId, shared.spaceId);
+            assertEquals(repeated.links, shared.links);
+            const other = openPlanSharing({ projectId: fixture.identity.projectId, serverUrl: serverUrl + "/other" });
+            await assertRejects(() => other.share(planId), Error, "already shared");
+            assertEquals(adapter.database.handle.prepare("SELECT COUNT(*) AS count FROM shared_spaces").get(), {
+                count: 1,
+            });
+        });
+    } finally {
+        await foreign.cleanup();
+        await fixture.cleanup();
+    }
+});
+
 test("share, push, pull, and unshare compose through real Plan, crypto, secret, runtime, and HTTP machinery", async () => {
     await withRuntimeCommandFixture(
         "runwield-plan-collaboration-",
@@ -131,6 +184,7 @@ test("share, push, pull, and unshare compose through real Plan, crypto, secret, 
                 const reviewer = parseCollaborationUrl(reviewerUrl);
                 const maintainer = parseCollaborationUrl(maintainerUrl);
                 assertEquals(reviewer.spaceId, maintainer.spaceId);
+                await assertRejects(() => runPlansShareCommand(["demo-plan"]), Error, "already shared");
 
                 const sharedPlan = await loadPlan(projectRoot, "demo-plan");
                 assert(sharedPlan);
@@ -234,6 +288,286 @@ test("share, push, pull, and unshare compose through real Plan, crypto, secret, 
     );
 });
 
+test("sharing after a lost create reply keeps the original server, secret store, and capabilities across processes", async () => {
+    await withRuntimeCommandFixture("runwield-share-replay-", async ({ projectRoot }) => {
+        await seedPlan(projectRoot);
+        const requests: string[] = [];
+        await withCollaborationServer(
+            async ({ adapter, serverUrl }) => {
+                const cli = new URL("./share.ts", import.meta.url).href;
+                const first = await captureForegroundProcess(process.execPath, {
+                    cwd: projectRoot,
+                    args: [
+                        "--eval",
+                        `import {runPlansShareCommand} from ${JSON.stringify(cli)};
+                        await runPlansShareCommand(${JSON.stringify(["demo-plan", "--plan-server", serverUrl, "--project-secrets"])});`,
+                    ],
+                });
+                assertEquals(first.success, false);
+                assertStringIncludes(new TextDecoder().decode(first.stderr), "Retry sharing this Plan");
+                const original = adapter.database.handle.prepare("SELECT id FROM shared_spaces").get();
+                assert(original);
+
+                const edited = await loadPlan(projectRoot, "demo-plan");
+                assert(edited);
+                const planId = plans.identity.parse(edited.attrs.planId);
+                assert(planId);
+                const newBody = "# Demo Plan\n\nA newer local draft.\n";
+                await fsWriteFile(edited.path, newBody);
+                const admitted = projects.checkout.inspect(projectRoot);
+                assert(admitted.kind === "existing");
+                const registry = projects.registrations.open();
+                try {
+                    registry.register({ root: projectRoot, displayName: "Plan share recovery" });
+                } finally {
+                    registry.close();
+                }
+                let alternateRequests = 0;
+                const recovered = await withCollaborationServer(
+                    ({ serverUrl: alternate }) =>
+                        openPlanSharing({ projectId: admitted.identity.projectId, serverUrl: alternate }).share(planId),
+                    (request, serve) => {
+                        alternateRequests++;
+                        return serve(request);
+                    },
+                );
+                assertEquals(alternateRequests, 0);
+                assertEquals(recovered.serverUrl, serverUrl);
+                assertEquals(recovered.spaceId, original.id);
+                assertEquals(requests.length, 2);
+                assertEquals(requests[0], requests[1]);
+                assert(recovered.links?.maintainerUrl);
+                const maintainer = parseCollaborationUrl(recovered.links.maintainerUrl);
+                await adapter.verifyCapability(recovered.spaceId, maintainer.bearerCapability, MAINTAINER_SCOPE);
+                const originalRevision = adapter.getRevision(recovered.spaceId, 1);
+                const plaintext = normalizeEncryptedPlanPayload(
+                    await decryptJsonPayload(
+                        originalRevision.payloadCiphertext,
+                        await importContentKey(maintainer.contentKey),
+                    ),
+                );
+                assertEquals(plaintext.body, edited.body);
+                const key = `${recovered.planId}:${recovered.spaceId}`;
+                assertEquals((await readSecretStore(getGlobalSecretStoreLocation())).records[key], undefined);
+                assertEquals(
+                    (await readSecretStore(await getProjectSecretStoreLocation(projectRoot))).records[key].contentKey,
+                    maintainer.contentKey,
+                );
+                const local = await loadPlan(projectRoot, "demo-plan");
+                assertEquals(local?.body, newBody);
+                assertEquals(local?.attrs.collaborationBodyHash, await hashPlanBody(edited.body));
+            },
+            async (request, serve) => {
+                requests.push(`${request.headers.get("Idempotency-Key")} ${await request.clone().text()}`);
+                const response = await serve(request);
+                return requests.length === 1 ? new Response("Create reply lost", { status: 502 }) : response;
+            },
+        );
+    });
+});
+
+test("sharing requires an upgraded Plan Server and retries the exact original attempt after upgrade", async () => {
+    await withRuntimeCommandFixture("runwield-share-server-upgrade-", async ({ projectRoot }) => {
+        await seedPlan(projectRoot);
+        let upgraded = false;
+        const writes: { path: string; requestId: string | null; body: string }[] = [];
+        await withCollaborationServer(
+            async ({ adapter, serverUrl }) => {
+                const share = () =>
+                    sharePlanForReview({ target: "demo-plan", cwd: projectRoot, planServer: serverUrl });
+                await assertRejects(share, Error, "Upgrade it and retry");
+                await assertRejects(share, Error, "Upgrade it and retry");
+                assertEquals(adapter.database.handle.prepare("SELECT id FROM shared_spaces").all(), []);
+                const draft = await loadPlan(projectRoot, "demo-plan");
+                assert(draft);
+                assertEquals(draft.attrs.collaborationSpaceId, undefined);
+                assertEquals((await readSecretStore(getGlobalSecretStoreLocation())).records, {});
+                upgraded = true;
+
+                const shared = await share();
+                assertEquals(writes.length, 3);
+                assertEquals(writes[0].path, "/api/spaces/replay");
+                assert(writes[0].requestId);
+                assertEquals(writes, [writes[0], writes[0], writes[0]]);
+                assertEquals(adapter.database.handle.prepare("SELECT id FROM shared_spaces").all().length, 1);
+                const reviewer = parseCollaborationUrl(shared.reviewerUrl);
+                const reviewerClient = createCollaborationClient({ ...reviewer, fetch: SYSTEM_COLLABORATION_FETCH });
+                assert(await reviewerClient.getRevision(shared.spaceId, 1));
+            },
+            async (request, serve) => {
+                const path = new URL(request.url).pathname;
+                if (request.method === "POST") {
+                    writes.push({
+                        path,
+                        requestId: request.headers.get("Idempotency-Key"),
+                        body: await request.clone().text(),
+                    });
+                }
+                if (!upgraded && path === "/api/spaces/replay") return new Response("Not found", { status: 404 });
+                return serve(request);
+            },
+        );
+    });
+});
+
+test("the share request never follows redirects to a legacy endpoint or a different server", async () => {
+    await withRuntimeCommandFixture("runwield-share-redirect-", async ({ projectRoot }) => {
+        await seedPlan(projectRoot);
+        const replayIds: (string | null)[] = [];
+        const alternateRequests: string[] = [];
+        const legacyRequests: string[] = [];
+        await withCollaborationServer(
+            async ({ serverUrl: alternateUrl }) => {
+                await withCollaborationServer(
+                    async ({ adapter, serverUrl }) => {
+                        const share = () =>
+                            sharePlanForReview({ target: "demo-plan", cwd: projectRoot, planServer: serverUrl });
+                        await assertRejects(share, Error, "Retry sharing this Plan to recover the original attempt");
+                        await assertRejects(share, Error, "Retry sharing this Plan to recover the original attempt");
+                        assertEquals(adapter.database.handle.prepare("SELECT id FROM shared_spaces").all(), []);
+                        await share();
+                        assert(replayIds[0]);
+                        assertEquals(replayIds, [replayIds[0], replayIds[0], replayIds[0]]);
+                        assertEquals(legacyRequests, []);
+                        assertEquals(alternateRequests, []);
+                    },
+                    (request, serve) => {
+                        if (new URL(request.url).pathname !== "/api/spaces/replay") {
+                            legacyRequests.push(request.method);
+                            return serve(request);
+                        }
+                        replayIds.push(request.headers.get("Idempotency-Key"));
+                        if (replayIds.length === 1) {
+                            return new Response(null, { status: 307, headers: { Location: "/api/spaces" } });
+                        }
+                        if (replayIds.length === 2) return Response.redirect(alternateUrl + "/api/spaces", 308);
+                        return serve(request);
+                    },
+                );
+            },
+            (request, serve) => {
+                alternateRequests.push(request.method);
+                return serve(request);
+            },
+        );
+    });
+});
+
+test("sharing only retires a lost create after the server confirms the Shared Space was deleted", async () => {
+    await withRuntimeCommandFixture("runwield-share-gone-", async ({ projectRoot }) => {
+        await seedPlan(projectRoot);
+        const ids: (string | null)[] = [];
+        let proxyStatus: number | undefined;
+        await withCollaborationServer(
+            async ({ adapter, serverUrl }) => {
+                const share = () =>
+                    sharePlanForReview({ target: "demo-plan", cwd: projectRoot, planServer: serverUrl });
+                await assertRejects(share, Error, "Create reply lost");
+                const original = adapter.database.handle.prepare("SELECT id FROM shared_spaces").get();
+                assert(original && typeof original.id === "string");
+
+                adapter.deleteSharedSpace(original.id);
+                for (const status of [410, 413]) {
+                    proxyStatus = status;
+                    await assertRejects(share, Error, "Retry sharing this Plan to recover the original attempt");
+                }
+                proxyStatus = undefined;
+                await assertRejects(share, Error, "The Shared Space from the previous share attempt was removed");
+                assertEquals(adapter.database.handle.prepare("SELECT id FROM shared_spaces").all(), []);
+                assertEquals((await loadPlan(projectRoot, "demo-plan"))?.attrs.collaborationSpaceId, undefined);
+                assertEquals(ids, [ids[0], ids[0], ids[0], ids[0]]);
+
+                const shared = await share();
+                assert(shared.spaceId !== original.id);
+                assert(ids[4] && ids[4] !== ids[0]);
+                assertEquals(adapter.database.handle.prepare("SELECT id FROM shared_spaces").all(), [
+                    { id: shared.spaceId },
+                ]);
+            },
+            async (request, serve) => {
+                assertEquals(new URL(request.url).pathname, "/api/spaces/replay");
+                ids.push(request.headers.get("Idempotency-Key"));
+                if (proxyStatus) return new Response("Proxy refusal", { status: proxyStatus });
+                const response = await serve(request);
+                return ids.length === 1 ? new Response("Create reply lost", { status: 502 }) : response;
+            },
+        );
+    });
+});
+
+test("a remembered create response is checked again before publishing local review links", async () => {
+    await withRuntimeCommandFixture("runwield-share-gone-before-local-write-", async ({ projectRoot }) => {
+        await seedPlan(projectRoot);
+        let requests = 0;
+        const storePath = getGlobalSecretStorePath();
+        await withCollaborationServer(
+            async ({ adapter, serverUrl }) => {
+                const share = () =>
+                    sharePlanForReview({ target: "demo-plan", cwd: projectRoot, planServer: serverUrl });
+                try {
+                    await assertRejects(share, Error, "Retry sharing this Plan to recover the original attempt");
+                } finally {
+                    await fsRm(storePath, { recursive: true, force: true });
+                }
+                const original = adapter.database.handle.prepare("SELECT id FROM shared_spaces").get();
+                assert(original && typeof original.id === "string");
+                adapter.deleteSharedSpace(original.id);
+                await assertRejects(share, Error, "The Shared Space from the previous share attempt was removed");
+                assertEquals(requests, 2);
+                assertEquals((await loadPlan(projectRoot, "demo-plan"))?.attrs.collaborationSpaceId, undefined);
+                assertEquals((await readSecretStore(getGlobalSecretStoreLocation())).records, {});
+            },
+            async (request, serve) => {
+                const response = await serve(request);
+                if (++requests === 1) {
+                    assert(response.ok);
+                    await fsMkdir(storePath, { recursive: true });
+                }
+                return response;
+            },
+        );
+    });
+});
+
+test("a definite rejection after a server upgrade allows a corrected draft to start a new share", async () => {
+    await withRuntimeCommandFixture("runwield-share-rejection-", async ({ projectRoot }) => {
+        await seedPlan(projectRoot);
+        const requests: (string | null)[] = [];
+        await withCollaborationServer(
+            async ({ adapter, serverUrl }) => {
+                const share = () =>
+                    sharePlanForReview({ target: "demo-plan", cwd: projectRoot, planServer: serverUrl });
+                await assertRejects(share, Error, "Upgrade it and retry");
+                await assertRejects(share, Error, "The Plan Server rejected the Shared Space request");
+                assertEquals(adapter.database.handle.prepare("SELECT id FROM shared_spaces").all(), []);
+                const local = await loadPlan(projectRoot, "demo-plan");
+                assert(local);
+                const correctedBody = "# Smaller draft\n";
+                await fsWriteFile(local.path, correctedBody);
+                const shared = await share();
+                assertEquals(requests.length, 3);
+                assert(requests[0] && requests[2]);
+                assertEquals(requests[0], requests[1]);
+                assert(requests[2] !== requests[0]);
+                assertEquals(adapter.database.handle.prepare("SELECT id FROM shared_spaces").get()?.id, shared.spaceId);
+                const reviewer = parseCollaborationUrl(shared.reviewerUrl);
+                const { payloadCiphertext } = adapter.getRevision(shared.spaceId, 1);
+                const published = normalizeEncryptedPlanPayload(
+                    await decryptJsonPayload(payloadCiphertext, await importContentKey(reviewer.contentKey)),
+                );
+                assertEquals(published.body, correctedBody);
+            },
+            (request, serve) => {
+                assertEquals(new URL(request.url).pathname, "/api/spaces/replay");
+                requests.push(request.headers.get("Idempotency-Key"));
+                if (requests.length === 1) return new Response("Not found", { status: 404 });
+                if (requests.length === 2) return new Response("Request too large", { status: 413 });
+                return serve(request);
+            },
+        );
+    });
+});
+
 test("named pull and push use a linked checkout's migrated 0.10 capability", async () => {
     await withRuntimeCommandFixture(
         "runwield-plan-collaboration-migrated-capability-",
@@ -275,16 +609,23 @@ test("named pull and push use a linked checkout's migrated 0.10 capability", asy
                             },
                             await importContentKey(contentKey),
                         );
-                        const created = adapter.createSharedSpace({
-                            planId,
-                            payloadCiphertext,
-                            capabilities: [
-                                {
-                                    scope: MAINTAINER_SCOPE,
-                                    capabilityHash: await hashCapability(maintainerCapability),
-                                },
-                            ],
-                        });
+                        const created = adapter.createSharedSpace(
+                            {
+                                planId,
+                                payloadCiphertext,
+                                capabilities: [
+                                    {
+                                        scope: REVIEWER_SCOPE,
+                                        capabilityHash: await hashCapability(generateBearerCapability()),
+                                    },
+                                    {
+                                        scope: MAINTAINER_SCOPE,
+                                        capabilityHash: await hashCapability(maintainerCapability),
+                                    },
+                                ],
+                            },
+                            crypto.randomUUID(),
+                        );
                         await updatePlanCollaborationMetadata(
                             alternateRoot,
                             planName,

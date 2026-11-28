@@ -23,6 +23,7 @@ import { isRunWieldOwnedRuntimePath, LEGACY_PROJECT_RUNTIME_HAZARD_PATHS } from 
 import { inspectWorktreeRegistryAtPath } from "./registry-inspection.ts";
 import { recoverLegacyRuntimeFiles } from "./recovery.ts";
 import {
+    collaborationSecretStoreLockPath,
     ProjectRuntimeEntryRefusedError,
     type ProjectRuntimeLayout,
     type ProjectRuntimeReadInspection,
@@ -949,6 +950,7 @@ async function enterPinnedProjectRuntime(identity: ProjectIdentity): Promise<Pro
     await migrationLock.lock(true);
     let sourceLocks: NativeFileLock[] = [];
     let registryLock: NativeFileLock | undefined;
+    let secretStoreLock: NativeFileLock | undefined;
     const indexes: DatabaseSync[] = [];
     try {
         verifyAdmittedCheckout(identity);
@@ -1053,6 +1055,13 @@ async function enterPinnedProjectRuntime(identity: ProjectIdentity): Promise<Pro
             registryLock = openNativeFileLock(layout.primary.worktreeRegistryLockPath);
             await registryLock.lock(true);
         }
+        if (journal.files.some((file) => !file.retired && file.destination === layout.primary.projectSecretStorePath)) {
+            const path = collaborationSecretStoreLockPath(layout.primary.projectSecretStorePath);
+            await assertSafePath(path, projectHome(identity));
+            ensurePrivateDir(dirname(path));
+            secretStoreLock = openNativeFileLock(path);
+            await secretStoreLock.lock(true);
+        }
         if (journal.phase === "copying") {
             for (const file of journal.files) await copyFile(file, projectHome(identity));
             journal.phase = "verified";
@@ -1142,6 +1151,7 @@ async function enterPinnedProjectRuntime(identity: ProjectIdentity): Promise<Pro
             adoptedSelectedCheckoutRoots: [...new Set([...(marker?.roots ?? []), ...roots])],
         };
     } finally {
+        secretStoreLock?.close();
         for (const lock of sourceLocks.reverse()) lock.close();
         registryLock?.close();
         for (const index of indexes) index.close();

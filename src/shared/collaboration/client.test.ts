@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
-import { createCollaborationClient } from "./client.ts";
-import type { CollaborationApiError } from "./client.ts";
+import { createCollaborationClient } from "@runwield/plans/plan-server";
+import type { CollaborationApiError } from "@runwield/plans/plan-server";
 
 type FetchHandler = (url: string, init: RequestInit) => Response | Promise<Response>;
 
@@ -118,14 +118,17 @@ test("client typed methods use Shared Space API paths", async () => {
             return Response.json({ ok: true });
         }),
     });
-    await client.createSharedSpace({
-        planId: "plan-1",
-        initialRevision: { payloadCiphertext: "cipher-plan" },
-        capabilities: [
-            { scope: "reviewer", capabilityHash: "sha256:reviewer" },
-            { scope: "maintainer", capabilityHash: "sha256:maintainer" },
-        ],
-    });
+    await client.replaySharedSpace(
+        {
+            planId: "plan-1",
+            initialRevision: { payloadCiphertext: "cipher-plan" },
+            capabilities: [
+                { scope: "reviewer", capabilityHash: "sha256:reviewer" },
+                { scope: "maintainer", capabilityHash: "sha256:maintainer" },
+            ],
+        },
+        crypto.randomUUID(),
+    );
     await client.getSharedSpace("space 1");
     await client.getRevision("space 1", 2);
     await client.appendRevision("space 1", { payloadCiphertext: "cipher-rev", expectedRevision: 2 });
@@ -140,7 +143,7 @@ test("client typed methods use Shared Space API paths", async () => {
     assertEquals(
         calls.map((call) => `${call.method} ${new URL(call.url).pathname}`),
         [
-            "POST /api/spaces",
+            "POST /api/spaces/replay",
             "GET /api/spaces/space%201",
             "GET /api/spaces/space%201/revisions/2",
             "POST /api/spaces/space%201/revisions",
@@ -152,4 +155,40 @@ test("client typed methods use Shared Space API paths", async () => {
         ],
     );
     assertEquals(JSON.parse(String(calls[8].body)), { action: "delete" });
+});
+
+test("account credentials authenticate create and recovery without replacing Shared Space capabilities", async () => {
+    const accountToken = "private-account-token";
+    const capability = "private-space-capability";
+    const requests: Request[] = [];
+    const client = createCollaborationClient({
+        serverUrl: "https://plans.example.test",
+        accountToken,
+        bearerCapability: capability,
+        fetch: fakeFetch((url, init) => {
+            const request = new Request(url, init);
+            requests.push(request);
+            return Response.json({ message: `denied ${accountToken}`, token: accountToken }, { status: 401 });
+        }),
+    });
+    const payload = {
+        planId: "plan-1",
+        initialRevision: { payloadCiphertext: "cipher-plan" },
+        capabilities: [
+            { scope: "reviewer" as const, capabilityHash: "sha256:reviewer" },
+            { scope: "maintainer" as const, capabilityHash: "sha256:maintainer" },
+        ],
+    };
+    const error = await assertRejects(
+        () => client.replaySharedSpace(payload, crypto.randomUUID()),
+        Error,
+        "denied [redacted-capability]",
+    );
+    assertEquals((error as CollaborationApiError).status, 401);
+    assert(!JSON.stringify((error as CollaborationApiError).payload).includes(accountToken));
+    await assertRejects(() => client.getSharedSpace("space-1"), Error, "denied [redacted-capability]");
+    assertEquals(
+        requests.map((request) => request.headers.get("Authorization")),
+        [`Bearer ${accountToken}`, `Bearer ${capability}`],
+    );
 });

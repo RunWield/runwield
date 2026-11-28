@@ -45,6 +45,7 @@ export function validateProjectStoreRequest(request: ProjectStoreRequest): void 
             command.kind === "revise-plan" ||
             command.kind === "plan-resource" ||
             command.kind === "read-documents" ||
+            command.kind === "collaboration" ||
             command.kind === "save-epic-artifact" ||
             command.kind === "append-epic-qa";
         const valid = durablePlanId ? plans.identity.isValid(command.planId) : identity(command.planId);
@@ -81,8 +82,14 @@ export function validateProjectStoreRequest(request: ProjectStoreRequest): void 
         ],
         "reopen-review": [...common, "attemptId"],
         "unshare-preview": ["kind", "options"],
-        collaboration: ["kind", "operationId", "intent"],
+        collaboration: [
+            "kind",
+            "operationId",
+            "intent",
+            ...(command.kind === "collaboration" && "planId" in command ? ["planId"] : []),
+        ],
         "read-collaboration-result": ["kind", "operationId"],
+        "inspect-share-identity": ["kind", "operationId"],
         "save-epic-artifact": [...common, "resource", "body"],
         "append-epic-qa": [...common, "childPlanId", "childRevision", "childHeading", "checklistMarkdown"],
         "epic-projection": [...common, "childPlanId", "childRevision", "projection", "notes"],
@@ -171,6 +178,14 @@ export function validateProjectStoreRequest(request: ProjectStoreRequest): void 
     const exact = Object.hasOwn(commandFields, command.kind) ? commandFields[command.kind] : [];
     if (!exact.length || Object.keys(command).sort().join(",") !== exact.sort().join(","))
         throw new Error("Unsupported store operation or fields.");
+    if (
+        command.kind === "collaboration" &&
+        command.planId !== undefined &&
+        (command.intent?.action !== "share" ||
+            !command.intent.options ||
+            (command.intent.options.planId !== undefined && command.intent.options.planId !== command.planId))
+    )
+        throw new Error("Invalid managed Plan sharing intent.");
     if (
         (command.kind === "resolve-plan" ||
             command.kind === "read-archive" ||
@@ -514,6 +529,7 @@ export function validateProjectStoreReply(reply: ProjectStoreReply, request: Pro
     if ("familyController" in result) allowed = ["familyController"];
     if ("unsharePreview" in result) allowed = ["unsharePreview"];
     if ("collaborationResult" in result) allowed = ["collaborationResult"];
+    if ("sharePlanId" in result) allowed = ["sharePlanId", "shareEffectStarted"];
     if ("sequenceDocuments" in result) allowed = ["sequenceDocuments"];
     if ("sequenceResult" in result) allowed = ["sequenceResult"];
     if ("children" in result) allowed = ["children"];
@@ -564,9 +580,18 @@ export function validateProjectStoreReply(reply: ProjectStoreReply, request: Pro
     } else if (request.command.kind === "read-collaboration-result") {
         if (
             !("collaborationResult" in result) ||
-            !["share", "push", "pull", "unshare"].includes(result.collaborationResult.action)
+            !["share", "share-gone", "push", "pull", "unshare"].includes(result.collaborationResult.action) ||
+            (result.collaborationResult.action === "share-gone" &&
+                !plans.identity.isValid(result.collaborationResult.value?.planId))
         )
             throw new Error("Invalid collaboration result.");
+    } else if (request.command.kind === "inspect-share-identity") {
+        if (
+            !("sharePlanId" in result) ||
+            (result.sharePlanId !== null && !plans.identity.isValid(result.sharePlanId)) ||
+            typeof result.shareEffectStarted !== "boolean"
+        )
+            throw new Error("Invalid retained share identity.");
     } else if (request.command.kind === "sequence-snapshot") {
         if (!("sequenceDocuments" in result) || !Array.isArray(result.sequenceDocuments))
             throw new Error("Invalid Sequence snapshot.");

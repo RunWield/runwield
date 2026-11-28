@@ -12,6 +12,10 @@ former Deno read/write allowlists or subprocess denial. Equivalent isolation is 
 sensitive host directories into these test containers. The deployment profiles below describe operational requirements,
 not production qualification of the current image.
 
+Upgrade the Plan Server before creating new shares with `wld`. The updated client uses a random request ID so
+you can retry a share after a lost reply and recover its original links. Existing reviewer and maintainer links
+continue to work after the upgrade.
+
 ## Deployment profiles
 
 ### Private or VPN deployment
@@ -22,7 +26,7 @@ proxy, SSH tunnel, VPN port forward, or equivalent network configuration.
 
 ### Accountless public deployment
 
-The Plan Server has no user accounts and no password for creating Shared Spaces. Anyone who can reach `POST /api/spaces`
+The Plan Server has no user accounts and no password for creating Shared Spaces. Anyone who can reach `POST /api/spaces/replay`
 can attempt to create encrypted Shared Spaces. For an internet-facing instance, run the Plan Server behind Nginx or an
 equivalent reverse proxy that owns public TLS, request-size limits, and per-IP rate limits. Enable optional inactivity
 retention if you want abandoned public links to be removed automatically.
@@ -91,7 +95,7 @@ The Plan Server rejects JSON request bodies larger than `RUNWIELD_REMOTE_MAX_REQ
 the app if the proxy is misconfigured. Your reverse proxy should enforce the same or smaller body limit so oversized
 requests fail before reaching Bun.
 
-The Nginx example applies a stricter rate limit to `POST /api/spaces` than to ordinary review traffic. Anyone can call
+The Nginx example applies a stricter rate limit to `POST /api/spaces/replay` than to ordinary review traffic. Anyone can call
 that endpoint, so on a public server, watch disk use and request rates.
 
 Inactivity retention is optional:
@@ -101,7 +105,8 @@ Inactivity retention is optional:
   `wld plans pull`, and the remote review page;
 - new Revisions, comments, resolve/reopen, and close refresh expiry;
 - reads and page reloads do not refresh expiry;
-- cleanup hard-deletes expired ciphertext and capability hashes;
+- deletion and expiry remove the share, its revisions, comments, and capability hashes. The server retains only the
+  random create request ID. A late retry returns a gone response. A deliberate new share receives a fresh ID;
 - expired links behave like deleted/not-found remotes, and local Plans stay locked until a maintainer uses
   `wld plans unshare <plan>` recovery.
 

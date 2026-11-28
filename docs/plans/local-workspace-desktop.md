@@ -96,7 +96,7 @@ Additional retirement findings, checked during this review:
 - `src/ui/review/review-launcher.ts` calls `startReviewWorkspaceServer`, which creates `createReviewWorkspaceApp`
   in `src/ui/workspace/server.ts`. This is a token-scoped review host, not the full owner workbench. TUI, Connect,
   standalone Code Review, and external ACP review links use this path. Review-only support can survive workbench removal.
-- Shared Plan links use `/p/<spaceId>` URLs from `src/shared/collaboration/urls.ts` and a separate remote collaboration
+- Shared Plan links use `/p/<spaceId>` URLs from `@runwield/plans/plan-server` and a separate remote collaboration
   host. They are not owner-workbench routes. Their removal or migration is a separate product decision.
 
 ```mermaid

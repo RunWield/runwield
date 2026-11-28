@@ -1,7 +1,8 @@
 /** @module ui/workspace/routes/remote-api */
 
-import { MAINTAINER_SCOPE, REVIEWER_SCOPE } from "../../../shared/collaboration/capabilities.ts";
 import {
+    MAINTAINER_SCOPE,
+    REVIEWER_SCOPE,
     assertNonEmptyString,
     assertPositiveInteger,
     normalizeAppendCommentPayload,
@@ -9,10 +10,11 @@ import {
     normalizeCommentStateChangePayload,
     normalizeCreateSharedSpacePayload,
     normalizeSharedSpaceLifecyclePayload,
-} from "../../../shared/collaboration/protocol.ts";
+    SHARED_SPACE_IDEMPOTENCY_HEADER,
+} from "@runwield/plans/plan-server";
 import { RemoteWorkspaceError } from "../server/remote-adapter.ts";
 
-import type { CapabilityScope } from "../../../shared/collaboration/capabilities.ts";
+import type { CapabilityScope } from "@runwield/plans/plan-server";
 import type { RemoteWorkspaceAdapter } from "../server/remote-adapter.ts";
 
 export interface RemoteApiRouterOptions {
@@ -53,7 +55,16 @@ interface RemoteApiJsonFields {
 export const DEFAULT_REMOTE_MAX_REQUEST_BYTES = 5 * 1024 * 1024;
 
 export function registerRemoteApiRoutes(app: RemoteApiRouter) {
-    app.post("/api/spaces", createSpaceApi);
+    app.post("/api/spaces", () =>
+        errorJson(
+            new RemoteWorkspaceError(
+                "share_protocol_required",
+                "Creating a Shared Space requires a client that supports durable creation requests.",
+                400,
+            ),
+        ),
+    );
+    app.post("/api/spaces/replay", createSpaceApi);
     app.get("/api/spaces/:spaceId", getSpaceApi);
     app.get("/api/spaces/:spaceId/revisions/:revision", getRevisionApi);
     app.post("/api/spaces/:spaceId/revisions", appendRevisionApi);
@@ -66,14 +77,14 @@ export function registerRemoteApiRoutes(app: RemoteApiRouter) {
 async function createSpaceApi(ctx: RemoteApiContext) {
     try {
         const payload = normalizeCreateSharedSpacePayload(await readJson(ctx));
-        const hasReviewer = payload.capabilities.some((capability) => capability.scope === REVIEWER_SCOPE);
-        const hasMaintainer = payload.capabilities.some((capability) => capability.scope === MAINTAINER_SCOPE);
-        if (!hasReviewer || !hasMaintainer) throw new Error("capabilities must include reviewer and maintainer hashes");
-        const result = ctx.state.collaboration.createSharedSpace({
-            planId: payload.planId,
-            payloadCiphertext: payload.initialRevision.payloadCiphertext,
-            capabilities: payload.capabilities,
-        });
+        const result = ctx.state.collaboration.createSharedSpace(
+            {
+                planId: payload.planId,
+                payloadCiphertext: payload.initialRevision.payloadCiphertext,
+                capabilities: payload.capabilities,
+            },
+            ctx.request.headers.get(SHARED_SPACE_IDEMPOTENCY_HEADER) ?? "",
+        );
         return json(result, 201);
     } catch (error) {
         return errorJson(error);
