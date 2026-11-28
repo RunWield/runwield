@@ -6,8 +6,9 @@ import {
     exportContentKey,
     generateContentKey,
     importContentKey,
-} from "./crypto.ts";
-import { decodeBase64Url, encodeBase64Url } from "./base64url.ts";
+    decodeBase64Url,
+    encodeBase64Url,
+} from "@runwield/plans/plan-server";
 
 test("content encryption keys export, import, and round trip JSON payloads", async () => {
     const key = await generateContentKey();

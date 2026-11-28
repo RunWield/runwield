@@ -1,5 +1,4 @@
-/** @module shared/collaboration/capabilities */
-
+import type { JsonValue } from "@runwield/parsing/jsonc";
 import { encodeBase64Url } from "./base64url.ts";
 
 export const REVIEWER_SCOPE = "reviewer";
@@ -8,7 +7,7 @@ export const CAPABILITY_SCOPES = Object.freeze([REVIEWER_SCOPE, MAINTAINER_SCOPE
 
 export type CapabilityScope = typeof REVIEWER_SCOPE | typeof MAINTAINER_SCOPE;
 
-export function assertCapabilityScope(scope: unknown): CapabilityScope {
+export function assertCapabilityScope(scope: JsonValue | undefined): CapabilityScope {
     if (scope !== REVIEWER_SCOPE && scope !== MAINTAINER_SCOPE) {
         throw new Error("Capability scope must be reviewer or maintainer");
     }

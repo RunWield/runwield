@@ -34,7 +34,7 @@ type LoadExternalPlanResult = {
     revision: string;
 };
 
-type UpdatePlanCollaborationMetadataOptions = { body?: string };
+type UpdatePlanCollaborationMetadataOptions = { body?: string; expectedPlanId?: string };
 
 type ClearPlanCollaborationMetadataOptions = { updatedAt?: string };
 
@@ -1745,6 +1745,8 @@ export async function updatePlanCollaborationMetadata(
     if (selection)
         return await packageWorkflowLocks([planName], async () => {
             const plan = await selectedPackage(planName);
+            if (options.expectedPlanId !== undefined && options.expectedPlanId !== plan.metadata.planId)
+                throw new Error("Plan identity changed while updating collaboration metadata.");
             const view = await loadPackageWorkflowPlan({ planId: plan.metadata.planId });
             assertSharedPlanWriteAllowed(view.attrs, { collaborationLockBypass });
             const collaboration = normalizeCollaborationFrontMatter(updates);
@@ -1768,10 +1770,13 @@ export async function updatePlanCollaborationMetadata(
     return await withPlanLock(cwd, planName, async () => {
         const plan = await prepareStoredPlan(cwd, planName);
         if (!plan) throw new Error(`Plan not found: ${planName}`);
+        if (options.expectedPlanId !== undefined && options.expectedPlanId !== plan.attrs.planId)
+            throw new Error("Plan identity changed while updating collaboration metadata.");
         const hasControlledBodyWrite = typeof options.body === "string";
         const nextBody = hasControlledBodyWrite ? options.body! : plan.body;
         const collaborationUpdates = normalizeCollaborationFrontMatter(updates);
-        if (!hasControlledBodyWrite) {
+        // Sharing records the exact snapshot uploaded to the server, even if the local draft has since changed.
+        if (!hasControlledBodyWrite && collaborationLockBypass !== COLLABORATION_LOCK_BYPASS.share) {
             delete collaborationUpdates.collaborationBodyHash;
         }
         const planMetadataUpdates = pickKnownPlanFrontMatter(updates);

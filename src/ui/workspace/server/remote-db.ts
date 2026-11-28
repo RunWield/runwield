@@ -1,7 +1,12 @@
 /** @module ui/workspace/server/remote-db */
 
 import { DatabaseSync } from "../../../shared/sqlite.ts";
-import { REMOTE_SCHEMA_V1_SQL, REMOTE_SCHEMA_V2_SQL, REMOTE_SCHEMA_VERSION } from "./remote-schema.ts";
+import {
+    REMOTE_SCHEMA_V1_SQL,
+    REMOTE_SCHEMA_V2_SQL,
+    REMOTE_SCHEMA_V3_SQL,
+    REMOTE_SCHEMA_VERSION,
+} from "./remote-schema.ts";
 
 export interface RemoteDatabase {
     handle: DatabaseSync;
@@ -54,6 +59,10 @@ export function runRemoteMigrations(db: DatabaseSync): void {
         if (latestVersion < 2) {
             db.exec(REMOTE_SCHEMA_V2_SQL);
             recordMigration(db, 2);
+        }
+        if (latestVersion < 3) {
+            db.exec(REMOTE_SCHEMA_V3_SQL);
+            recordMigration(db, 3);
         }
         db.exec("COMMIT");
     } catch (error) {

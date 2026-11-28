@@ -1,8 +1,6 @@
-/** @module shared/collaboration/urls */
-
+import { normalizeServerUrl } from "../format/collaboration.ts";
 import { assertCapabilityScope, type CapabilityScope, redactSecrets } from "./capabilities.ts";
 import { assertNonEmptyString } from "./protocol.ts";
-import { normalizeServerUrl } from "@runwield/plans/format";
 
 export interface CollaborationUrlInput {
     serverUrl: string;

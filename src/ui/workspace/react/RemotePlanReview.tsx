@@ -2,10 +2,14 @@
 import { RunWieldThinkingDots } from "../../design-system/components/react/RunWieldPrimitives.tsx";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createCollaborationClient } from "../../../shared/collaboration/client.ts";
-import { decryptJsonPayload, encryptJsonPayload, importContentKey } from "../../../shared/collaboration/crypto.ts";
-import { normalizeEncryptedPlanPayload } from "../../../shared/collaboration/protocol.ts";
-import { parseCollaborationUrl } from "../../../shared/collaboration/urls.ts";
+import {
+    createCollaborationClient,
+    decryptJsonPayload,
+    encryptJsonPayload,
+    importContentKey,
+    normalizeEncryptedPlanPayload,
+    parseCollaborationUrl,
+} from "@runwield/plans/plan-server";
 import { ThemeProvider } from "@plannotator/ui/components/ThemeProvider.tsx";
 import { TooltipProvider } from "@plannotator/ui/components/Tooltip.tsx";
 import { Viewer } from "@plannotator/ui/components/Viewer.tsx";

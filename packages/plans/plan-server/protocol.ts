@@ -1,10 +1,13 @@
-/** @module shared/collaboration/protocol */
-
+import type { JsonValue } from "@runwield/parsing/jsonc";
+import type { PlanFrontMatter } from "../document.ts";
 import { assertCapabilityScope, type CapabilityScope } from "./capabilities.ts";
+
+export const SHARED_SPACE_IDEMPOTENCY_HEADER = "Idempotency-Key";
+export const SHARED_SPACE_GONE_CODE = "shared_space_gone";
 
 /** Validated as a non-array record. Individual fields are checked by the normalizers. */
 export interface ProtocolRecord {
-    [key: string]: unknown;
+    [key: string]: JsonValue | undefined;
 }
 
 export interface SharedSpaceMetadata {
@@ -44,10 +47,10 @@ export interface RevisionMetadata {
     payloadCiphertext: string;
 }
 
-export interface EncryptedPlanPayload {
+export interface EncryptedPlanPayload<Metadata extends ProtocolRecord | PlanFrontMatter = ProtocolRecord> {
     planId: string;
     title: string;
-    metadata: ProtocolRecord;
+    metadata: Metadata;
     body: string;
 }
 
@@ -99,21 +102,19 @@ export interface LocalSecretRecord {
     updatedAt: string;
 }
 
-export function assertNonEmptyString(value: unknown, name: string): string {
+export function assertNonEmptyString<Value>(value: Value, name: string): string {
     if (typeof value !== "string" || value.trim() === "") throw new Error(`${name} must be a non-empty string`);
     return value.trim();
 }
 
-export function assertPositiveInteger(value: unknown, name: string): number {
-    // Number.isInteger does not narrow a wire value in TypeScript.
-    const integer = value as number;
-    if (!Number.isInteger(integer) || integer < 1) {
+export function assertPositiveInteger<Value>(value: Value, name: string): number {
+    if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
         throw new Error(`${name} must be a positive integer`);
     }
-    return integer;
+    return value;
 }
 
-export function assertIsoDateTimeString(value: unknown, name: string): string {
+export function assertIsoDateTimeString<Value>(value: Value, name: string): string {
     const text = assertNonEmptyString(value, name);
     if (!/^\d{4}-\d{2}-\d{2}T/.test(text) || Number.isNaN(Date.parse(text))) {
         throw new Error(`${name} must be an ISO-8601 date-time string`);
@@ -121,7 +122,7 @@ export function assertIsoDateTimeString(value: unknown, name: string): string {
     return text;
 }
 
-export function normalizeSharedSpaceMetadata(value: unknown): SharedSpaceMetadata {
+export function normalizeSharedSpaceMetadata<Value>(value: Value): SharedSpaceMetadata {
     const record = assertRecord(value, "Shared space metadata");
     const normalized: SharedSpaceMetadata = {
         spaceId: assertNonEmptyString(record.spaceId, "spaceId"),
@@ -139,7 +140,7 @@ export function normalizeSharedSpaceMetadata(value: unknown): SharedSpaceMetadat
     return normalized;
 }
 
-export function normalizeRevisionMetadata(value: unknown): RevisionMetadata {
+export function normalizeRevisionMetadata<Value>(value: Value): RevisionMetadata {
     const record = assertRecord(value, "Revision metadata");
     return {
         spaceId: assertNonEmptyString(record.spaceId, "spaceId"),
@@ -149,7 +150,7 @@ export function normalizeRevisionMetadata(value: unknown): RevisionMetadata {
     };
 }
 
-export function normalizeCapabilityRecord(value: unknown): CapabilityRecord {
+export function normalizeCapabilityRecord<Value>(value: Value): CapabilityRecord {
     const record = assertRecord(value, "Capability record");
     return {
         scope: assertCapabilityScope(record.scope),
@@ -157,7 +158,7 @@ export function normalizeCapabilityRecord(value: unknown): CapabilityRecord {
     };
 }
 
-export function normalizeCreateSharedSpacePayload(value: unknown): CreateSharedSpacePayload {
+export function normalizeCreateSharedSpacePayload<Value>(value: Value): CreateSharedSpacePayload {
     const record = assertRecord(value, "Create Shared Space payload");
     rejectPlaintextFields(record);
     const initialRevision = assertRecord(record.initialRevision, "initialRevision");
@@ -173,7 +174,7 @@ export function normalizeCreateSharedSpacePayload(value: unknown): CreateSharedS
     };
 }
 
-export function normalizeAppendRevisionPayload(value: unknown): AppendRevisionPayload {
+export function normalizeAppendRevisionPayload<Value>(value: Value): AppendRevisionPayload {
     const record = assertRecord(value, "Append revision payload");
     rejectPlaintextFields(record);
     const normalized: AppendRevisionPayload = {
@@ -185,13 +186,13 @@ export function normalizeAppendRevisionPayload(value: unknown): AppendRevisionPa
     return normalized;
 }
 
-export function normalizeAppendCommentPayload(value: unknown): AppendCommentPayload {
+export function normalizeAppendCommentPayload<Value>(value: Value): AppendCommentPayload {
     const record = assertRecord(value, "Append comment payload");
     rejectPlaintextFields(record);
     return { ciphertext: assertNonEmptyString(record.ciphertext, "ciphertext") };
 }
 
-export function normalizeEncryptedPlanPayload(value: unknown): EncryptedPlanPayload {
+export function normalizeEncryptedPlanPayload<Value>(value: Value): EncryptedPlanPayload {
     const record = assertRecord(value, "Encrypted plan payload");
     if (typeof record.body !== "string" || record.body.trim() === "") {
         throw new Error("body must be a non-empty string");
@@ -204,7 +205,7 @@ export function normalizeEncryptedPlanPayload(value: unknown): EncryptedPlanPayl
     };
 }
 
-export function normalizeEncryptedCommentRecord(value: unknown): EncryptedCommentRecord {
+export function normalizeEncryptedCommentRecord<Value>(value: Value): EncryptedCommentRecord {
     const record = assertRecord(value, "Encrypted comment record");
     if (typeof record.resolved !== "boolean") throw new Error("resolved must be a boolean");
     return {
@@ -216,7 +217,7 @@ export function normalizeEncryptedCommentRecord(value: unknown): EncryptedCommen
     };
 }
 
-export function normalizeDecryptedReviewCommentPayload(value: unknown): DecryptedReviewCommentPayload {
+export function normalizeDecryptedReviewCommentPayload<Value>(value: Value): DecryptedReviewCommentPayload {
     const record = assertRecord(value, "Decrypted review comment payload");
     if (record.schemaVersion !== 1) throw new Error("Review comment schemaVersion must be 1");
     if (record.type !== "comment" && record.type !== "global_comment") {
@@ -239,7 +240,7 @@ export function normalizeDecryptedReviewCommentPayload(value: unknown): Decrypte
     return normalized;
 }
 
-export function normalizeCommentStateChangePayload(value: unknown): CommentStateChangePayload {
+export function normalizeCommentStateChangePayload<Value>(value: Value): CommentStateChangePayload {
     const record = assertRecord(value, "Comment state change payload");
     if (record.action !== "resolve" && record.action !== "reopen") {
         throw new Error("Comment action must be resolve or reopen");
@@ -250,7 +251,7 @@ export function normalizeCommentStateChangePayload(value: unknown): CommentState
     };
 }
 
-export function normalizeSharedSpaceLifecyclePayload(value: unknown): SharedSpaceLifecyclePayload {
+export function normalizeSharedSpaceLifecyclePayload<Value>(value: Value): SharedSpaceLifecyclePayload {
     const record = assertRecord(value, "Shared space lifecycle payload");
     if (record.action !== "close" && record.action !== "delete") {
         throw new Error("Shared Space lifecycle action must be close or delete");
@@ -261,7 +262,7 @@ export function normalizeSharedSpaceLifecyclePayload(value: unknown): SharedSpac
     };
 }
 
-export function normalizeApiErrorPayload(value: unknown): ApiErrorPayload {
+export function normalizeApiErrorPayload<Value>(value: Value): ApiErrorPayload {
     const record = assertRecord(value, "API error payload");
     const normalized: ApiErrorPayload = {
         error: assertNonEmptyString(record.error, "error"),
@@ -271,7 +272,7 @@ export function normalizeApiErrorPayload(value: unknown): ApiErrorPayload {
     return normalized;
 }
 
-export function normalizeLocalSecretRecord(value: unknown): LocalSecretRecord {
+export function normalizeLocalSecretRecord<Value>(value: Value): LocalSecretRecord {
     const record = assertRecord(value, "Local secret record");
     const normalized: LocalSecretRecord = {
         planId: assertNonEmptyString(record.planId, "planId"),
@@ -288,7 +289,7 @@ export function normalizeLocalSecretRecord(value: unknown): LocalSecretRecord {
     return normalized;
 }
 
-export function assertRecord(value: unknown, name: string): ProtocolRecord {
+export function assertRecord<Value>(value: Value, name: string): ProtocolRecord {
     if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${name} must be an object`);
     return value as ProtocolRecord;
 }

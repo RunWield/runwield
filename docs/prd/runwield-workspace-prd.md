@@ -346,8 +346,13 @@ revision, then reject push after another remote revision while retaining local c
 **Scope and maturity:** Current self-hosted collaboration protocol. The container definitions are for testing; runtime
 isolation for production hosting is deferred.
 
-**Requirement: Share review revisions with explicit access.** Workspace supports encrypted Plan sharing through
-self-hosted Shared Spaces:
+**Requirement: One share operation across clients.** The CLI and Desktop use the same Plan Server URL and sharing
+protocol. Today, signed-out users share encrypted Plans through reviewer and maintainer links. The target for a
+signed-in user is to encrypt using their account key and have the server associate the share with their profile.
+A retry continues the original share under its original credentials. Account sign-in and hosted profiles are future work.
+
+**Requirement: Share review revisions with explicit access.** The self-hosted Plan Server supports encrypted Shared
+Spaces:
 
 - `wld plans share`, `pull`, `push`, and `unshare` run the review and publishing cycle;
 - reviewer and maintainer links are distinct, and Plan documents hold no secrets;
@@ -373,6 +378,10 @@ activity/audit feeds, Revision diffs, comment attachments, and closed-Space expo
 
 **Acceptance scenarios:**
 
+- When a client tries to share a new Plan on an older server, it reports that an upgrade is required and creates
+  zero spaces. After upgrade, retrying a lost reply recovers the same space and links.
+- When a share is deleted or expires, a delayed create with its original request ID leaves it deleted. Only the
+  random ID remains on the server. A user can deliberately start another share with a fresh ID.
 - Given a shared Plan, a reviewer following their link can comment and switch Revisions within that access, without
   receiving maintainer secrets.
 - When the maintainer publishes a new review version or unshares, participants see that outcome, and repository

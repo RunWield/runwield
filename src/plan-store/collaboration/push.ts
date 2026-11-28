@@ -14,17 +14,23 @@ import { CLI_BIN, getCwd } from "../../constants.ts";
 import { hashPlanBody, COLLABORATION_STATE_REMOTE_CANONICAL, normalizePlanServerUrl } from "@runwield/plans/format";
 import { updatePlanCollaborationMetadata } from "../../plan-store/index.ts";
 import { listPlans, listPlanResources } from "../queries.ts";
-import { redactSecrets, REVIEWER_SCOPE } from "../../shared/collaboration/capabilities.ts";
-import { createCollaborationClient, SYSTEM_COLLABORATION_FETCH } from "../../shared/collaboration/client.ts";
-import { encryptJsonPayload, importContentKey } from "../../shared/collaboration/crypto.ts";
+import {
+    redactSecrets,
+    REVIEWER_SCOPE,
+    createCollaborationClient,
+    SYSTEM_COLLABORATION_FETCH,
+    encryptJsonPayload,
+    importContentKey,
+    normalizeRevisionMetadata,
+    normalizeSharedSpaceMetadata,
+    buildCollaborationUrl,
+} from "@runwield/plans/plan-server";
 import { COLLABORATION_LOCK_BYPASS } from "../../shared/collaboration/lock.ts";
-import { normalizeRevisionMetadata, normalizeSharedSpaceMetadata } from "../../shared/collaboration/protocol.ts";
 import {
     getGlobalSecretStoreLocation,
     getProjectSecretStoreLocation,
     resolvePullSecretRecord,
 } from "../../shared/collaboration/secrets.ts";
-import { buildCollaborationUrl } from "../../shared/collaboration/urls.ts";
 import { collaborationPlanLocation as resolveWorkflowPlanLocation } from "./operations.ts";
 
 interface PlansPushArgs {

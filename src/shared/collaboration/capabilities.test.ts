@@ -1,7 +1,7 @@
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { ok as assert, match as assertMatch } from "node:assert/strict";
-import { generateBearerCapability, hashCapability, redactSecrets, timingSafeEqual } from "./capabilities.ts";
+import { generateBearerCapability, hashCapability, redactSecrets, timingSafeEqual } from "@runwield/plans/plan-server";
 
 test("capability generation creates distinct URL-safe 256-bit bearer values", () => {
     const first = generateBearerCapability();

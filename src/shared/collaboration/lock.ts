@@ -1,6 +1,6 @@
 /** @module shared/collaboration/lock */
 
-import { redactSecrets } from "./capabilities.ts";
+import { redactSecrets } from "@runwield/plans/plan-server";
 import { COLLABORATION_STATE_REMOTE_CANONICAL, type CollaborationFrontMatter } from "@runwield/plans/format";
 
 export const COLLABORATION_LOCK_BYPASS = Object.freeze({

@@ -1,4 +1,4 @@
-import { serveHttp } from "../../shared/http-server.ts";
+import { serveHttp, type HttpHandler } from "../../shared/http-server.ts";
 import { createRemoteWorkspaceApp } from "../../ui/workspace/server.ts";
 import { createRemoteWorkspaceAdapter } from "../../ui/workspace/server/remote-adapter.ts";
 
@@ -9,13 +9,16 @@ export interface CollaborationServerFixture {
     serverUrl: string;
 }
 
-export async function withCollaborationServer(
-    run: (fixture: CollaborationServerFixture) => Promise<void>,
-): Promise<void> {
+export async function withCollaborationServer<Result>(
+    run: (fixture: CollaborationServerFixture) => Promise<Result>,
+    handle?: (request: Request, serve: HttpHandler) => Response | Promise<Response>,
+): Promise<Result> {
     const app = createRemoteWorkspaceApp({ mode: "remote" });
     const adapter = app.adapter;
     const handler = app.handler();
-    const server = serveHttp({ hostname: "127.0.0.1", port: 0, onListen: () => {} }, handler);
+    const server = serveHttp({ hostname: "127.0.0.1", port: 0, onListen: () => {} }, (request) =>
+        handle ? handle(request, handler) : handler(request),
+    );
     const address = server.addr;
     if (address.transport !== "tcp") {
         await server.shutdown();
@@ -24,7 +27,7 @@ export async function withCollaborationServer(
     }
 
     try {
-        await run({ adapter, serverUrl: `http://${address.hostname}:${address.port}` });
+        return await run({ adapter, serverUrl: `http://${address.hostname}:${address.port}` });
     } finally {
         await server.shutdown();
         adapter.close();

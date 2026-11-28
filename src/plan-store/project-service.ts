@@ -3,11 +3,12 @@ import type {
     LegacyManagedPlanAuthoring,
     ProjectStoreBinding,
 } from "@runwield/plans/project-store-wire";
+import { ProjectStorePreconditionError } from "@runwield/plans/project-store-wire";
 import { adoptManagedExecutionReplacement, withManagedExecutionRecovery } from "@runwield/plans/managed-store-host";
 import { PlanNotFoundError, StalePlanWriteError } from "@runwield/plans/store";
 import type { ExecutionPublicationPolicy, PackagePublicationReference } from "@runwield/plans/publication-copies";
 import { projects, type HomeProjectOwner } from "@runwield/projects";
-import { plans } from "@runwield/plans";
+import { plans, type PlanId } from "@runwield/plans";
 import { isEpicArtifactName } from "@runwield/plans/format";
 import { openPlanStoreForCheckout } from "./project-plans.ts";
 import { HISTORY_PAGE_CHARS } from "../shared/remote/project-store-protocol.ts";
@@ -34,8 +35,12 @@ import {
     getProjectSecretStoreLocation,
     resolveCompatibleSecretRecord,
 } from "../shared/collaboration/secrets.ts";
-import { createCollaborationClient, SYSTEM_COLLABORATION_FETCH } from "../shared/collaboration/client.ts";
-import { normalizeSharedSpaceMetadata } from "../shared/collaboration/protocol.ts";
+import {
+    createCollaborationClient,
+    SharedSpaceGoneError,
+    SYSTEM_COLLABORATION_FETCH,
+    normalizeSharedSpaceMetadata,
+} from "@runwield/plans/plan-server";
 import {
     currentPackageProject,
     currentPackageSelection,
@@ -314,6 +319,7 @@ export interface ProjectStoreUnsharePreviewResult {
 export interface ProjectStoreCollaborationCommand {
     kind: "collaboration";
     operationId: string;
+    planId?: PlanId;
     intent: import("./collaboration/operations.ts").CollaborationIntent;
 }
 export interface ProjectStoreCollaborationResultRead {
@@ -321,7 +327,17 @@ export interface ProjectStoreCollaborationResultRead {
     operationId: string;
 }
 export interface ProjectStoreCollaborationResult {
-    collaborationResult: import("./collaboration/operations.ts").CollaborationResult;
+    collaborationResult:
+        | import("./collaboration/operations.ts").CollaborationResult
+        | import("./operation-results.ts").GoneShareOperationResult;
+}
+export interface ProjectStoreShareIdentityRead {
+    kind: "inspect-share-identity";
+    operationId: string;
+}
+export interface ProjectStoreShareIdentity {
+    sharePlanId: PlanId | null;
+    shareEffectStarted: boolean;
 }
 export interface ProjectStoreEpicArtifact extends PlanMutation {
     kind: "save-epic-artifact";
@@ -614,6 +630,7 @@ export type ProjectStoreCommand =
     | ProjectStoreUnsharePreview
     | ProjectStoreCollaborationCommand
     | ProjectStoreCollaborationResultRead
+    | ProjectStoreShareIdentityRead
     | ProjectStoreEpicArtifact
     | ProjectStoreEpicQa
     | ProjectStoreEpicProjection
@@ -707,6 +724,7 @@ export interface ProjectStoreReply {
         | ProjectStoreRetained
         | ProjectStoreUnsharePreviewResult
         | ProjectStoreCollaborationResult
+        | ProjectStoreShareIdentity
         | ProjectStoreSequenceDocuments
         | ProjectStoreSequenceResult
         | ProjectStoreChildrenResult
@@ -941,6 +959,21 @@ export class PreparedProjectStore {
                             owner.projectId,
                         ),
                     };
+                if (command.kind === "inspect-share-identity") {
+                    const receipts = await import("./operation-results.ts");
+                    const result = receipts.inspectCollaborationOperationResult(directory, command.operationId);
+                    const mutation = receipts.inspectCollaborationMutation(directory, command.operationId);
+                    const planId =
+                        result?.action === "share" || result?.action === "share-gone"
+                            ? result.value.planId
+                            : mutation?.action === "share"
+                              ? mutation.planId
+                              : undefined;
+                    return {
+                        sharePlanId: plans.identity.parse(planId) ?? null,
+                        shareEffectStarted: receipts.collaborationNetworkEffectStarted(directory, command.operationId),
+                    };
+                }
                 if (command.kind === "collaboration")
                     return await withPlanPackageCatalogDiscovery(owner, () =>
                         runReceiptedOperation(
@@ -955,19 +988,53 @@ export class PreparedProjectStore {
                                         directory,
                                         command.operationId,
                                     );
-                                    if (retained) return { revision: operationDigest(JSON.stringify(retained)) };
+                                    if (retained) {
+                                        if (retained.action === "share" || retained.action === "share-gone") {
+                                            const { settleRetainedShareAttempt } =
+                                                await import("./collaboration/share-attempt.ts");
+                                            const identity =
+                                                retained.action === "share-gone"
+                                                    ? { requestId: retained.requestId }
+                                                    : retained.value;
+                                            await settleRetainedShareAttempt(
+                                                this.cwd,
+                                                owner.projectId,
+                                                retained.value.planId,
+                                                identity,
+                                            );
+                                        }
+                                        return { revision: operationDigest(JSON.stringify(retained)) };
+                                    }
                                     const recovered = await (
                                         await import("./collaboration/operation-state.ts")
                                     ).recoverCollaborationMutation(this.cwd, directory, command.operationId);
                                     if (recovered) return { revision: operationDigest(JSON.stringify(recovered)) };
-                                    if (receipts.collaborationNetworkEffectStarted(directory, command.operationId))
+                                    if (receipts.collaborationNetworkEffectBlocksRetry(directory, command.operationId))
                                         throw new Error(
                                             "Collaboration has an ambiguous external request; repeating it could create another remote effect.",
                                         );
                                 }
-                                const result = await (
-                                    await import("./collaboration/operations.ts")
-                                ).executeCollaborationIntent(this.cwd, command.intent);
+                                const operations = await import("./collaboration/operations.ts");
+                                const result = await operations
+                                    .executeCollaborationIntent(this.cwd, command.intent, command.planId)
+                                    .catch((error) => {
+                                        if (error instanceof SharedSpaceGoneError) {
+                                            const gone = receipts.inspectCollaborationOperationResult(
+                                                directory,
+                                                command.operationId,
+                                            );
+                                            if (gone?.action === "share-gone") return gone;
+                                        }
+                                        if (
+                                            command.intent.action === "share" &&
+                                            command.planId !== undefined &&
+                                            !receipts.collaborationNetworkEffectStarted(directory, command.operationId)
+                                        )
+                                            throw new ProjectStorePreconditionError(
+                                                "Plan sharing was refused before publication.",
+                                            );
+                                        throw error;
+                                    });
                                 receipts.retainCollaborationOperationResult(result);
                                 return { revision: operationDigest(JSON.stringify(result)) };
                             },

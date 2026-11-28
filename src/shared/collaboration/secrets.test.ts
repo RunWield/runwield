@@ -14,12 +14,13 @@ import process from "node:process";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { join } from "node:path";
+import { captureForegroundProcess } from "@runwield/resources/process";
 import { PROJECT_SECRET_STORE_RELATIVE_PATH } from "@runwield/project-runtime/legacy-paths";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { enterProjectRuntime } from "../project-runtime-layout.ts";
 import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import type { LocalSecretRecord } from "./protocol.ts";
+import type { LocalSecretRecord } from "@runwield/plans/plan-server";
 import {
     type SecretStoreLocation,
     type SecretStoreDocument,
@@ -110,6 +111,55 @@ test("secret stores read missing files as empty documents and write atomically",
             if (entry.name.includes(".tmp")) siblingTemps.push(entry.name);
         }
         assertEquals(siblingTemps, []);
+    } finally {
+        await fsRm(dir, { recursive: true });
+    }
+});
+
+test("different Plans retain their secret records across concurrent writer processes", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-secrets-concurrent-"));
+    try {
+        const path = join(dir, "collaboration-secrets.json");
+        const writers = Array.from({ length: 8 }, (_, index) => index);
+        const deletedIds = writers.map((index) => `deleted-${index}`);
+        await writeSecretStore(testSecretStore(path), {
+            schemaVersion: SECRET_STORE_SCHEMA_VERSION,
+            records: Object.fromEntries(deletedIds.map((planId) => [planId, { ...secretRecord(), planId }])),
+        });
+        const moduleUrl = JSON.stringify(new URL("./secrets.ts", import.meta.url).href);
+        const reports = await Promise.all(
+            writers.map((index) =>
+                captureForegroundProcess(process.execPath, {
+                    cwd: dir,
+                    timeoutMs: 25_000,
+                    args: [
+                        "--eval",
+                        `import { deleteSecretRecord, mergeMissingSecretRecords, putSharedPlanSecretRecord } from ${moduleUrl};
+const location = { owner: "global", path: ${JSON.stringify(path)} };
+const index = ${index};
+const base = ${JSON.stringify(secretRecord())};
+for (let pass = 0; pass < 4; pass++) {
+    const sharedId = \`shared-\${index}-\${pass}\`;
+    const adoptedId = \`adopted-\${index}-\${pass}\`;
+    await putSharedPlanSecretRecord(location, { ...base, planId: sharedId });
+    await mergeMissingSecretRecords(location, [[adoptedId, { ...base, planId: adoptedId }]]);
+}
+await deleteSecretRecord(location, \`deleted-\${index}\`);
+`,
+                    ],
+                }),
+            ),
+        );
+        for (const result of reports) assert(result.success, new TextDecoder().decode(result.stderr));
+        const { records } = await readSecretStore(testSecretStore(path));
+        assertEquals(Object.keys(records).length, writers.length * 8);
+        for (const index of writers) {
+            assertEquals(records[`deleted-${index}`], undefined);
+            for (let pass = 0; pass < 4; pass++) {
+                assertEquals(records[`shared-${index}-${pass}:space-1`]?.planId, `shared-${index}-${pass}`);
+                assertEquals(records[`adopted-${index}-${pass}`]?.planId, `adopted-${index}-${pass}`);
+            }
+        }
     } finally {
         await fsRm(dir, { recursive: true });
     }

@@ -1,3 +1,4 @@
+import { PlanServerUpgradeRequiredError } from "@runwield/plans/plan-server";
 import {
     ProjectStorePreconditionError,
     readProjectStoreBody,
@@ -30,8 +31,14 @@ export class ProjectStoreClient {
             if (response.status === 412 && revision && /^[a-f0-9]{64}$/.test(revision))
                 throw new StalePlanWriteError(command.expectedRevision, revision);
         }
+        if (response.status === 426 && command.kind === "collaboration" && command.intent.action === "share")
+            throw new PlanServerUpgradeRequiredError();
         if (response.status === 412) {
             switch (command.kind) {
+                case "collaboration":
+                    if (command.intent.action === "share" && command.planId !== undefined)
+                        throw new ProjectStorePreconditionError("Plan sharing was refused before publication.");
+                    break;
                 case "author-plan":
                 case "create-plan":
                     throw new ProjectStorePreconditionError("Plan already exists.");

@@ -8,7 +8,11 @@ import type { RemoteInteractiveConfig } from "./entry.ts";
 import type { ProjectStoreRequest } from "./project-store-protocol.ts";
 
 const [command, json] = process.argv.slice(2);
-type ComposedRemoteInput = Pick<RemoteInteractiveConfig, "cwd" | "resources" | "connection"> & { attemptId?: string };
+interface ComposedRemoteInput extends Pick<RemoteInteractiveConfig, "cwd" | "resources" | "connection"> {
+    attemptId?: string;
+    planServer?: string;
+    planId?: string;
+}
 const input: ComposedRemoteInput = JSON.parse(json);
 const managed = command.startsWith("managed");
 
@@ -685,7 +689,20 @@ try {
         readPublishedDeliverySources,
     } = await import("../../plan-store/index.ts");
     const { listPlans, loadPlan } = await import("../testing/plan-query-fixture.ts");
-    if (command.startsWith("managed-author")) {
+    if (command === "managed-share") {
+        const { runPlansShareCommand } = await import("../../cmd/plans/share.ts");
+        ok(input.planServer);
+        await runPlansShareCommand(["repeatable", "--plan-server", input.planServer]);
+    } else if (command === "managed-share-desktop") {
+        const { plans } = await import("@runwield/plans");
+        const { projects } = await import("@runwield/projects");
+        const { openPlanSharing } = await import("../../plan-store/index.ts");
+        const checkout = projects.checkout.inspect(input.cwd);
+        const planId = plans.identity.parse(input.planId);
+        ok(checkout.kind === "existing" && planId && input.planServer);
+        const sharing = openPlanSharing({ projectId: checkout.identity.projectId, serverUrl: input.planServer });
+        console.log(JSON.stringify(await sharing.share(planId)));
+    } else if (command.startsWith("managed-author")) {
         const { openPlanStoreForCheckout, renamePlan, withPlanSubmission } = await import("../../plan-store/index.ts");
         if (command === "managed-author") {
             const planId = await withPlanSubmission(

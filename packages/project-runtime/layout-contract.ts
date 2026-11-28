@@ -33,6 +33,11 @@ export interface ProjectRuntimeLayout {
     selected: SelectedProjectRuntimeLayout;
 }
 
+/** Use a stable sidecar because replacing the secret document changes its inode. */
+export function collaborationSecretStoreLockPath(storePath: string): string {
+    return `${storePath}.lock`;
+}
+
 export type ProjectRuntimeMigrationBlockedReason =
     | "newer_layout"
     | "malformed_migration_evidence"

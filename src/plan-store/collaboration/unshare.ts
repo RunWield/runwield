@@ -13,15 +13,15 @@ import { parseArgs } from "../../shared/cli-args.ts";
 import { CLI_BIN, getCwd } from "../../constants.ts";
 import { clearPlanCollaborationMetadata } from "../../plan-store/index.ts";
 import { listPlans, listPlanResources } from "../queries.ts";
-import { redactSecrets } from "../../shared/collaboration/capabilities.ts";
 import {
+    redactSecrets,
     CollaborationApiError,
     createCollaborationClient,
     SYSTEM_COLLABORATION_FETCH,
-} from "../../shared/collaboration/client.ts";
+    normalizeSharedSpaceMetadata,
+} from "@runwield/plans/plan-server";
 import { COLLABORATION_STATE_REMOTE_CANONICAL, normalizePlanServerUrl } from "@runwield/plans/format";
 import { COLLABORATION_LOCK_BYPASS } from "../../shared/collaboration/lock.ts";
-import { normalizeSharedSpaceMetadata } from "../../shared/collaboration/protocol.ts";
 import {
     deleteCompatibleSecretRecords,
     getGlobalSecretStoreLocation,

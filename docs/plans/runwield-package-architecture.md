@@ -265,6 +265,14 @@ document edits, and history restore use the same comparison and commit the revie
 Callers comparing a saved review source import `reviewSourceStillMatches` from `@runwield/plans/review-markdown`.
 PostgreSQL remains a future driver. [Store operations](../../src/plan-store/index.ts)
 
+### Plan sharing
+
+The personal host exposes `openPlanSharing({ projectId, serverUrl }).share(planId)`. The CLI passes the user’s name or ID
+to the bound host, which resolves it in the selected Project. Desktop can supply the Plan ID directly. The Projects and SSH bindings still run
+in the host alongside the Plan store opener. Plans owns the portable connection, encryption, and link protocol.
+The Plan store records the remote space and revision and enforces the shared Plan’s write lock.
+[Sharing contract](../../packages/plans/sharing.ts) · [Plan Server connection](../../packages/plans/plan-server/connection.ts) · [Host opener](../../src/plan-store/collaboration/sharing.ts) · [Sharing decision](../adr/008-remote-canonical-collaborative-shared-spaces.md)
+
 ### Work Records
 
 Opening the Plan Store binds its `workRecords` collection to the same Project ID and personal owner. Each operation rechecks the binding. Callers supply no checkout path.

@@ -1,7 +1,12 @@
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertThrows } from "../../testing/assertions.ts";
-import { buildApiUrl, buildCollaborationUrl, parseCollaborationUrl, redactCollaborationUrl } from "./urls.ts";
+import {
+    buildApiUrl,
+    buildCollaborationUrl,
+    parseCollaborationUrl,
+    redactCollaborationUrl,
+} from "@runwield/plans/plan-server";
 
 test("collaboration URLs keep key and capability in distinct fragment fields", () => {
     const url = buildCollaborationUrl({

@@ -897,7 +897,7 @@ async function executeManagedFixture() {
             (await artifacts.appendManualQaSection(epicId, childId, qa)).status !== "already_present"
         )
             throw new Error("Generated QA did not retain its exact family attempt.");
-        const { sharePlanForReview, pullPlanForRevision, pushPlanRevision, unsharePlan } =
+        const { openPlanSharing, sharePlanForReview, pullPlanForRevision, pushPlanRevision, unsharePlan } =
             await import("../../plan-store/index.ts");
         const shared = await sharePlanForReview({
             cwd: input.cwd,
@@ -937,9 +937,13 @@ async function executeManagedFixture() {
         const pushed = await pushPlanRevision(collaborationOptions);
         if (pushed.revision !== 2 || (await pullPlanForRevision(collaborationOptions)).revision !== 2)
             throw new Error("Managed push did not publish the owner's actual edited bytes.");
-        const { parseCollaborationUrl } = await import("../collaboration/urls.ts");
-        const { CollaborationClient, SYSTEM_COLLABORATION_FETCH } = await import("../collaboration/client.ts");
-        const { importContentKey, encryptJsonPayload } = await import("../collaboration/crypto.ts");
+        const {
+            parseCollaborationUrl,
+            CollaborationClient,
+            SYSTEM_COLLABORATION_FETCH,
+            importContentKey,
+            encryptJsonPayload,
+        } = await import("@runwield/plans/plan-server");
         const remoteMaintainer = parseCollaborationUrl(shared.maintainerUrl);
         const remoteEditor = new CollaborationClient({
             serverUrl: remoteMaintainer.serverUrl,
@@ -987,6 +991,17 @@ async function executeManagedFixture() {
             (await loadPlan(input.cwd, "managed-epic/slice"))?.attrs.collaborationSpaceId
         )
             throw new Error("Managed unshare did not clear owner metadata and secrets.");
+        const reopenedShare = await openPlanSharing({
+            projectId: inspectedIdentity.identity.projectId,
+            serverUrl: input.collaborationUrl,
+        }).share(childId);
+        if (
+            !reopenedShare.links?.reviewerUrl ||
+            reopenedShare.planId !== childId ||
+            (await loadPlan(input.cwd, "managed-epic/slice"))?.attrs.collaborationSpaceId !== reopenedShare.spaceId
+        )
+            throw new Error("The Plan sharing opener did not bind the managed Project's Plan owner.");
+        await unsharePlan({ cwd: input.cwd, target: childId, force: true });
         await authorLocalPlan(input.cwd, {
             planName: "recovery",
             contextMarkdown: "# Recover review\n",

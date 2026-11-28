@@ -3,7 +3,7 @@ import {
     validateManagedRuntimeContinuations,
     activateManagedRuntimeContinuations,
 } from "./retained-managed-execution.ts";
-import { normalizeSecretStore, readSecretStore, writeSecretStore } from "../shared/collaboration/secrets.ts";
+import { mergeMissingSecretRecords, normalizeSecretStore } from "../shared/collaboration/secrets.ts";
 import { DatabaseSync } from "../shared/sqlite.ts";
 /** Laptop-owned staging for managed personal runtime. Publication and source retirement are separate receipts. */
 import { join, dirname } from "node:path";
@@ -150,18 +150,14 @@ export async function acknowledgeManagedRuntimeRetirement(
         );
         await assertManagedRuntimePath(secretPath, owner.executionAccountHome);
         const location = { owner: "home-project" as const, homeOwner: owner, path: secretPath };
-        const secrets = await readSecretStore(location);
-        let changed = false;
-        for (const file of stored.transfer.files.filter((file) => file.name === "collaboration-secrets.json")) {
-            const incoming = normalizeSecretStore(JSON.parse(Buffer.from(file.bytes, "base64").toString("utf8")));
-            for (const [key, record] of Object.entries(incoming.records)) {
-                if (!secrets.records[key]) {
-                    secrets.records[key] = record;
-                    changed = true;
-                }
-            }
-        }
-        if (changed) await writeSecretStore(location, secrets);
+        const incoming = stored.transfer.files
+            .filter((file) => file.name === "collaboration-secrets.json")
+            .flatMap((file) =>
+                Object.entries(
+                    normalizeSecretStore(JSON.parse(Buffer.from(file.bytes, "base64").toString("utf8"))).records,
+                ),
+            );
+        await mergeMissingSecretRecords(location, incoming);
         await activateManagedRuntimeContinuations(owner, stored.transfer);
         await (await import("./retained-family.ts")).activateManagedFamilyControllers(owner, stored.transfer);
         // Every original generation remains addressable for controller recovery and index reconstruction.

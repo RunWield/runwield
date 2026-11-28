@@ -1,7 +1,7 @@
 /** Qualify the test-only remote image using disposable containers and a private volume. */
 import { deepStrictEqual, strictEqual, ok } from "node:assert";
 import { randomUUID } from "node:crypto";
-import { generateBearerCapability, hashCapability } from "../src/shared/collaboration/capabilities.ts";
+import { generateBearerCapability, hashCapability, SHARED_SPACE_IDEMPOTENCY_HEADER } from "@runwield/plans/plan-server";
 import process from "node:process";
 import { setTimeout as delay } from "node:timers/promises";
 import { readPinnedBunVersion } from "./check-bun-runtime.ts";
@@ -112,9 +112,9 @@ try {
     const reviewer = generateBearerCapability();
     const maintainer = generateBearerCapability();
     const payloadCiphertext = "cipher:container-persisted";
-    const created = await fetch(`${base}/api/spaces`, {
+    const created = await fetch(`${base}/api/spaces/replay`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", [SHARED_SPACE_IDEMPOTENCY_HEADER]: randomUUID() },
         body: JSON.stringify({
             planId: `container-${randomUUID()}`,
             initialRevision: { payloadCiphertext },

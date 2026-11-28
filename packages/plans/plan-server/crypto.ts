@@ -1,12 +1,5 @@
-/** @module shared/collaboration/crypto */
-
+import type { JsonValue } from "@runwield/parsing/jsonc";
 import { decodeBase64Url, encodeBase64Url } from "./base64url.ts";
-
-export interface JsonPayloadRecord {
-    [key: string]: JsonPayload;
-}
-
-export type JsonPayload = string | number | boolean | null | JsonPayload[] | JsonPayloadRecord;
 
 const AES_GCM_ALGORITHM = "AES-GCM";
 const KEY_LENGTH_BITS = 256;
@@ -35,10 +28,7 @@ export async function importContentKey(value: string): Promise<CryptoKey> {
         keyBytes.buffer,
         { name: AES_GCM_ALGORITHM, length: KEY_LENGTH_BITS },
         true,
-        [
-            "encrypt",
-            "decrypt",
-        ],
+        ["encrypt", "decrypt"],
     );
 }
 
@@ -53,7 +43,7 @@ export async function encryptJsonPayload<Payload>(payload: Payload, key: CryptoK
     return encodeBase64Url(combined);
 }
 
-export async function decryptJsonPayload(encryptedPayload: string, key: CryptoKey): Promise<JsonPayload> {
+export async function decryptJsonPayload(encryptedPayload: string, key: CryptoKey): Promise<JsonValue> {
     try {
         const combined = decodeBase64Url(encryptedPayload);
         if (combined.byteLength <= IV_LENGTH_BYTES + 16) throw new Error("Encrypted payload is truncated");

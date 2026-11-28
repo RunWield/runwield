@@ -13,17 +13,22 @@ import { CLI_BIN, getCwd } from "../../constants.ts";
 import { hashPlanBody, COLLABORATION_STATE_REMOTE_CANONICAL, normalizePlanServerUrl } from "@runwield/plans/format";
 import { createPulledCollaborationPlan, updatePlanCollaborationMetadata } from "../../plan-store/index.ts";
 import { listPlanResources } from "../queries.ts";
-import { MAINTAINER_SCOPE, redactSecrets } from "../../shared/collaboration/capabilities.ts";
-import { createCollaborationClient, SYSTEM_COLLABORATION_FETCH } from "../../shared/collaboration/client.ts";
-import { decryptJsonPayload, importContentKey } from "../../shared/collaboration/crypto.ts";
-import { COLLABORATION_LOCK_BYPASS } from "../../shared/collaboration/lock.ts";
 import {
+    MAINTAINER_SCOPE,
+    redactSecrets,
+    createCollaborationClient,
+    SYSTEM_COLLABORATION_FETCH,
+    decryptJsonPayload,
+    importContentKey,
     normalizeDecryptedReviewCommentPayload,
     normalizeEncryptedCommentRecord,
     normalizeEncryptedPlanPayload,
     normalizeRevisionMetadata,
     normalizeSharedSpaceMetadata,
-} from "../../shared/collaboration/protocol.ts";
+    parseCollaborationUrl,
+    redactCollaborationUrl,
+} from "@runwield/plans/plan-server";
+import { COLLABORATION_LOCK_BYPASS } from "../../shared/collaboration/lock.ts";
 import {
     assertCompatiblePullSecretRecord,
     ensureProjectSecretStoreIgnored,
@@ -33,7 +38,6 @@ import {
     resolvePullSecretRecord,
     secretRecordKey,
 } from "../../shared/collaboration/secrets.ts";
-import { parseCollaborationUrl, redactCollaborationUrl } from "../../shared/collaboration/urls.ts";
 import { InteractiveSessionRuntime as SessionRuntime } from "@runwield/session-runtime/services";
 import {
     buildPullRevisionRequest,
