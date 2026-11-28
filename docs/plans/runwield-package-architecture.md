@@ -320,6 +320,8 @@ An Epic can own a Manual QA checklist and an integration report. Use `store.arti
 
 Sessions that register a Plan document keep its stable Plan ID and resource so the TUI and Workspace can reopen it after a rename or archive. Older references that contain only a name still resolve that name through the admitted store. If a different Plan later takes that name, the old reference alone cannot identify the original. Workspace document editing and Attached document reads use the same package content and revision while retaining their existing permissions and response formats.
 
+The [Plans document driver](../../packages/plans/project-plan-documents.ts) reads canonical documents and commits edits against their observed revisions. A batch commits only after every edit passes validation. For mixed Plan and source edits, the file tool keeps the source-file checkpoints on the host that owns the checkout.
+
 Use `store.publicationCopies.read(reference)` with the retained reference from a publication attempt. It returns the repository destinations and exact Markdown frozen for delivery. An attempt with both copy settings disabled can return an empty list. Later Plan edits and changes to repository settings leave the sealed payload intact. Plans owns the local manifest lookup, copy format, destination validation, and filesystem writes. The runtime routes managed requests and checks Git evidence for earlier deliveries. Workflow decides when to create the copies commit, advance the target, or retry publication. [Publication copy contract](../../packages/plans/publication-copies.ts)
 
 ### Consumer coverage

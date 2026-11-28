@@ -36,6 +36,7 @@ const privateMembers = new Set([
     "packages/plans/managed-execution-adoption.ts",
     "packages/plans/project-plan-files.ts",
     projectPlanAuthoring,
+    "packages/plans/project-plan-documents.ts",
     "packages/plans/execution-recovery.ts",
     "packages/plans/retained-checkout.ts",
     "packages/plans/retained-execution.ts",

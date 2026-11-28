@@ -1,126 +1,36 @@
 import { StalePlanWriteError } from "@runwield/plans/store";
-import { projectPlanFiles } from "@runwield/plans/project-plan-files";
-import { managedPlanStoreActive, readManagedDocument, saveManagedDocument, saveManagedProse } from "./managed.ts";
-import { posix } from "node:path";
-import { decodePackageMarkdown, isEpicArtifactName } from "@runwield/plans/format";
-import { currentPackageProject, selectedPackage, packageController, packageWorkflowLocks } from "./workflows.ts";
-import { packageDocumentText, type PackageResourceRole } from "@runwield/plans/file-snapshots";
 import {
-    packageWorkflowRevision,
-    packageDocumentContent,
-    savePlanPackageDocument,
-    commitPlanPackageBatch,
-    listPlanPackages,
-    type PlanPackageBatchWrite,
-} from "@runwield/plans/package-storage";
+    projectPlanDocuments,
+    type PlanDocumentView,
+    type PreparedPlanDocumentEdit,
+} from "@runwield/plans/project-plan-documents";
 import {
     assertSharedPlanWriteAllowed,
     isSharedPlanLocked,
     type CollaborationWriteOptions,
 } from "@runwield/plans/collaboration-lock";
+import { managedPlanStoreActive, readManagedDocument, saveManagedDocument, saveManagedProse } from "./managed.ts";
+import { currentPackageProject, currentPackageSelection } from "./workflows.ts";
 
-/** Save an edit against the exact context shown by a retained review. Storage checks stay with the owner. */
 export async function saveReviewedPlanDocument(planName: string, before: string, after: string): Promise<void> {
-    await packageWorkflowLocks([planName], async () => {
-        const plan = await selectedPackage(planName);
-        if (plan.metadata.archive && !plan.metadata.archive.restoredAt)
-            throw new Error("This Plan package is archived.");
-        assertSharedPlanWriteAllowed(await packageController(plan));
-        const document = plan.documents.find((entry) => entry.name === "context.md")!;
-        if (new TextDecoder().decode(document.bytes) !== before)
-            throw new Error(`Plan ${planName} changed before saving review edits.`);
-        if (after !== before)
-            await savePlanPackageDocument(
-                currentPackageProject()!,
-                plan.metadata.planId,
-                "context.md",
-                document.hash,
-                after,
-            );
-    });
-}
-
-export interface PlanDocumentView {
-    planId: string;
-    planName: string;
-    resource: string;
-    revision: string;
-    metadataRevision: number;
-    body: string;
-    writable: boolean;
-    documents: Array<{ name: string; role: PackageResourceRole }>;
-}
-
-/** Document identity is resolved inside the admitted Project, never from a host path. */
-export async function readPlanDocuments(planId: string, name: string = "context.md"): Promise<PlanDocumentView> {
-    if (managedPlanStoreActive()) return await readManagedDocument(planId, name);
-    const plan = await selectedPackage({ planId });
-    const content = packageDocumentContent(plan, name);
-    if (!content) throw new Error("Plan document not found.");
-    const controller = await packageController(plan);
-    return {
-        planId: plan.metadata.planId,
-        planName: plan.metadata.name,
-        resource: name,
-        revision: content.revision,
-        metadataRevision: plan.metadata.revision,
-        body: content.body,
-        writable:
-            (!plan.metadata.archive || Boolean(plan.metadata.archive.restoredAt)) && !isSharedPlanLocked(controller),
-        documents: plan.documents.map((entry) => ({ name: entry.name, role: entry.role })),
-    };
-}
-
-export interface PreparedPlanDocumentEdit {
-    planId: string;
-    resource: string;
-    expectedRevision: string;
-    body: string;
-}
-
-/** Validate all selected generations before publishing prose and review state together. */
-export async function savePlanDocumentBatch(edits: PreparedPlanDocumentEdit[]) {
     const owner = currentPackageProject();
-    if (!owner || !edits.length) throw new Error("A document batch requires an admitted Project and edits.");
-    const grouped = Map.groupBy(edits, (edit) => edit.planId);
-    await packageWorkflowLocks(
-        [...grouped.keys()].map((planId) => ({ planId })),
-        async () => {
-            const writes: PlanPackageBatchWrite[] = [];
-            for (const [planId, changes] of grouped) {
-                const plan = await selectedPackage({ planId });
-                if (plan.metadata.archive && !plan.metadata.archive.restoredAt)
-                    throw new Error("This Plan package is archived.");
-                assertSharedPlanWriteAllowed(await packageController(plan));
-                const revision = packageWorkflowRevision(plan);
-                const previous = packageDocumentText(plan.documents);
-                const documents = { ...previous };
-                const changed = [];
-                const seen = new Set<string>();
-                for (const edit of changes) {
-                    if (edit.expectedRevision !== revision)
-                        throw new StalePlanWriteError(edit.expectedRevision, revision);
-                    const doc = plan.documents.find((item) => item.name === edit.resource);
-                    if (!doc || seen.has(doc.name)) throw new Error("Unknown or duplicate Plan document.");
-                    if (/^\ufeff?---\s*\r?\n/.test(edit.body))
-                        throw new Error("Live Plan documents must not contain YAML front matter.");
-                    seen.add(doc.name);
-                    changed.push({ previous: previous[doc.name]!, next: edit.body });
-                    documents[doc.name] = edit.body;
-                }
-                const review = await projectPlanFiles.forOwner(owner).prepareReviewInvalidation(plan, {
-                    kind: "edit",
-                    documents: changed,
-                });
-                writes.push({
-                    before: { metadata: plan.metadata, documents: previous },
-                    metadata: { ...plan.metadata, ...review, revision: plan.metadata.revision + 1 },
-                    documents,
-                });
-            }
-            await commitPlanPackageBatch(owner, writes);
-        },
-    );
+    if (!owner) throw new Error("Package authority requires explicit admission.");
+    await projectPlanDocuments
+        .forOwner(owner)
+        .saveReviewedPlanDocument(planName, before, after, currentPackageSelection());
+}
+
+export async function readPlanDocuments(planId: string, name = "context.md"): Promise<PlanDocumentView> {
+    if (managedPlanStoreActive()) return await readManagedDocument(planId, name);
+    const owner = currentPackageProject();
+    if (!owner) throw new Error("Package authority requires explicit admission.");
+    return await projectPlanDocuments.forOwner(owner).readPlanDocuments(planId, name);
+}
+
+export async function savePlanDocumentBatch(edits: PreparedPlanDocumentEdit[]): Promise<void> {
+    const owner = currentPackageProject();
+    if (!owner) throw new Error("A document batch requires an admitted Project and edits.");
+    await projectPlanDocuments.forOwner(owner).savePlanDocumentBatch(edits);
 }
 
 export async function savePlanDocument(
@@ -131,56 +41,16 @@ export async function savePlanDocument(
     options: CollaborationWriteOptions = {},
 ): Promise<PlanDocumentView> {
     if (managedPlanStoreActive()) return await saveManagedDocument(planId, name, revision, body);
-    return await packageWorkflowLocks([{ planId }], async () => {
-        const selection = currentPackageProject();
-        if (!selection) throw new Error("Plan document access requires Project admission.");
-        const plan = await selectedPackage({ planId });
-        const document = plan.documents.find((entry) => entry.name === name);
-        if (!document) throw new Error("Plan document not found.");
-        const currentRevision = packageWorkflowRevision(plan);
-        if (currentRevision !== revision) throw new StalePlanWriteError(revision, currentRevision);
-        if (plan.metadata.archive && !plan.metadata.archive.restoredAt)
-            throw new Error("This Plan package is archived.");
-        assertSharedPlanWriteAllowed(await packageController(plan), options);
-        const previous = isEpicArtifactName(document.name)
-            ? decodePackageMarkdown(document.bytes)
-            : new TextDecoder().decode(document.bytes);
-        if (previous !== body) {
-            const changed = await projectPlanFiles.forOwner(selection).prepareReviewInvalidation(plan, {
-                kind: "edit",
-                documents: [{ previous, next: body }],
-            });
-            if (changed) {
-                const documents = packageDocumentText(plan.documents);
-                await commitPlanPackageBatch(selection, [
-                    {
-                        before: { metadata: plan.metadata, documents },
-                        metadata: { ...plan.metadata, ...changed, revision: plan.metadata.revision + 1 },
-                        documents: { ...documents, [document.name]: body },
-                    },
-                ]);
-            } else {
-                await savePlanPackageDocument(selection, planId, document.name, document.hash, body);
-            }
-        }
-        return await readPlanDocuments(planId, name);
-    });
+    const owner = currentPackageProject();
+    if (!owner) throw new Error("Plan document access requires Project admission.");
+    return await projectPlanDocuments.forOwner(owner).savePlanDocument(planId, name, revision, body, options);
 }
 
-/** Resolve a Markdown link against its admitted document, preserving repository containment for other files. */
-export async function readPlanDocumentLink(planId: string, target: string) {
-    if (!currentPackageProject()) return null;
-    const plan = await selectedPackage({ planId });
-    const name = target.split("#")[0];
-    if (plan.documents.some((document) => document.name === name)) return await readPlanDocuments(planId, name);
-    if (name.startsWith("/") || name.includes("\\") || /^[a-z]+:/i.test(name))
-        throw new Error("Document link is outside this Project.");
-    const resolved = posix.normalize(posix.join(posix.dirname(plan.metadata.name), name));
-    if (resolved === ".." || resolved.startsWith("../")) return null;
-    const selection = currentPackageProject()!;
-    const catalog = await listPlanPackages(selection);
-    const linked = catalog.packages.find((entry) => `${entry.metadata.name}.md` === resolved);
-    return linked ? await readPlanDocuments(linked.metadata.planId) : null;
+export async function readPlanDocumentLink(planId: string, target: string): Promise<PlanDocumentView | null> {
+    const owner = currentPackageProject();
+    if (!owner) return null;
+    const link = await projectPlanDocuments.forOwner(owner).resolvePlanDocumentLink(planId, target);
+    return link ? await readPlanDocuments(link.planId, link.resource) : null;
 }
 
 export interface PlanDocumentIdentity {

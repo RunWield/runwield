@@ -10,6 +10,7 @@ test("Plan boundary catches static imports, reexports, type queries and construc
     const cases = [
         'import { readPlanPackage as hidden } from "@runwield/plans/package-storage";',
         'import { openShareAttemptJournal } from "@runwield/plans/share-attempt-journal";',
+        'import { projectPlanDocuments } from "@runwield/plans/project-plan-documents";',
         'export * from "../plan-store/workflows.ts";',
         'type Hidden = import("@runwield/plans/package-storage").LoadedPlanPackage;',
         'await import("@runwield/plans/package-storage");',

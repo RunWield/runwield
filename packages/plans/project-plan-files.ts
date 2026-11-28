@@ -26,6 +26,7 @@ import {
     packageControllerNumbers,
     packageControllerStrings,
     packageDefinitionStrings,
+    planPackageFamilyIds,
     resolvePlanPackageReference,
     writePackageControllerEvidence,
     withPlanPackageLocks,
@@ -58,7 +59,7 @@ interface PackagePlanIdentity {
 }
 export type PackagePlanTarget = string | PackagePlanIdentity;
 
-interface PackageReadSelection {
+export interface PackageReadSelection {
     planId: string;
     expectedName?: string;
 }
@@ -546,6 +547,14 @@ function forOwner(identity: ProjectStoreIdentity) {
             return (await readGeneration(target, selection)).loaded;
         },
         select,
+        async withFamilyLocks<T>(
+            targets: PackagePlanTarget[],
+            run: () => Promise<T>,
+            selection?: PackageReadSelection,
+        ) {
+            const plans = await Promise.all(targets.map((target) => select(target, selection)));
+            return await withPlanPackageLocks(identity, await planPackageFamilyIds(identity, plans), run);
+        },
         captureReviewInput,
         async assertReviewInput(
             target: PackagePlanTarget,
