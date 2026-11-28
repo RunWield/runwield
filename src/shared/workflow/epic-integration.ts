@@ -1,5 +1,5 @@
 import { saveEpicIntegrationReview } from "../../plan-store/index.ts";
-import { hasCanonicalPlanAccess } from "../../plan-store/index.ts";
+import { capturePlanAccess, hasCanonicalPlanAccess, selectPlanAccess, withPlanAccess } from "../../plan-store/index.ts";
 import { enterProjectRuntime } from "../project-runtime-layout.ts";
 import { preparePlanWorkflow } from "../../plan-store/index.ts";
 import { REVIEW_DIFF_FORMAT_ARGS } from "./git-snapshot.ts";
@@ -44,7 +44,7 @@ import { recordPlanEvent } from "./plan-lifecycle.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 
 import { findTargetBranchPlansByParent, prepareTargetBranchPlansByParent } from "./planning-worktree.ts";
-import { ensureEpicBranch } from "./epic-branch.ts";
+import { defaultEpicBranchName, ensureEpicBranch } from "./epic-branch.ts";
 import type { LocalCIPort, LocalCIResult } from "./validation-local-ci.ts";
 import { createValidationSessionPort, type SemanticReviewPort } from "./validation-session-adapter.ts";
 import { ReviewInspection } from "./review-inspection.ts";
@@ -231,17 +231,22 @@ export async function readEpicDeliveryState(
     const location = await resolveWorkflowPlanLocation(primaryRoot, epicPlanName, { readOnly: true });
     const epic = location.plan;
     if (!epic || epic.attrs.classification !== "PROJECT" || epic.attrs.type === "sequence") return null;
-    const branch = epicBranchOf(epic.attrs);
+    const canonical = hasCanonicalPlanAccess();
+    const namedBranch = epicBranchOf(epic.attrs);
+    const branch = namedBranch || (canonical ? defaultEpicBranchName(epicPlanName) : "");
     if (!branch) return null;
     const ref = await canonicalEpicRef(primaryRoot, branch);
     const head = await refCommit(primaryRoot, ref);
     if (!head) {
+        if (!namedBranch) return null;
         return { epicPlanName, branch, ref, head: null, children: [], allSettled: false };
     }
 
     const family = new Map<string, { name: string; path: string; attrs: PlanFrontMatter }>();
-    for (const child of await findTargetBranchPlansByParent(primaryRoot, branch, epicPlanName)) {
-        family.set(child.name, child as { name: string; path: string; attrs: PlanFrontMatter });
+    if (!canonical) {
+        for (const child of await findTargetBranchPlansByParent(primaryRoot, branch, epicPlanName)) {
+            family.set(child.name, child as { name: string; path: string; attrs: PlanFrontMatter });
+        }
     }
     // Drafts not yet on the branch are still part of the Epic and are not delivered.
     for (const child of await findPlansByParent(location.documentRoot, epicPlanName)) {
@@ -292,12 +297,17 @@ export async function readEpicDeliveryState(
  * - `reviewed` by the gate whose branch has moved since becomes `implemented`
  *   again: the old pass proves an older commit.
  *
- * Safe to call after any child delivery and on every load.
+ * Call after child delivery and before an explicit integration gate run.
  */
 export async function reconcileEpicDelivery(projectRoot: string, epicPlanName: string): Promise<EpicReconcileResult> {
+    if (!capturePlanAccess()) {
+        const selection = await selectPlanAccess(projectRoot, epicPlanName);
+        if (selection)
+            return await withPlanAccess(projectRoot, selection, () => reconcileEpicDelivery(projectRoot, epicPlanName));
+    }
     const prepared = await preparePlanWorkflow(projectRoot, epicPlanName);
     const branch = epicBranchOf(prepared.plan?.attrs);
-    if (branch && (await isGitRepository(projectRoot))) {
+    if (!hasCanonicalPlanAccess() && branch && (await isGitRepository(projectRoot))) {
         await prepareTargetBranchPlansByParent(projectRoot, branch, epicPlanName);
         for (const child of await findPlansByParent(prepared.documentRoot, epicPlanName)) {
             await preparePlanWorkflow(projectRoot, child.name);
@@ -831,6 +841,10 @@ export async function runEpicIntegrationGate(
 ): Promise<EpicIntegrationGateResult> {
     const { hostedSession, epicPlanName } = options;
     const primaryRoot = resolvePrimaryCheckoutRoot(options.projectRoot);
+    if (!capturePlanAccess()) {
+        const selection = await selectPlanAccess(primaryRoot, epicPlanName);
+        if (selection) return await withPlanAccess(primaryRoot, selection, () => runEpicIntegrationGate(options));
+    }
     const reconciled = await reconcileEpicDelivery(primaryRoot, epicPlanName);
     const state = reconciled.state;
     if (!state || (!reconciled.gateReady && !reconciled.gateRetryReady) || !state.head) {
@@ -1131,7 +1145,7 @@ export async function runEpicIntegrationGate(
                     findings,
                 );
             }
-            await ensureEpicBranch(primaryRoot, epicPlanName);
+            if (!hasCanonicalPlanAccess()) await ensureEpicBranch(primaryRoot, epicPlanName);
             port.emitStatus(
                 `The integration gate found ${findings.length} problem(s) in ${epicPlanName}. RunWield ${newestDraft ? "updated" : "added"} the repair child ${repairChild.childPlanName}; Planner starts from the findings.`,
                 "warning",

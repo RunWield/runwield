@@ -11,6 +11,7 @@ import { defineTool } from "@earendil-works/pi-coding-agent";
 import { AGENTS, isPlannedChangeClassification, SUBAGENTS } from "../../constants.ts";
 import {
     findPlansByParent,
+    hasCanonicalPlanAccess,
     loadPlan,
     finalizePlanDecomposition,
     materializePlanChildren,
@@ -290,6 +291,7 @@ export function createSlicerFinalizeTool({ planName, cwd }) {
  * @returns {Promise<string>}
  */
 async function prepareEpicBranchSummary(cwd, planName) {
+    if (hasCanonicalPlanAccess()) return "";
     try {
         const branch = await ensureEpicBranch(cwd, planName);
         if (branch.kind !== "ready") return "";

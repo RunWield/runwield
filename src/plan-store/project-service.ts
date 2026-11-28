@@ -7,7 +7,7 @@ import type { GeneratedWorkRecordSections } from "../shared/work-records/generat
 import type { PublishedDeliverySources } from "./published-source.ts";
 import type { ManagedProjectStoreLaunch } from "../shared/remote/project-store-launch.ts";
 import { confirmManagedPublication } from "./retained-proof.ts";
-import { loadPlan, listPlans } from "../plan-store.ts";
+import { loadPlan, listPlanDocuments, listPlans } from "../plan-store.ts";
 import {
     assertProjectStoreIdentity,
     projectStoreLocation,
@@ -131,9 +131,7 @@ export interface ProjectStoreResolve {
     kind: "resolve-plan";
     reference: string;
 }
-export interface ProjectStoreList {
-    kind: "list-plans";
-}
+export type ProjectStoreList = { kind: "list-plans" } | { kind: "list-plan-documents" };
 export interface ProjectStorePlan {
     plan: Awaited<ReturnType<typeof loadPlan>>;
 }
@@ -875,8 +873,9 @@ export class PreparedProjectStore {
                     };
                 }
                 if (command.kind === "list-plans") return { plans: await listPlans(this.cwd) };
+                if (command.kind === "list-plan-documents") return { plans: await listPlanDocuments(this.cwd) };
                 if (command.kind === "resolve-plan") {
-                    const catalog = await listPlans(this.cwd);
+                    const catalog = await listPlanDocuments(this.cwd);
                     const selected = catalog.find(
                         (plan) =>
                             plan.name === command.reference ||

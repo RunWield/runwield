@@ -1,3 +1,4 @@
+import { create as createPlanPackageFixture, packageFixture } from "../../shared/testing/plan-package-fixture.ts";
 import { seedPlanState, seedPlan, seedPlanController } from "../../shared/testing/plan-state-fixture.ts";
 import { withRetainedPlanFixture } from "../../shared/testing/retained-plan-fixture.ts";
 import { preparePlanWorkflow } from "../../plan-store/index.ts";
@@ -504,6 +505,47 @@ for (const runtimeState of ["absent", "legacy", "mixed"] as const) {
         });
     });
 }
+
+test("load-plan browses a saved Epic and its children without preparing its branch", async () => {
+    await withRuntimeCommandFixture("runwield-epic-picker-", async ({ homeDir }) => {
+        const fixture = await packageFixture();
+        const projectRoot = fixture.root;
+        try {
+            await createPlanPackageFixture(fixture.identity, {
+                planId: "epic-id",
+                name: "epic",
+                definition: { classification: "PROJECT", status: "ready_for_work" },
+            });
+            await createPlanPackageFixture(fixture.identity, {
+                planId: "child-id",
+                name: "epic/child",
+                parentPlanId: "epic-id",
+                definition: { classification: "PLANNED_CHANGE", status: "draft", order: 1 },
+            });
+            const { runtime, sessionId } = await createRuntime(projectRoot);
+            const ui = makeUi(["epic", "pick_child", "epic/child", "view", "back", null, "cancel"]);
+            try {
+                const beforeProject = await snapshotPickerFiles(projectRoot);
+                const beforeHome = await snapshotPickerFiles(homeDir);
+                const beforeSession = runtime.getSessionSnapshot(sessionId);
+                await runLoadPlanCommand([], { sessionRuntime: runtime, sessionId, uiAPI: ui.uiAPI });
+                assertEquals(ui.prompts.slice(0, 3), [
+                    "Load plan:",
+                    "What would you like to do with this Epic?",
+                    "Load child Plan:",
+                ]);
+                assertStringIncludes(ui.messages.join("\n"), "Planned Change: epic/child");
+                assertEquals(await snapshotPickerFiles(projectRoot), beforeProject);
+                assertEquals(await snapshotPickerFiles(homeDir), beforeHome);
+                assertEquals(runtime.getSessionSnapshot(sessionId), beforeSession);
+            } finally {
+                runtime.closeAllSessions();
+            }
+        } finally {
+            await fixture.cleanup();
+        }
+    });
+});
 
 test("load-plan picker leaves a registered Git worktree and recreated legacy records untouched", async () => {
     await withRuntimeCommandFixture("runwield-picker-worktree-", async ({ homeDir }) => {

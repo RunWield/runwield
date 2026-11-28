@@ -93,6 +93,71 @@ test("package execution prepares an isolated code worktree without materializing
     }
 });
 
+test("first execution prepares the default Epic branch while honoring the saved review", async () => {
+    const fixture = await packageFixture();
+    const { identity, root } = fixture;
+    try {
+        const parent = await create(identity, {
+            planId: "epic-id",
+            name: "epic",
+            definition: { classification: "PROJECT", status: "ready_for_work" },
+        });
+        const child = await create(identity, {
+            planId: "child-id",
+            name: "epic/child",
+            parentPlanId: parent.metadata.planId,
+            definition: {
+                classification: "PLANNED_CHANGE",
+                status: "draft",
+                order: 1,
+                executionAgent: "engineer",
+                collaborationRecommendation: "autonomous",
+            },
+        });
+        const workflow = await withPackageWorkflow(
+            root,
+            { identity, planId: child.metadata.planId, expectedRevision: child.metadata.revision },
+            async () => {
+                await recordPlanEvent({
+                    cwd: root,
+                    planName: child.metadata.name,
+                    event: "review_approved",
+                    currentStatus: "draft",
+                });
+                await recordPlanEvent({
+                    cwd: root,
+                    planName: child.metadata.name,
+                    event: "readiness_passed",
+                    currentStatus: "approved",
+                });
+                equal(await git(root, ["branch", "--list", "epic/epic"]), "");
+                const plan = await loadPackageWorkflowPlan(child.metadata.name);
+                return await startActiveExecutionWorkflow({
+                    cwd: root,
+                    planName: child.metadata.name,
+                    triageMeta: plan.attrs,
+                    currentStatus: "ready_for_work",
+                    ports: createExecutionStartPorts(),
+                });
+            },
+        );
+        const executionCwd = workflow.executionCwd;
+        ok(executionCwd);
+        try {
+            equal(await git(root, ["rev-parse", "epic/epic"]), await git(root, ["rev-parse", "main"]));
+            const [attempt] = (await inspectWorktreeRegistry(root)).entries;
+            equal(attempt.baseBranch, "epic/epic");
+            deepEqual((await read(identity, parent.metadata.planId)).metadata.definition, parent.metadata.definition);
+            equal((await read(identity, child.metadata.planId)).metadata.definition.targetBranch, "epic/epic");
+            await rejects(fs.access(join(executionCwd, "docs/plans/epic/child.md")));
+        } finally {
+            await git(root, ["worktree", "remove", "--force", executionCwd]);
+        }
+    } finally {
+        await fixture.cleanup();
+    }
+});
+
 test("two linked clones racing execution retain one package attempt and one code worktree", async () => {
     const f = await packageFixture();
     const remote = `${f.root}-remote.git`;

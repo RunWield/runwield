@@ -27,6 +27,7 @@ import {
     isStandalonePlannedChange,
     shouldAdoptPlanBranch,
 } from "./plan-branch.ts";
+import { resolveChildEpicExecutionBranch } from "./epic-branch.ts";
 import { probeGitRepository } from "../git.ts";
 import { hasNonGitExecutionConsent, rememberNonGitExecutionConsent } from "../non-git-execution-consent.ts";
 import { requestHostedSessionInteraction, RuntimeInteractionTypes } from "../session/session-runtime-interactions.ts";
@@ -514,10 +515,15 @@ async function startActiveExecutionWorkflowInScope({
           ) || null
         : null;
     const reusable = activeReusable || planningReusable;
+    const epicLanding =
+        hasCanonicalPlanAccess() && triageMeta.parentPlan && !deliveryBranch
+            ? reusable?.baseBranch || (await resolveChildEpicExecutionBranch(projectRoot, triageMeta.parentPlan))
+            : undefined;
     if (reusable) {
-        const requestedTarget = deliveryBranch
-            ? await resolveTarget(projectRoot, deliveryBranch)
-            : await resolveCurrentBranch(projectRoot);
+        const requestedTarget =
+            deliveryBranch || epicLanding
+                ? await resolveTarget(projectRoot, deliveryBranch || epicLanding)
+                : await resolveCurrentBranch(projectRoot);
         assertReusableWorktreeTargetMatches(reusable.baseBranch, requestedTarget);
     }
     const reusablePlanSource = reusable ? await loadCanonicalPlanSource(reusable.path, planName) : null;
@@ -560,7 +566,7 @@ async function startActiveExecutionWorkflowInScope({
     if (!reusable && standalone && !targetBranch) {
         targetBranch = await resolveRepositoryDefaultBranch(projectRoot);
     }
-    deliveryBranch = effectiveDeliveryBranch(preflightCanonicalPlanSource.attrs) || targetBranch;
+    deliveryBranch = effectiveDeliveryBranch(preflightCanonicalPlanSource.attrs) || epicLanding || targetBranch;
     // Existing attempts retain their recorded landing across setting changes.
     const adoptPlanBranch =
         !hasCanonicalPlanAccess() &&

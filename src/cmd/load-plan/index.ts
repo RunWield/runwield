@@ -10,7 +10,7 @@ import {
     confirmProjectDirectory,
     DirectoryStartupCanceled,
 } from "../../ui/tui/directory-warning.ts";
-import { isEpicPlan, projectPlanType } from "../../shared/project-plan.ts";
+import { isEpicPlan, isProjectPlan, projectPlanType } from "../../shared/project-plan.ts";
 /**
  * @module cmd/load-plan
  * Load-plan command implementation. Loads a saved Plan from disk and continues
@@ -25,11 +25,15 @@ import {
     archivePlan,
     ensurePlanIdentity,
     listPlanDocuments,
+    readPlanMenuDocument,
     loadPlan,
     onboardExternalPlan,
     resolvePlan,
     resolveSiblingChildPlanDependencies,
 } from "../../plan-store/index.ts";
+import { inspectLocalHomeStore } from "../../plan-store/access.ts";
+import { managedPlanStoreActive } from "../../plan-store/managed.ts";
+import type { PlanListEntry } from "../../plan-store.ts";
 import { isPlanArchivePending, startBackgroundArchive } from "./archive-background.ts";
 import { decidePostPlanning } from "../../shared/workflow/decisions.ts";
 import { buildPlanningReReviewRequest, buildResumeRequest } from "./plan-presentation.ts";
@@ -105,13 +109,19 @@ async function finishSavedPublicationCleanup(projectRoot: string, uiAPI: UiAPI, 
     return notices.every((notice) => notice.complete);
 }
 
+type EpicReviewAction = "review" | "direct_review" | "architect_re_review";
+
 /**
  * Handle `load-plan` command.
  *
  * @param {string[]} argv
  * @param {import('../registry.ts').CommandContext} [options]
  */
-export async function runLoadPlanCommand(argv: string[], options: CommandContext = {}): Promise<void> {
+export async function runLoadPlanCommand(
+    argv: string[],
+    options: CommandContext = {},
+    epicReview?: EpicReviewAction,
+): Promise<void> {
     let sessionRuntime = options.sessionRuntime;
     let runtimeSessionId = options.sessionId;
 
@@ -126,6 +136,7 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
         return;
     }
 
+    let planCatalog: PlanListEntry[] | undefined;
     let [planArg] = parsedArgs._.map(String);
     if (!planArg) {
         if (options.uiAPI) {
@@ -139,9 +150,8 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
             }
             const activeSnapshot = sessionRuntime.getSessionSnapshot(runtimeSessionId);
             if (!activeSnapshot) throw new Error("runLoadPlanCommand runtime session is missing");
-            const plans = (await listPlanDocuments(activeSnapshot.cwd)).filter(
-                (plan) => !isPlanArchivePending(activeSnapshot.cwd, plan.name),
-            );
+            planCatalog = await listPlanDocuments(activeSnapshot.cwd);
+            const plans = planCatalog.filter((plan) => !isPlanArchivePending(activeSnapshot.cwd, plan.name));
             if (plans.length === 0) {
                 options.uiAPI.appendSystemMessage("No plans available, start one by entering a new request");
                 clearEditor();
@@ -290,6 +300,52 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
     let unresolvedLifecycleRecords: TransitionRecoveryRecord[] = [];
 
     try {
+        if (!epicReview && (managedPlanStoreActive() || inspectLocalHomeStore(projectRoot).kind === "local")) {
+            const catalog = planCatalog ?? (await listPlanDocuments(projectRoot));
+            const entry = catalog.find(
+                (candidate) =>
+                    (candidate.name === planArg || candidate.attrs.planId === planArg || candidate.path === planArg) &&
+                    isProjectPlan(candidate.attrs),
+            );
+            if (entry) {
+                const plan = await readPlanMenuDocument(projectRoot, entry);
+                const nextOptions = { ...options, uiAPI, sessionRuntime: runtime, sessionId: activeSessionId };
+                const loadChildPlan = (name: string) => runLoadPlanCommand(name ? [name] : [], nextOptions);
+                const runAction = async <T>(run: () => Promise<T>): Promise<T> => {
+                    const selection = await selectPlanAccess(projectRoot, plan.planName);
+                    if (!selection) throw new Error(`Plan not found: ${plan.planName}`);
+                    return await withPlanAccess(projectRoot, selection, run);
+                };
+                loadedPlanName = plan.planName;
+                uiAPI.appendSystemMessage(`Plan loaded: ${plan.planName}`, false, "RunWield");
+                uiAPI.appendSystemMessage(
+                    `Classification: ${plan.attrs.classification}, Status: ${plan.attrs.status}`,
+                    false,
+                    "RunWield",
+                );
+                skipRouterRestore = true;
+                if (plan.attrs.status === "on_hold") {
+                    const result = await handleOnHoldPlan({ projectRoot, plan, uiAPI, session, runAction });
+                    if (result === "resume") await loadChildPlan(plan.planName);
+                    return;
+                }
+                const action = await handleEpicPlan({
+                    projectRoot,
+                    plan,
+                    uiAPI,
+                    runSlicerAgent,
+                    loadChildPlan,
+                    session,
+                    savedChildren: catalog.filter((candidate) => candidate.attrs.parentPlan === plan.planName),
+                    runAction,
+                });
+                if (action === "archiving") await loadChildPlan("");
+                if (action === "review" || action === "direct_review" || action === "architect_re_review") {
+                    await runLoadPlanCommand([plan.planName], nextOptions, action);
+                }
+                return;
+            }
+        }
         if (options.slashSurface !== "acp" && !(await admitProjectWithIdentityChoice(projectRoot))) return;
         await prepareWorktreeRegistry(projectRoot);
         const discovered = options.slashSurface === "acp" ? null : await discoverPlanDocumentRoot(projectRoot, planArg);
@@ -306,7 +362,7 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
             if (selection) {
                 skipRouterRestore = true;
                 return await withPlanAccess(projectRoot, selection, () =>
-                    runLoadPlanCommand([resolved.plan.planName], options),
+                    runLoadPlanCommand([resolved.plan.planName], options, epicReview),
                 );
             }
         }
@@ -610,14 +666,16 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
             }
         };
 
-        const epicResult = await handleEpicPlan({
-            projectRoot,
-            plan,
-            uiAPI,
-            runSlicerAgent,
-            loadChildPlan: loadAnotherPlan,
-            session,
-        });
+        const epicResult =
+            epicReview ??
+            (await handleEpicPlan({
+                projectRoot,
+                plan,
+                uiAPI,
+                runSlicerAgent,
+                loadChildPlan: loadAnotherPlan,
+                session,
+            }));
         if (epicResult === "architect_re_review") {
             await sendBackForReReview();
             return;

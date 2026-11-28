@@ -292,10 +292,12 @@ export interface PackageDocument {
     bytes: Uint8Array;
     hash: string;
 }
-export interface LoadedPlanPackage {
+interface PlanPackageHeader {
     kind: "loaded";
     path: string;
     metadata: PlanPackageMetadata;
+}
+export interface LoadedPlanPackage extends PlanPackageHeader {
     documents: PackageDocument[];
 }
 export type PackageIssueKind =
@@ -312,8 +314,8 @@ export interface PackageIssue {
     message: string;
 }
 export type PackageInspection = LoadedPlanPackage | PackageIssue;
-export interface PackageCatalog {
-    packages: LoadedPlanPackage[];
+export interface PackageCatalog<Entry extends PlanPackageHeader = LoadedPlanPackage> {
+    packages: Entry[];
     issues: PackageIssue[];
 }
 export interface PackageSelector {
@@ -914,22 +916,39 @@ async function readDocuments(paths: PackageLayout, directory: string): Promise<P
     }
     return documents;
 }
-async function inspectAt(paths: PackageLayout, name: string): Promise<PackageInspection> {
+async function inspectMetadataAt(paths: PackageLayout, name: string): Promise<PlanPackageHeader | PackageIssue> {
     const path = join(paths.plans, normalizeName(name));
     try {
         const bytes = await file(paths.home, join(path, "plan.wld.json"));
         if (!bytes) return { kind: "missing", path, message: "Plan package is missing." };
         const metadata = parseMetadata(bytes);
         if (metadata.name !== name) fail("pending_recovery", "Package location and metadata name disagree.");
-        const documents = await readDocuments(paths, path);
-        return { kind: "loaded", path, metadata, documents };
+        return { kind: "loaded", path, metadata };
     } catch (error) {
         if (error instanceof Error) return issue(error, path);
         throw error;
     }
 }
-async function scanOnce(paths: PackageLayout): Promise<PackageCatalog> {
-    const catalog: PackageCatalog = { packages: [], issues: [] };
+async function inspectAt(paths: PackageLayout, name: string): Promise<PackageInspection> {
+    const entry = await inspectMetadataAt(paths, name);
+    if (entry.kind !== "loaded") return entry;
+    try {
+        return { ...entry, documents: await readDocuments(paths, entry.path) };
+    } catch (error) {
+        if (error instanceof Error) return issue(error, entry.path);
+        throw error;
+    }
+}
+type PackageInspector<Entry extends PlanPackageHeader> = (
+    paths: PackageLayout,
+    name: string,
+) => Promise<Entry | PackageIssue>;
+
+async function scanOnce<Entry extends PlanPackageHeader>(
+    paths: PackageLayout,
+    inspect: PackageInspector<Entry>,
+): Promise<PackageCatalog<Entry>> {
+    const catalog: PackageCatalog<Entry> = { packages: [], issues: [] };
     let intent: PackageIntent | null;
     try {
         intent = await readIntent(paths);
@@ -952,7 +971,7 @@ async function scanOnce(paths: PackageLayout): Promise<PackageCatalog> {
             if (entries.some((entry) => entry.name === "plan.wld.json")) {
                 const name = relative(paths.plans, path).replaceAll("\\", "/");
                 if (!intent || (name !== intent.to && !(intent.operation === "rename" && name === intent.from))) {
-                    const inspected = await inspectAt(paths, name);
+                    const inspected = await inspect(paths, name);
                     if (inspected.kind === "loaded") catalog.packages.push(inspected);
                     else catalog.issues.push(inspected);
                 }
@@ -1022,11 +1041,14 @@ async function readBatch(paths: PackageLayout): Promise<ImportBatch | null> {
         return fail("pending_recovery", "Import batch evidence is damaged; preserving its packages.");
     }
 }
-async function scan(paths: PackageLayout): Promise<PackageCatalog> {
+async function scanCatalog<Entry extends PlanPackageHeader>(
+    paths: PackageLayout,
+    inspect: PackageInspector<Entry>,
+): Promise<PackageCatalog<Entry>> {
     for (let retry = 0; retry < 3; retry++) {
         const before = await readBatch(paths);
         const pruneBefore = await readPruneJournal(paths);
-        const catalog = await scanOnce(paths);
+        const catalog = await scanOnce(paths, inspect);
         const after = await readBatch(paths);
         const pruneAfter = await readPruneJournal(paths);
         if (
@@ -1068,6 +1090,14 @@ async function scan(paths: PackageLayout): Promise<PackageCatalog> {
             },
         ],
     };
+}
+function scan(paths: PackageLayout): Promise<PackageCatalog> {
+    return scanCatalog(paths, inspectAt);
+}
+
+/** Read committed package headers for navigation. Selected workflows validate documents separately. */
+export async function listPlanPackageHeaders(identity: ProjectIdentity): Promise<PackageCatalog<PlanPackageHeader>> {
+    return await scanCatalog(layout(identity), inspectMetadataAt);
 }
 export async function listPlanPackages(identity: ProjectIdentity, includeArchived = false): Promise<PackageCatalog> {
     try {

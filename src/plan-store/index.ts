@@ -353,6 +353,7 @@ export { findPlanById, findPlanEvidenceById, loadPlanBodyById } from "./queries.
 
 export {
     listPlanDocuments,
+    readPlanMenuDocument,
     listPlanResources,
     readPlanResourceCatalog,
     resolvePlan,

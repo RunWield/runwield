@@ -10,6 +10,7 @@ import {
     loadPackageWorkflowPlan,
     type PackageWorkflowSelection,
 } from "./workflows.ts";
+import { readLegacyEpicBranch } from "../shared/workflow/epic-branch.ts";
 import { effectiveDeliveryBranch } from "../shared/workflow/plan-branch.ts";
 /** Locate the editable document independently from the shared controller files. */
 import { canonicalizeStoredPlanName, isCompletedPlanStatus } from "../plan-format.ts";
@@ -236,8 +237,7 @@ async function resolveWorkflowPlanLocationInScope(
             if (!parent || (parentEntry.planId && parent.attrs.planId !== parentEntry.planId)) {
                 throw new Error(`The registered parent Plan ${parentName} is missing or has a different identity.`);
             }
-            registeredParentTarget =
-                typeof parent.attrs.targetBranch === "string" ? parent.attrs.targetBranch.trim() : "";
+            registeredParentTarget = await readLegacyEpicBranch(registryRoot, parentName, parent.attrs);
             // Sequence review saves the whole group in its parent's document. Epic siblings use the published branch.
             const child =
                 options.loadFromTarget || !isSequencePlan(parent.attrs)
@@ -259,7 +259,7 @@ async function resolveWorkflowPlanLocationInScope(
     if (options.loadFromTarget && !registeredParentTarget) {
         const parentName = inferParentPlanName(planName);
         const parent = parentName ? await loadPlan(cwd, parentName) : null;
-        registeredParentTarget = typeof parent?.attrs.targetBranch === "string" ? parent.attrs.targetBranch.trim() : "";
+        if (parentName) registeredParentTarget = await readLegacyEpicBranch(registryRoot, parentName, parent?.attrs);
     }
     // A checkout child is not an input once its parent's branch is known.
     const plan = options.loadFromTarget && registeredParentTarget ? null : await loadPlan(cwd, planName);
@@ -283,7 +283,7 @@ async function resolveWorkflowPlanLocationInScope(
     let targetBranch = registeredParentTarget || localTargetBranch;
     if (!targetBranch && parentPlanName) {
         const parentPlan = await loadPlan(cwd, parentPlanName);
-        targetBranch = typeof parentPlan?.attrs.targetBranch === "string" ? parentPlan.attrs.targetBranch.trim() : "";
+        targetBranch = await readLegacyEpicBranch(registryRoot, parentPlanName, parentPlan?.attrs);
     }
     if (targetBranch && (parentPlanName || plan?.attrs.deliveryBranch)) {
         const targetPlan = await findTargetBranchPlan(registryRoot, targetBranch, planName);

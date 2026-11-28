@@ -125,10 +125,10 @@ export async function readManagedPlan(cwd: string, reference: string) {
           }
         : null;
 }
-export async function listManagedPlans(cwd: string) {
+export async function listManagedPlans(cwd: string, documentsOnly = false) {
     const owner = await client(cwd);
     if (!owner) return [];
-    const result = (await owner.execute({ kind: "list-plans" })).result;
+    const result = (await owner.execute({ kind: documentsOnly ? "list-plan-documents" : "list-plans" })).result;
     if (!("plans" in result)) throw new Error("Managed owner returned another catalog result.");
     return result.plans.map((plan) => ({ ...plan, path: managedLocator(cwd, plan.path) }));
 }

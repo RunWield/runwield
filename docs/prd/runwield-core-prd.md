@@ -588,7 +588,7 @@ conditions for reconsideration. Routine choices receive brief treatment; individ
 - Given an external Plan without metadata, a listing or board shows it unchanged; loading it adopts it with its prose
   intact.
 - Given `/load-plan` without an argument, the picker lists local Plan documents; Cancel leaves everything as it was.
-  Selecting a Plan starts its load and recovery flow.
+  Selecting a saved Epic reads its Plan and child list from the Plan Store. Recovery starts when the user chooses a workflow action.
 - Given a body edit during a metadata transition that fails, the latest body remains.
 - Given malformed lifecycle metadata, recovery repairs RunWield's own state and keeps the user's prose.
 - Given an adopted Plan, loading it again keeps its age, identity, and decisions.
@@ -758,12 +758,17 @@ review. Ready Epics also offer the explicit Architect send-back action defined i
 
 **Requirement: Every Epic starts and ends on its own branch.** Architect names an Epic branch, by default
 `epic/<epic-name>`. Children deliver to it, so the primary branch receives the Epic only when it is ready. When the Epic
-first needs the branch, RunWield creates it from the latest primary branch, records that start, and puts the child
-drafts on it while the user's checkout stays as it is. An existing branch keeps its history. Epics whose children
-started before Epic branches existed keep their earlier behavior.
+starts executing its first child, RunWield prepares the branch from the latest primary branch and records the child's
+starting commit on its execution attempt. An existing branch keeps its history. Saved Plans stay in the Plan Store
+and the user's checkout stays as it is. Epics whose children started before Epic branches existed keep their earlier
+behavior.
 
-**Requirement: Load children from the Epic branch.** Once the Epic branch exists, `/load-plan` uses it for child
-membership, names, and published content, not the current checkout. This includes an existing default Epic branch when
+**Requirement: Browse saved Epics from the Plan Store.** `/load-plan` lists the saved child names, order, and status.
+Opening the Epic, its child list, or Plan details does not fetch Git refs, prepare branches or worktrees, or reconcile
+delivery. RunWield checks delivery after child publication and when the user starts the integration gate.
+
+**Requirement: Read legacy checkout Plans from the Epic branch.** Legacy checkout mode uses available local Git
+snapshots for child membership, names, and published content. This includes an existing default Epic branch when
 its name is not yet recorded on the Epic, even if children have already started. Loading does not publish stale
 checkout drafts. A published rename keeps the child's stable identity and compatible saved planning edits. Active
 execution keeps its own document authority. If a child has no Plan ID when its session starts, Core creates one during
@@ -773,7 +778,7 @@ worktree owns the document, even if the source copy changes or is removed. The r
 Plan ID; it does not replace document content. A failed creation that was rolled back does not transfer document
 ownership.
 
-**Requirement: Child selection reflects the authoritative document.** When the primary checkout is on the Epic target
+**Requirement: Legacy checkout child selection reflects the authoritative document.** When the primary checkout is on the Epic target
 branch, child discovery and selection include its local edits and valid untracked child Plans. On any other branch,
 checkout files do not enter the target family. Registered planning and execution documents retain their content,
 lifecycle, and order authority; a saved planning document does not restore a child removed from the target catalog.
@@ -851,9 +856,10 @@ siblings active. Listings show held work separately from active and finished wor
 
 **Acceptance scenarios:**
 
-- Given a new Epic without its branch, starting the first child creates the branch from the latest primary branch with
-  the Epic requirements and child drafts on it; the user's checkout is unchanged. Branch preparation adds a missing Epic
-  document but does not replace requirements already on the branch with a primary-checkout copy.
+- Given a saved Epic without its branch, browsing the Epic and its children leaves Git and saved Plan state unchanged.
+  First child execution creates the branch from the latest primary branch and keeps Plan documents in the Plan Store.
+- Given a legacy Epic, branch preparation adds a missing Epic document and child drafts while preserving requirements
+  already on the branch and leaving the user's checkout unchanged.
 - Given Planner renumbers children on the Epic branch, `/load-plan` lists the new names, excludes removed names, and
   opens the selected branch Plan without restoring stale checkout drafts. A renamed child's saved planning edits stay
   in its planning worktree.

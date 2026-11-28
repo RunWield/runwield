@@ -76,6 +76,7 @@ export function validateProjectStoreRequest(request: ProjectStoreRequest): void 
         "author-plan": ["kind", "operationId", "planId", "input"],
         "resolve-plan": ["kind", "reference"],
         "list-plans": ["kind"],
+        "list-plan-documents": ["kind"],
         "settle-retained-record": [...common, "attemptId"],
         "read-retained-recording": ["kind", "reference", "pendingPublication"],
         "prepare-retained-record": [...common, "attemptId", "pendingPublication", "sections"],
@@ -688,7 +689,7 @@ export function validateProjectStoreReply(reply: ProjectStoreReply, request: Pro
                     !/^[a-f0-9]{64}$/.test(result.plan.revision || "")))
         )
             throw new Error("Invalid resolved Plan reply.");
-    } else if (request.command.kind === "list-plans") {
+    } else if (request.command.kind === "list-plans" || request.command.kind === "list-plan-documents") {
         if (
             !("plans" in result) ||
             !Array.isArray(result.plans) ||

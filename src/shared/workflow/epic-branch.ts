@@ -16,12 +16,13 @@ import { rm as fsRm } from "node:fs/promises";
 
 import { join, relative } from "node:path";
 import { parsePlanFrontMatter } from "../../plan-format.ts";
-import { ensurePlanIdentity, findPlansByParent, loadPlan } from "../../plan-store/index.ts";
+import { ensurePlanIdentity, findPlansByParent, listPlanDocuments, loadPlan } from "../../plan-store/index.ts";
 import type { PlanFrontMatter } from "../../plan-store/index.ts";
 import { isPlannedChangeClassification } from "../../constants.ts";
 import { projectPlanType } from "../project-plan.ts";
 import { isGitRepository } from "../git.ts";
 import { prepareTargetBranchRef, resolveTargetBranchName } from "../worktree.ts";
+import { resolveExistingTargetSnapshot, TargetBranchSnapshotUnavailableError } from "./planning-target.ts";
 import { resolvePrimaryCheckoutRoot } from "../project-checkout.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { listPlanExecutionDocuments } from "../../plan-store/index.ts";
@@ -311,6 +312,44 @@ async function localEpicChildren(primaryRoot: string, documentRoot: string, epic
         }
     }
     return children;
+}
+
+/** Read the landing of a legacy Epic from saved metadata or locally available refs. */
+export async function readLegacyEpicBranch(
+    projectRoot: string,
+    name: string,
+    attrs: PlanFrontMatter | undefined,
+): Promise<string> {
+    if (!attrs || !isProjectEpic(attrs)) return "";
+    const named = epicTargetBranch(attrs);
+    if (named || isSequenceEpic(attrs) || !(await isGitRepository(projectRoot))) return named;
+    const branch = defaultEpicBranchName(name);
+    try {
+        await resolveExistingTargetSnapshot(projectRoot, branch);
+        return branch;
+    } catch (error) {
+        if (error instanceof TargetBranchSnapshotUnavailableError && error.reason === "missing_ref") return "";
+        throw error;
+    }
+}
+
+/** Resolve an unnamed Epic landing at execution time without changing reviewed definitions. */
+export async function resolveChildEpicExecutionBranch(
+    projectRoot: string,
+    parentName: string,
+): Promise<string | undefined> {
+    const plans = await listPlanDocuments(projectRoot);
+    const parent = plans.find((plan) => plan.name === parentName);
+    if (!parent || !isProjectEpic(parent.attrs)) return;
+    const namedBranch = epicTargetBranch(parent.attrs);
+    if (namedBranch) return namedBranch;
+    if (isSequenceEpic(parent.attrs)) return;
+    const branch = defaultEpicBranchName(parentName);
+    if (await epicBranchExists(projectRoot, branch)) return branch;
+    const children = plans.filter(
+        (plan) => plan.attrs.parentPlan === parentName && isPlannedChangeClassification(plan.attrs.classification),
+    );
+    if (await canAdoptEpicBranch(projectRoot, children)) return branch;
 }
 
 /**
