@@ -16,7 +16,7 @@ import { RuntimeInteractionOutcomes, RuntimeInteractionTypes } from "@runwield/s
 import type { InteractiveSessionRuntime as SessionRuntime } from "@runwield/session-runtime/services";
 import type { UiAPI } from "../../ui/tui/api.ts";
 import type { PlanFrontMatter } from "@runwield/plans";
-import type { PlanApprovalAction } from "../../shared/workflow/plan-approval.ts";
+import type { PlanApprovalAction } from "@runwield/plans/lifecycle";
 import type { SequenceReviewDecision } from "../../plan-store/index.ts";
 import type { ActiveExecutionWorkflow } from "@runwield/workflow/state";
 import type { PlanSessionSurface } from "./plan-session-types.ts";
@@ -87,6 +87,7 @@ export function createPlanSessionSurface(
     return {
         id: sessionId,
         cwd: snapshot.cwd,
+        managedRunwieldSessionId: snapshot.managed?.runwieldSessionId,
         getActiveAgentName: () => runtime.getRuntimeActiveAgentName(sessionId),
         getEffectiveAgentName: () => runtime.getEffectiveAgentName(sessionId),
         switchAgent: (agentName, options = {}) => runtime.switchAgent(sessionId, { agentName, ...options }),

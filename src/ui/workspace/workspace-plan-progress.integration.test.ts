@@ -318,7 +318,7 @@ test("Workspace progress retains saved publication proof after cleanup and inval
     return await withRetainedPlanFixture(projectRoot, async () => {
         try {
             const { seedPlanController } = await import("../../shared/testing/plan-state-fixture.ts");
-            const { recordPlanEvent } = await import("../../plan-store/index.ts");
+            const { recordPlanEvent } = await import("../../shared/testing/plan-state-fixture.ts");
             await seedPlan(projectRoot, "receipt", "# Saved publication", {
                 planId: "receipt-id",
                 classification: "PLANNED_CHANGE",

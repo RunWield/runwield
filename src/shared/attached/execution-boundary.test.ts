@@ -50,7 +50,7 @@ test("Attached invokes the shared preparation and completion authorities, not wo
         );
         assertEquals(/event\s*:\s*["'](?:execution_started|implementation_finished)["']/.test(text), false);
     }
-    assertStringIncludes(coordinator, "await applyPlanReviewForExecution(");
+    assertStringIncludes(coordinator, "await applyAttachedPlanReview(");
     assertEquals(/event\s*:\s*["']readiness_passed["']/.test(coordinator), false);
 });
 

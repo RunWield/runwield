@@ -14,7 +14,7 @@ import {
     restorePlanPackage,
     savePlanPackageDocument,
 } from "@runwield/plans/package-storage";
-import { archivePlan } from "./plan-store/index.ts";
+import { archivePlan } from "./shared/testing/plan-query-fixture.ts";
 import { git } from "./shared/git-test-fixture.ts";
 import { enterProjectRuntime } from "@runwield/project-runtime/layout";
 import { addEntry, getWorktreeRegistryPath, updateEntry } from "./shared/worktree-registry.ts";

@@ -1,17 +1,13 @@
-import { validateSequenceReviewDecision } from "../../../../plan-store/index.ts";
+import type { SequenceReviewPresentation } from "@runwield/plans/lifecycle";
 /** Review decision transport for Workspace-hosted review surfaces. */
 
 import { toolRegistry } from "@runwield/tools";
 import { readPlanApprovalAction } from "../../../../shared/workflow/plan-approval.ts";
 import { normalizeCollaborationMode, normalizeExecutionAgent } from "@runwield/plans/format";
 
-import type { SequenceReviewDecision, SequenceReviewDocument } from "../../../../plan-store/index.ts";
-import type {
-    ReviewImageDecision,
-    ReviewImageInput,
-    ReviewAnnotationInput,
-} from "../../../../shared/workflow/review-feedback-images.ts";
-import type { PlanQuestionAnswer } from "../../../../shared/plan-questions.ts";
+import type { SequenceReviewDecision } from "../../../../plan-store/index.ts";
+import type { ReviewImageDecision, ReviewImageInput, ReviewAnnotationInput } from "@runwield/plans/lifecycle";
+import type { PlanQuestionAnswer } from "@runwield/plans/lifecycle";
 import type { PlanFrontMatter } from "@runwield/plans";
 
 export interface ReviewExecutionPolicy {
@@ -62,7 +58,7 @@ export interface ReviewPayload {
     reviewRevision?: number;
     classification?: string;
     frontmatter?: Pick<PlanFrontMatter, "classification">;
-    sequenceDocuments?: SequenceReviewDocument[];
+    sequenceDocuments?: Omit<SequenceReviewPresentation, "body">[];
 }
 
 export interface ReviewRequestState {
@@ -262,11 +258,6 @@ async function resolveFromRequest(ctx: ReviewRequestContext, createDecision: Rev
     if (decision instanceof Response) return decision;
     if (ctx.state?.reviewPayload?.sequenceDocuments && !decision.exit) {
         decision.documents = body.documents;
-        try {
-            await validateSequenceReviewDecision(ctx.state.cwd, ctx.state.reviewPayload.sequenceDocuments, decision);
-        } catch (error) {
-            return jsonError("stale_sequence_review", error instanceof Error ? error.message : String(error), 409);
-        }
     }
 
     let receipt: void | ReviewDecisionReceipt = undefined;

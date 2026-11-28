@@ -4,8 +4,7 @@
 locking, revision comparisons, durable writes, recovery journals, import continuation, and retained inputs. UI, CLI,
 Session, Attached, workflow and tool code express an operation; they do not choose a persistence implementation.
 
-The lifecycle rules in `@runwield/plans` determine the changes for each event. The store's event commands apply that policy and persist
-its result. Git execution, the worktree registry, Session transport, UI presentation, and publication phase policy retain
+The lifecycle rules in `@runwield/plans` determine the changes for each event. The project-bound lifecycle applies that policy and persists its result. Git execution, the worktree registry, Session transport, UI presentation, and publication phase policy retain
 their existing owners. They are not moved here merely because they interact with a Plan.
 
 For project-scoped commands, call `openProjectPlanStore(projectId)` from `index.ts`. The returned
@@ -31,6 +30,22 @@ Use `store.workRecords.create(input)` to persist content and receive its store-a
 
 Use `store.workRecords.list()` to browse a Project and `store.workRecords.read(recordId)` to open one record. Both return documents with logical relative paths. ID lookup is case-insensitive, returns `null` for a missing record, and rejects an ambiguous ID. Listing is passive and includes all statuses. The [package contract](../../packages/plans/store.ts) is shared by local and managed owners.
 
+### Plan lifecycle
+
+Open `openProjectPlanLifecycle(projectId)` with the same Project and owner options as the store.
+Use `lifecycle.applyEvent(planId, request)` for a named transition. Basic events require the current revision.
+Approval and feedback require the Plan or Sequence version that Plans retained for the displayed review.
+
+TUI and Workspace actions pass their observed Plan revision to the lifecycle. The checkout adapter also verifies
+that revision for an original retained Plan. Execution and validation hosts keep their private event operation
+for checkpoints and recovery steps that read evidence inside the owning transition.
+The archive command adapters pass observed revisions while preserving physical archive paths, bulk archive, and
+the legacy restore destination option. Canonical catalog writes use the same Plans package lifecycle policy.
+
+`lifecycle.archive(planId, { expectedRevision, reason, force })` moves the saved Plan out of the active catalog.
+`lifecycle.restore(planId, expectedRevision)` returns the archived Plan to the active catalog with its original ID.
+Use `store.readArchived(planId)` to read the archived document and its revision.
+
 ### Plan milestone history
 
 Use `store.history.list(planId)` to obtain the current revision and version catalog, then `store.history.read(planId, version)` to inspect the captured Markdown. To restore, pass the chosen version and observed revision to `store.history.restore(planId, version, expectedRevision)`. Local and managed callers use the same operations. The existing `wld plans history` commands continue to accept a name or ID.
@@ -45,11 +60,11 @@ Use `store.artifacts` to read and save Epic documents, check a child's Manual QA
 | --------------------------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
 | Author and edit             | `store.create`, `store.revise`, `store.editBody`, `operatePlanFile`                   | Complete authoring generations, protected fields, identity and stale-write refusal          |
 | Browse                      | `store.list`, `store.read`, `store.readArchived`, `planDocumentsForCheckout`                           | Admitted live source, passive reads, authorized resource resolution                         |
-| Review                      | `applySharedPlanReviewDecision`, `applyPlanReviewForExecution`, `applySequenceReviewDecision` | Required input capture, complete Sequence membership, one guarded decision                  |
+| Review                      | `preparePlanReviewVersion`, `prepareSequenceReviewVersion`, `lifecycle.applyEvent` | Required input capture, complete Sequence membership, one guarded decision                  |
 | Execute                     | `reservePlanExecution`, `capturePlanExecutionContext`, `readFrozenPlanExecutionDocuments`     | Target binding and reservation under the same lock; exact recorded input and attempt        |
-| Persist events and evidence | `recordPlanEvent`, `recordPlanHumanReview`, `savePlanValidationCheckpoint`                    | Central lifecycle policy, named fields and revision/attempt preconditions                   |
+| Persist events and evidence | `lifecycle.applyEvent`, `applyWorkflowPlanEvent`, `recordPlanHumanReview`, `savePlanValidationCheckpoint`                    | Central lifecycle policy, named fields and revision/attempt preconditions                   |
 | Recover                     | `resetPlanExecutionMetadata`, `restoreRecreatedPlanExecution`, `retainUserVerifiedPlan`       | Revalidated identity, original continuation, fixed recovery writes and compensation         |
-| Import and archive          | `importPlans`, `renamePlan`, `archiveSavedPlan`, `restoreSavedPlan`                           | Explicit import, provenance, complete durable units and recoverable changes                 |
+| Import and archive          | `importPlans`, `renamePlan`, `lifecycle.archive`, `lifecycle.restore`                           | Explicit import, provenance, complete durable units and recoverable changes                 |
 | Publish                     | `store.publicationCopies.read`, `publicationCopiesForCheckout`, `settlePackagePublication`            | Frozen copies, retained receipts and persistence settlement; Git phase policy stays outside |
 | Prepare legacy Git effects  | `preparePlanningMergeDocuments`, `preserveUnpublishedPlanCopies`                              | Opaque prepared documents/backups; callers cannot edit a raw persistence payload            |
 
@@ -79,7 +94,7 @@ entering the runtime again.
 
 ## Private implementation and formats
 
-All implementation files in this directory are private except `index.ts`. Two retained compatibility implementations
+Apps enter through `index.ts`. During extraction, the host has a few named imports from private modules. Workflow and its tool and command adapters use the checkout-bound lifecycle to finish execution or hand off a committed Sequence. The Session socket carries private review evidence. Workspace uses the Plan receipt reference to recover an interrupted answer. The boundary checker lists the callers and allowed imports for each handoff. Two retained compatibility implementations
 also belong to the owner: `../plan-store.ts` and `../shared/workflow/execution-plan-file.ts`. They are not alternate
 public interfaces. Canonical live packages, retained legacy execution documents, explicit import provenance, and Git
 delivery copies are distinct sources inside the module. A missing canonical store never enables checkout fallback.

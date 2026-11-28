@@ -1,10 +1,10 @@
-import { holdPlanFixtureCatalogLock } from "../../shared/testing/plan-state-fixture.ts";
+import { recordPlanEvent, holdPlanFixtureCatalogLock } from "../../shared/testing/plan-state-fixture.ts";
 import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
 import type { FileSessionGeneration } from "../../shared/session/file-session-store-types.ts";
 import type { RuntimeInteractionRequest } from "@runwield/session-runtime/interactions";
 import { readFile as fsReadFile, rm as fsRm, stat as fsStat } from "node:fs/promises";
 import { test } from "node:test";
-import { recordPlanEvent } from "../../plan-store/index.ts";
+
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";

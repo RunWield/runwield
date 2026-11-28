@@ -1,3 +1,4 @@
+import { recordPlanEvent } from "../../plan-store/events.ts";
 import { seedPlanState, seedPlan as savePlanDocument } from "../testing/plan-state-fixture.ts";
 import { pickControllerState } from "@runwield/plans/controller-state";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
@@ -22,7 +23,7 @@ import {
     type PlanFrontMatterInput,
     COLLABORATION_STATE_REMOTE_CANONICAL,
 } from "@runwield/plans/format";
-import { recordPlanEvent, stageValidationPassedInExecutionWorktree } from "../../plan-store/index.ts";
+import { stageValidationPassedInExecutionWorktree } from "../../plan-store/index.ts";
 import { loadPlan } from "../testing/plan-query-fixture.ts";
 import { SharedPlanLockError } from "@runwield/plans/collaboration-lock";
 

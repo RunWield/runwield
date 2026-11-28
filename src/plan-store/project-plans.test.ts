@@ -3,8 +3,10 @@ import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import { lstat, mkdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import {
+    openPlanLifecycleForCheckout,
     openPlanStoreForCheckout,
     planDocumentsForCheckout,
+    preparePlanReviewVersion,
     readPlanDocuments,
     withLocalPlanWorkflow,
     withPlanSubmission,
@@ -14,10 +16,16 @@ import {
 import { deepEqual, equal, match, notEqual, rejects } from "node:assert/strict";
 import { test } from "node:test";
 import { create, packageFixture } from "../shared/testing/plan-package-fixture.ts";
-import { seedPlan } from "../shared/testing/plan-state-fixture.ts";
+import { recordPlanEvent, seedPlan } from "../shared/testing/plan-state-fixture.ts";
 import { withRetainedPlanFixture } from "../shared/testing/retained-plan-fixture.ts";
-import { archiveSavedPlan, openProjectPlanStore, restoreSavedPlan } from "./index.ts";
-import { listArchivedPlans, listPlans, readPlanResourceCatalog } from "../shared/testing/plan-query-fixture.ts";
+import { openProjectPlanLifecycle, openProjectPlanStore } from "./index.ts";
+import {
+    archiveSavedPlan,
+    restoreSavedPlan,
+    listArchivedPlans,
+    listPlans,
+    readPlanResourceCatalog,
+} from "../shared/testing/plan-query-fixture.ts";
 
 test("a project-bound store preserves Plan identity and guards each write across independent opens", async () => {
     const fixture = await packageFixture();
@@ -27,6 +35,7 @@ test("a project-bound store preserves Plan identity and guards each write across
         const open = () => openProjectPlanStore(fixture.identity.projectId, { admitted: fixture.identity });
         const first = open();
         const second = open();
+        const lifecycle = () => openProjectPlanLifecycle(fixture.identity.projectId, { admitted: fixture.identity });
         const { layoutMarkerPath } = resolveProjectRuntimeLayout(fixture.root).primary;
         equal((await first.list()).resources.length, 0);
         await rejects(lstat(layoutMarkerPath), { code: "ENOENT" });
@@ -50,12 +59,30 @@ test("a project-bound store preserves Plan identity and guards each write across
         equal(edited.body, `# Revision ${winner}\n`);
         notEqual(edited.revision, created.revision);
         await rejects(
-            second.applyEvent(id, { event: "review_approved", expectedRevision: created.revision }),
+            lifecycle().applyEvent(id, { event: "readiness_passed", expectedRevision: created.revision }),
             StalePlanWriteError,
         );
         equal((await second.read(id)).attrs.status, "draft");
-        const approved = await first.applyEvent(id, { event: "review_approved", expectedRevision: edited.revision });
+        const review = Reflect.apply(lifecycle().applyEvent, undefined, [
+            id,
+            { event: "review_approved", expectedRevision: edited.revision },
+        ]);
+        equal((await review).cancellationReason, "stale_plan_review");
+        equal((await second.read(id)).revision, edited.revision);
+        equal((await second.history.list(id)).milestones.length, 0);
+        const source = (await planDocumentsForCheckout(fixture.root).load("proposal"))!;
+        const { displayedVersion } = await preparePlanReviewVersion(fixture.root, "proposal", source.path, {
+            expectedRevision: edited.revision,
+        });
+        const decision = await lifecycle().applyEvent(id, {
+            event: "review_approved",
+            displayedVersion,
+            approvalAction: "later",
+        });
+        equal(decision.approved, true, decision.feedback ?? "The saved review should commit.");
+        const approved = await first.read(id);
         equal(approved.attrs.status, "approved");
+        equal(decision.revision, approved.revision);
         const history = await second.history.list(id);
         equal(history.revision, approved.revision);
         const version = history.milestones[0].version;
@@ -65,20 +92,20 @@ test("a project-bound store preserves Plan identity and guards each write across
         await rejects(foreign.history.read(id, version), /requires an admitted Plan/);
         await rejects(foreign.history.restore(id, version, history.revision), /requires an admitted Plan/);
 
-        await rejects(second.archive(id, { expectedRevision: edited.revision, force: true }), StalePlanWriteError);
-        const archived = await second.archive(id, { expectedRevision: approved.revision, force: true });
+        await rejects(lifecycle().archive(id, { expectedRevision: edited.revision, force: true }), StalePlanWriteError);
+        const archived = await lifecycle().archive(id, { expectedRevision: approved.revision, force: true });
         const savedArchive = await open().readArchived(id);
-        equal(savedArchive.revision, archived.revision);
+        deepEqual(savedArchive, archived);
         equal(savedArchive.planId, id);
         await rejects(first.read(id));
         equal((await first.history.read(id, version))["context.md"], edited.body);
         await rejects(first.history.restore(id, version, archived.revision), /Restore the archived Plan/);
-        await rejects(first.restore(id, approved.revision), StalePlanWriteError);
-        const restored = await open().restore(id, savedArchive.revision);
+        await rejects(lifecycle().restore(id, approved.revision), StalePlanWriteError);
+        const restored = await lifecycle().restore(id, savedArchive.revision);
         equal(restored.planId, id);
         await rejects(first.readArchived(id));
         equal((await planDocumentsForCheckout(fixture.root).load("proposal"))?.body, edited.body);
-        equal((await open().read(id)).revision, restored.revision);
+        deepEqual(await open().read(id), restored);
     } finally {
         await Promise.all([fixture.cleanup(), other.cleanup()]);
     }
@@ -163,34 +190,43 @@ test("local Plan ID operations stay exact when another Plan has that name", asyn
         );
         equal((await store.read(alias.planId)).body, created.body);
         equal((await store.read(alias.planId)).attrs.title, alias.attrs.title);
-        const approved = await store.applyEvent(created.planId, {
+        await recordPlanEvent({
+            cwd: fixture.root,
+            planName: created.name,
+            expectedPlanId: created.planId,
             event: "review_approved",
             expectedRevision: edited.revision,
         });
+        const lifecycle = openPlanLifecycleForCheckout(fixture.root)!;
+        const approved = await lifecycle.applyEvent(created.planId, {
+            event: "readiness_passed",
+            expectedRevision: (await store.read(created.planId)).revision,
+        });
+        equal(approved.attrs.status, "ready_for_work");
+        deepEqual(approved, await store.read(created.planId));
         equal((await store.read(alias.planId)).attrs.status, "draft");
         const byReference = openPlanStoreForCheckout(fixture.root)!;
         equal(await byReference.resolveHistoryPlan(alias.name), created.planId);
         equal((await store.history.list(created.planId)).milestones.length, 1);
         equal((await store.history.list(alias.planId)).milestones.length, 0);
 
-        const archived = await store.archive(created.planId, { expectedRevision: approved.revision, force: true });
+        const archived = await lifecycle.archive(created.planId, { expectedRevision: approved.revision, force: true });
         equal(await byReference.resolveHistoryPlan(alias.name), created.planId);
         await archiveSavedPlan(fixture.root, alias.name, { force: true });
         equal((await store.readArchived(created.planId)).body, edited.body);
         equal((await store.readArchived(alias.planId)).body, created.body);
-        const restored = await store.restore(created.planId, archived.revision);
+        const restored = await lifecycle.restore(created.planId, archived.revision);
         equal(restored.planId, created.planId);
         equal((await restoreSavedPlan(fixture.root, alias.name)).attrs.planId, alias.planId);
         equal((await store.read(alias.planId)).body, created.body);
-        equal(
-            (
-                await store.applyEvent(alias.planId, {
-                    event: "review_approved",
-                    expectedRevision: (await store.read(alias.planId)).revision,
-                })
-            ).attrs.status,
-            "approved",
-        );
+        await recordPlanEvent({
+            cwd: fixture.root,
+            planName: alias.name,
+            expectedPlanId: alias.planId,
+            event: "review_approved",
+            expectedRevision: (await store.read(alias.planId)).revision,
+        });
+        equal((await store.read(alias.planId)).attrs.status, "approved");
     } finally {
         await fixture.cleanup();
     }

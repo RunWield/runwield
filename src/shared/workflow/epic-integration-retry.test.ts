@@ -1,3 +1,4 @@
+import { recordPlanEvent } from "../testing/plan-state-fixture.ts";
 import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 import { writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
@@ -7,7 +8,7 @@ import { setCustomSetting } from "../settings.ts";
 import { findPlansByParent, loadPlan } from "../testing/plan-query-fixture.ts";
 import { git } from "../git-test-fixture.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
-import { recordPlanEvent } from "../../plan-store/index.ts";
+
 import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { readEpicDeliveryState, reconcileEpicDelivery, runEpicIntegrationGate } from "./epic-integration.ts";

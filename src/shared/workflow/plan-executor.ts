@@ -1,7 +1,7 @@
 // @ts-nocheck: Callback parameters and result shapes are implicit.
 import { openWorkflow } from "@runwield/workflow";
 import type { PostExecutionReport } from "@runwield/workflow/decisions";
-import { readFrozenPlanExecutionDocuments, planDocumentReference } from "../../plan-store/index.ts";
+import { readFrozenPlanExecutionDocuments } from "../../plan-store/index.ts";
 import { type PlanAccess } from "../../plan-store/index.ts";
 import { capturePlanAccess, selectPlanAccess, withPlanAccess } from "../../plan-store/index.ts";
 import { isEpicPlan, resolvePlanExecutionPolicy, isProjectPlan } from "@runwield/plans/format";
@@ -11,7 +11,7 @@ import { CLI_BIN } from "../../constants.ts";
 import { emitSystemStatus, requestHostedSessionInteraction, type HostedSession } from "@runwield/session-runtime/host";
 import { RuntimeInteractionOutcomes, RuntimeInteractionTypes } from "@runwield/session-runtime/interactions";
 import { isExecutablePlanStatus } from "@runwield/plans/lifecycle";
-import { recordPlanEvent } from "../../plan-store/index.ts";
+import { applyWorkflowPlanEvent } from "../../plan-store/project-lifecycle.ts";
 import { normalizePlanApprovalAction, PLAN_APPROVAL_ACTIONS } from "./plan-approval.ts";
 import {
     appendSessionCompleteGuidance,
@@ -24,7 +24,8 @@ import { recordWorkflowMetric } from "./metrics.ts";
 import { CollaborationStyles, selectRuntimeCollaborationStyle } from "./execution-collaboration.ts";
 import { runPlanningAgent } from "./planning-agent.ts";
 import { buildExecutionSegmentContinuation } from "./execution-segment-handoff.ts";
-import { loadPlanActionEvidence, type PlanActionEvidence, type PlanWorktreeExpectation } from "./plan-actions.ts";
+import { loadPlanActionEvidence, type PlanActionEvidence } from "./plan-actions.ts";
+import type { PlanWorktreeExpectation } from "@runwield/plans/lifecycle";
 import { runEngineerWithPlan, runEngineerWithSegmentHandoff } from "./engineer-runner.ts";
 import { resolvePlanExecutionRuntimeAgent } from "./execution-agent.ts";
 import { projectEngineerPlanBody } from "./engineer-plan-projection.ts";
@@ -146,7 +147,6 @@ async function executePlanInScope({
             projectRoot,
         );
 
-        const planPath = await planDocumentReference(projectRoot, planName);
         let recoveryAttempt = 0;
         let recoveryReason = initialLoad.error ? "plan_load_failed" : "plan_not_found";
         let recoveryResponse = { outcome: RuntimeInteractionOutcomes.UNSUPPORTED, message: recoveryReason };
@@ -172,9 +172,15 @@ async function executePlanInScope({
                 };
             }
 
+            let reviewedPlanId: string | undefined;
             const recoverableReview = await requestRecoverablePlanReview({
-                requestReview: () =>
-                    requestHostedSessionInteraction(
+                requestReview: async () => {
+                    const { plan: reviewPlan } = await tryLoadPlanForExecution();
+                    reviewedPlanId = _triageMeta?.planId ?? reviewPlan?.attrs.planId;
+                    if (!reviewPlan || !reviewedPlanId || reviewPlan.attrs.planId !== reviewedPlanId) {
+                        throw new Error("The Plan could not be reopened for review.");
+                    }
+                    return await requestHostedSessionInteraction(
                         hostedSession,
                         {
                             type: RuntimeInteractionTypes.PLAN_REVIEW,
@@ -182,14 +188,16 @@ async function executePlanInScope({
                             _meta: {
                                 cwd: projectRoot,
                                 planName,
-                                planPath,
+                                planId: reviewedPlanId,
+                                planPath: reviewPlan.path,
                                 triageMeta: _triageMeta || {},
                                 planningAgentName: isEpicPlan(_triageMeta) ? AGENTS.ARCHITECT : AGENTS.PLANNER,
                             },
                         },
                         undefined,
                         hostedSession.getManagedOperationCapability?.() || null,
-                    ),
+                    );
+                },
                 requestRetry: (details) =>
                     requestPlanReviewRetryConfirmation(hostedSession, requestHostedSessionInteraction, details),
                 onUnanswered: ({ reason }) => {
@@ -262,23 +270,9 @@ async function executePlanInScope({
                 };
             }
 
-            if (typeof reviewMeta.feedback === "string" && reviewMeta.feedback.trim()) {
-                effectiveReviewFeedback = reviewMeta.feedback;
-            }
-            if (Array.isArray(reviewMeta.images) && reviewMeta.images.length > 0) {
-                effectiveReviewImages = reviewMeta.images;
-            }
-            const approvedMeta =
-                /** @type {Partial<import('@runwield/plans').PlanFrontMatter>} */ reviewMeta.planAttrs ||
-                _triageMeta ||
-                {};
-            const approvalAction = normalizePlanApprovalAction({
-                classification: approvedMeta.classification,
-                action: reviewMeta.approvalAction,
-            });
             const recoveredLoad = await tryLoadPlanForExecution();
-            plan = recoveredLoad.plan;
-            if (!plan) {
+            const recoveredPlan = recoveredLoad.plan;
+            if (!recoveredPlan) {
                 emitSystemStatus(
                     hostedSession,
                     `Plan could not be loaded after recovered review (${
@@ -291,43 +285,63 @@ async function executePlanInScope({
                 continue;
             }
 
-            const currentStatus = plan.attrs?.status || "approved";
-            if (currentStatus !== "ready_for_work" && currentStatus !== "ready_for_decomposition") {
-                const readinessEvent =
-                    approvedMeta.classification === "PROJECT" ? "epic_readiness_passed" : "readiness_passed";
-                const readinessMeta = await recordPlanEvent({
-                    cwd: projectRoot,
-                    planName,
-                    event: readinessEvent,
-                    currentStatus,
-                    details: { triageMeta: { ...plan.attrs, ...approvedMeta } },
+            const approvedPlanId = reviewMeta.planAttrs?.planId ?? reviewedPlanId;
+            const approvedRevision = reviewMeta.revision;
+            const currentStatus = recoveredPlan.attrs.status;
+            const epic = isProjectPlan(recoveredPlan.attrs);
+            const readyStatus = epic ? "ready_for_decomposition" : "ready_for_work";
+            if (
+                !approvedPlanId ||
+                approvedPlanId !== reviewedPlanId ||
+                approvedPlanId !== recoveredPlan.attrs.planId ||
+                !approvedRevision ||
+                approvedRevision !== recoveredPlan.revision ||
+                (currentStatus !== "approved" && currentStatus !== readyStatus)
+            ) {
+                emitSystemStatus(hostedSession, "Plan changed after review. Review the current Plan again.", {
+                    header: "RunWield",
                 });
-                const latestLoad = await tryLoadPlanForExecution();
-                const latestPlan = latestLoad.plan;
-                if (latestPlan) {
-                    plan = latestPlan;
-                    if (readinessMeta) {
-                        plan.attrs = { ...plan.attrs, ...readinessMeta };
-                    } else if (plan.attrs.status === currentStatus) {
-                        plan.attrs = {
-                            ...plan.attrs,
-                            status:
-                                readinessEvent === "epic_readiness_passed"
-                                    ? "ready_for_decomposition"
-                                    : "ready_for_work",
-                        };
-                    }
-                } else if (readinessMeta) {
-                    plan.attrs = { ...plan.attrs, ...readinessMeta };
-                } else {
-                    plan.attrs = {
-                        ...plan.attrs,
-                        status:
-                            readinessEvent === "epic_readiness_passed" ? "ready_for_decomposition" : "ready_for_work",
-                    };
-                }
+                recoveryReason = "stale_plan_review";
+                recoveryResponse = reviewResponse;
+                continue;
             }
 
+            let readyAttrs = recoveredPlan.attrs;
+            if (currentStatus === "approved") {
+                try {
+                    readyAttrs = await applyWorkflowPlanEvent({
+                        cwd: projectRoot,
+                        planName,
+                        event: epic ? "epic_readiness_passed" : "readiness_passed",
+                        currentStatus,
+                        expectedPlanId: approvedPlanId,
+                        expectedRevision: approvedRevision,
+                    });
+                    if (readyAttrs.planId !== approvedPlanId || readyAttrs.status !== readyStatus) {
+                        throw new Error("The approved Plan is no longer ready.");
+                    }
+                } catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    emitSystemStatus(hostedSession, `Plan readiness could not be recorded: ${message}`, {
+                        header: "RunWield",
+                    });
+                    recoveryReason = "plan_readiness_failed";
+                    recoveryResponse = reviewResponse;
+                    continue;
+                }
+            }
+            plan = { ...recoveredPlan, attrs: readyAttrs };
+
+            if (typeof reviewMeta.feedback === "string" && reviewMeta.feedback.trim()) {
+                effectiveReviewFeedback = reviewMeta.feedback;
+            }
+            if (Array.isArray(reviewMeta.images) && reviewMeta.images.length > 0) {
+                effectiveReviewImages = reviewMeta.images;
+            }
+            const approvalAction = normalizePlanApprovalAction({
+                classification: readyAttrs.classification,
+                action: reviewMeta.approvalAction,
+            });
             if (approvalAction !== PLAN_APPROVAL_ACTIONS.RUN) {
                 emitSystemStatus(
                     hostedSession,

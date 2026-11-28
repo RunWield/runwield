@@ -75,7 +75,7 @@ test("ordinary authoring creates a first canonical draft and preserves identity 
 test("archive and restore use canonical metadata and preserve document identity without checkout copies", async () => {
     const fixture = await packageFixture();
     try {
-        const { archivePlan } = await import("../plan-store/index.ts");
+        const { archivePlan } = await import("./testing/plan-query-fixture.ts");
         const { listArchivedPlans, loadArchivedPlan, restoreArchivedPlan, resolvePlan, deleteArchivedPlanUnit } =
             await import("./testing/plan-query-fixture.ts");
         await seedPlan(fixture.root, "retained", "# Keep the bytes\n");

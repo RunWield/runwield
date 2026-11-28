@@ -1,29 +1,37 @@
-import { planFixtureJournalPath } from "../testing/plan-state-fixture.ts";
-import { seedPlanState, seedPlan } from "../testing/plan-state-fixture.ts";
-import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
+import { planFixtureJournalPath } from "../shared/testing/plan-state-fixture.ts";
+import { seedPlanState, seedPlan } from "../shared/testing/plan-state-fixture.ts";
+import { withRetainedPlanFixture } from "../shared/testing/retained-plan-fixture.ts";
 
-import { renamePlan } from "../../plan-store/index.ts";
+import {
+    openPlanLifecycleForCheckout,
+    prepareSequenceReviewPresentation,
+    prepareSequenceReviewVersion,
+    renamePlan,
+} from "./index.ts";
 import { readdirSync as fsReaddirSync, readFileSync as fsReadFileSync } from "node:fs";
 import { test } from "node:test";
 import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import fs from "node:fs/promises";
 import { dirname } from "node:path";
-import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
+import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 
-import { assertEquals, assertExists, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
+import { assertEquals, assertExists, assertRejects, assertStringIncludes } from "../testing/assertions.ts";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { HostedSession } from "@runwield/session-runtime/host";
-import { defineCommittedGitFixture } from "../git-test-fixture.ts";
+import { defineCommittedGitFixture } from "../shared/git-test-fixture.ts";
 
-import { resolveSiblingChildPlanDependencies } from "../../plan-store/index.ts";
-import { loadPlan } from "../testing/plan-query-fixture.ts";
+import { resolveSiblingChildPlanDependencies } from "./index.ts";
+import { loadPlan } from "../shared/testing/plan-query-fixture.ts";
 
-import { applySequenceReviewDecision, prepareSequenceReview } from "../../plan-store/index.ts";
+import { applySequenceReviewDecision, prepareSequenceReview } from "./sequence-review.ts";
 import { workflowEvents } from "@runwield/workflow/events";
 import type { PlanWrittenEventPayload } from "@runwield/workflow/events";
-import { normalizePlanApprovalAction, primaryPlanApprovalActionForClassification } from "./plan-approval.ts";
+import {
+    normalizePlanApprovalAction,
+    primaryPlanApprovalActionForClassification,
+} from "../shared/workflow/plan-approval.ts";
 import { isEpicPlan, isProjectPlan, isSequencePlan, projectPlanType } from "@runwield/plans/format";
-import { createPlanWrittenTool } from "../../tools/plan-written.ts";
+import { createPlanWrittenTool } from "../tools/plan-written.ts";
 import type { ExtensionToolContext } from "@earendil-works/pi-coding-agent";
 
 const fixture = defineCommittedGitFixture({ ".gitignore": ".wld/\n" });
@@ -286,11 +294,12 @@ interface ToolOutcome {
 }
 
 test("Sequence browser transport preserves the full decision for the workflow owner", async () => {
-    const { cwd, hostedSession } = await setup();
+    const { cwd } = await setup();
     try {
-        const documents = await prepareSequenceReview(cwd, "sequence");
-        const { createScriptedReviewBrowser } = await import("../../ui/review/review-test-fixture.ts");
-        const { submitPlanForReview } = await import("../../ui/review/plan-review.ts");
+        const documents = await prepareSequenceReviewPresentation(cwd, "sequence");
+        const displayedVersion = await prepareSequenceReviewVersion(cwd, "sequence", documents);
+        const { createScriptedReviewBrowser } = await import("../ui/review/review-test-fixture.ts");
+        const { submitPlanForReview } = await import("../ui/review/plan-review.ts");
         const scripted = createScriptedReviewBrowser("decision", {
             approved: true,
             approvalAction: "run",
@@ -305,17 +314,16 @@ test("Sequence browser transport preserves the full decision for the workflow ow
             planName: "sequence",
             planPath: documents[0].planPath,
             sequenceDocuments: documents,
+            displayedVersion,
             browser: scripted.browser,
         });
         assertExists(response.sequenceDecision);
         assertEquals(response.sequenceDecision.documents?.length, 3);
         assertEquals((await loadPlan(cwd, "sequence"))?.attrs.status, "draft");
-        const accepted = await applySequenceReviewDecision({
-            cwd,
-            documents,
-            hostedSession,
-            toolCallId: "browser",
-            decision: response.sequenceDecision,
+        const accepted = await openPlanLifecycleForCheckout(cwd)!.applyEvent(displayedVersion.planId, {
+            ...response.sequenceDecision,
+            event: "review_approved",
+            displayedVersion,
         });
         assertEquals(accepted.approved, true, accepted.feedback);
         assertEquals((await loadPlan(cwd, "sequence/search"))?.attrs.collaborationRecommendation, "pair");
@@ -331,10 +339,10 @@ test("An interrupted Sequence write blocks child actions until the complete grou
         const { cwd } = await setup(root);
         try {
             const documents = await prepareSequenceReview(cwd, "sequence");
-            const { planFixtureJournalPath } = await import("../testing/plan-state-fixture.ts");
+            const { planFixtureJournalPath } = await import("../shared/testing/plan-state-fixture.ts");
             const { getPlanRevisionForText } = await import("@runwield/plans/format");
-            const { healSettledTransitionRecords } = await import("./transition-recovery.ts");
-            const { executePlanAction } = await import("./plan-actions.ts");
+            const { healSettledTransitionRecords } = await import("../shared/workflow/transition-recovery.ts");
+            const { executePlanAction } = await import("../shared/workflow/plan-actions.ts");
             const plans = await Promise.all(
                 documents.map(async (doc) => {
                     const after = doc.plan.replace('status: "draft"', 'status: "ready_for_work"');
@@ -410,7 +418,7 @@ test("Sequence continuation uses sibling IDs and stops at a held child", async (
                 documents: documents.map((doc) => ({ planId: doc.planId, plan: doc.plan })),
             },
         });
-        const { resolveEpicContinuation } = await import("./epic-continuation.ts");
+        const { resolveEpicContinuation } = await import("../shared/workflow/epic-continuation.ts");
         const first = await loadPlan(cwd, "sequence/index");
         await seedPlanState(
             cwd,

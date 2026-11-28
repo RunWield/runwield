@@ -1,4 +1,4 @@
-import { seedPlan } from "../testing/plan-state-fixture.ts";
+import { recordPlanEvent, seedPlan } from "../testing/plan-state-fixture.ts";
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
@@ -11,7 +11,7 @@ import { HostedSession } from "@runwield/session-runtime/host";
 import type { RuntimeInteractionRequest, RuntimeInteractionResponse } from "@runwield/session-runtime/interactions";
 import { buildEngineerPausedMessage, runEngineerWithPlan } from "./engineer-runner.ts";
 import { runPlanningAgent } from "./planning-agent.ts";
-import { recordPlanEvent } from "../../plan-store/index.ts";
+
 
 interface AgentSessionFixture {
     hostedSession: HostedSession;

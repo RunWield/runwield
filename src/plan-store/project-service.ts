@@ -14,7 +14,7 @@ import type { ExecutionPublicationPolicy, PackagePublicationReference } from "@r
 import { projects, type HomeProjectOwner } from "@runwield/projects";
 import { plans, type PlanId } from "@runwield/plans";
 import { isEpicArtifactName } from "@runwield/plans/format";
-import { openPlanStoreForCheckout } from "./project-plans.ts";
+import { openPlanStoreForCheckout, requirePlanId } from "./project-plans.ts";
 import { HISTORY_PAGE_CHARS } from "../shared/remote/project-store-protocol.ts";
 import { listPlanPackages } from "@runwield/plans/package-storage";
 import { projectPlanAuthoring } from "@runwield/plans/project-plan-authoring";
@@ -28,6 +28,7 @@ import type {
     PackageWorkflowInput,
     PlanAuthoringInput,
     ProjectWorkRecord,
+    ProjectPlanDocument,
 } from "@runwield/plans/store";
 import type { GeneratedWorkRecordSections } from "@runwield/plans/work-records";
 import type { PublishedDeliverySources } from "./published-source.ts";
@@ -96,9 +97,10 @@ import { packageWorkflowLocks, selectedPackage } from "./workflows.ts";
 import type { PlanDocumentView, PreparedPlanDocumentEdit } from "@runwield/plans/project-plan-documents";
 import { readPlanDocuments, savePlanDocument, savePlanProse } from "./documents.ts";
 import { savePlanDefinition, type PlanDefinitionChanges } from "./definition.ts";
-import { recordPlanEvent, recordManagedExecutionCheckpoint, type ManagedExecutionCheckpoint } from "./events.ts";
+import { recordProjectPlanEvent, recordManagedExecutionCheckpoint, type ManagedExecutionCheckpoint } from "./events.ts";
 import {
     inspectOperationReceipt,
+    readLifecycleOperationDocument,
     operationDigest,
     operationHash,
     planOperationReceiptDirectory,
@@ -377,7 +379,7 @@ export interface ProjectStoreSequenceDecision {
     planId: string;
     operationId: string;
     expectedRevision: string;
-    documents: import("./sequence-review.ts").SequenceReviewDocument[];
+    documents: import("@runwield/plans/live-review").SequenceReviewDocument[];
     decision: import("./sequence-review.ts").SequenceReviewDecision;
 }
 export interface ProjectStoreSequenceResultRead {
@@ -386,7 +388,7 @@ export interface ProjectStoreSequenceResultRead {
     operationId: string;
 }
 export interface ProjectStoreSequenceDocuments {
-    sequenceDocuments: import("./sequence-review.ts").SequenceReviewDocument[];
+    sequenceDocuments: import("@runwield/plans/live-review").SequenceReviewDocument[];
 }
 export interface ProjectStoreSequenceResult {
     sequenceResult: import("./sequence-review.ts").SequenceReviewResult;
@@ -510,6 +512,7 @@ export interface ProjectStoreReviewDecision extends PlanMutation {
     sourceStatus: import("@runwield/plans").PlanFrontMatter["status"];
     sourceMarkdown: string;
     controllerRevision: number | null;
+    sourceWorktree?: import("@runwield/plans/lifecycle").PlanWorktreeExpectation;
     input: PackageWorkflowInput;
     decision: import("./review.ts").SharedPlanReviewDecision;
     classification: import("@runwield/plans").PlanFrontMatter["classification"];
@@ -710,7 +713,10 @@ export interface ProjectStoreReply {
         | { historyPage: StoreTextPage }
         | ProjectStoreDocumentView
         | ProjectStoreDocument
-        | OperationOutcome
+        | (OperationOutcome & {
+              reviewResult?: import("./review.ts").SharedPlanReviewActionResult;
+              document?: ProjectPlanDocument;
+          })
         | ProjectStoreRecordingContext
         | ProjectStoreDeliverySources
         | ProjectStoreFamilyControllerResult
@@ -1260,6 +1266,99 @@ export class PreparedProjectStore {
                             mnemotecaPort: SYSTEM_WORK_RECORD_MNEMOTECA_PORT,
                         }),
                     };
+                if (command.kind === "review-decision")
+                    return await withPlanPackageCatalogDiscovery(owner, async () => {
+                        const receipt = await runReceiptedOperation(
+                            directory,
+                            command.operationId,
+                            operationDigest(JSON.stringify({ binding: this.binding, command })),
+                            command.planId,
+                            async () => {
+                                const plan = await selectedPackage({ planId: command.planId });
+                                const name = plan.metadata.name;
+                                const worktree = command.sourceWorktree;
+                                if (worktree && this.homeOwner) {
+                                    const attempt = plan.metadata.workflow?.attempt;
+                                    if (worktree.kind === "none") {
+                                        if (attempt)
+                                            throw new ProjectStorePreconditionError("Review execution changed.");
+                                    } else {
+                                        if (attempt?.attemptId !== worktree.id || !this.launch)
+                                            throw new ProjectStorePreconditionError("Review execution changed.");
+                                        const { proveManagedExecutionRecovery } =
+                                            await import("../shared/remote/project-store-launch.ts");
+                                        const { entry } = await proveManagedExecutionRecovery(
+                                            this.launch,
+                                            {
+                                                projectId: owner.projectId,
+                                                repositoryId: owner.repositoryId,
+                                                personalOwner: owner.personalOwner.identity,
+                                                planId: command.planId,
+                                                planName: name,
+                                                attemptId: attempt.attemptId,
+                                                purpose: "active",
+                                            },
+                                            this.signal,
+                                        );
+                                        if (
+                                            entry.planId !== worktree.planId ||
+                                            entry.status !== worktree.status ||
+                                            entry.branch !== worktree.branch ||
+                                            entry.baseBranch !== worktree.baseBranch ||
+                                            entry.baseRef !== worktree.baseRef ||
+                                            entry.baseCommit !== worktree.baseCommit
+                                        )
+                                            throw new ProjectStorePreconditionError("Review worktree changed.");
+                                    }
+                                }
+                                const document = await loadPlan(this.cwd, name);
+                                if (
+                                    !document ||
+                                    (command.controllerRevision === null &&
+                                        document.revision !== command.expectedRevision)
+                                )
+                                    throw new ProjectStorePreconditionError("Plan changed after review opened.");
+                                const { applySharedPlanReviewDecision } = await import("./review.ts");
+                                const reviewed = await withLocalPlanWorkflow(this.cwd, name, () =>
+                                    applySharedPlanReviewDecision({
+                                        cwd: this.cwd,
+                                        planName: name,
+                                        planPath: document.path,
+                                        planWithFrontMatter: command.sourceMarkdown,
+                                        planRevision: command.expectedRevision,
+                                        originalAttrs: { ...document.attrs, status: command.sourceStatus },
+                                        expectedControllerRevision: command.controllerRevision ?? undefined,
+                                        packageInput: command.input,
+                                        decision: command.decision,
+                                        trustedClassification: command.classification,
+                                        trustedWorkKind: command.workKind ?? undefined,
+                                        ...(worktree &&
+                                            !this.homeOwner && {
+                                                reviewEvidence: {
+                                                    planId: command.planId,
+                                                    status: command.sourceStatus,
+                                                    worktree,
+                                                },
+                                            }),
+                                    }),
+                                );
+                                if (reviewed.recoveryRequired) throw new Error(reviewed.recoveryRequired.message);
+                                if (reviewed.cancellationReason || !reviewed.revision)
+                                    throw new ProjectStorePreconditionError(
+                                        reviewed.feedback || "Review requires refreshed evidence.",
+                                    );
+                                return { revision: reviewed.revision };
+                            },
+                        );
+                        const reviewResult =
+                            command.sourceWorktree &&
+                            (await import("./operation-results.ts")).readPlanReviewOperationResult(
+                                directory,
+                                command.operationId,
+                                command.planId,
+                            );
+                        return { ...receipt, ...(reviewResult && { reviewResult }) };
+                    });
                 const plan = await selectedPackage({ planId: command.planId });
                 if (command.kind === "plan-resource") {
                     const { findPlanEvidenceById } = await import("../plan-store.ts");
@@ -1678,7 +1777,13 @@ export class PreparedProjectStore {
                             planId,
                         );
                     }
-                    return await runReceiptedOperation(
+                    const lifecycleDocument =
+                        command.kind === "archive-plan" ||
+                        command.kind === "restore-plan" ||
+                        command.kind === "lifecycle-decision" ||
+                        command.kind === "record-event" ||
+                        command.kind === "execution-checkpoint";
+                    const outcome = await runReceiptedOperation(
                         directory,
                         command.operationId,
                         digest,
@@ -1704,13 +1809,28 @@ export class PreparedProjectStore {
                                     throw new Error("Plan revision changed.");
                                 const { archivePlan, restoreArchivedPlan, findPlanEvidenceById } =
                                     await import("../plan-store.ts");
-                                if (command.kind === "restore-plan")
-                                    await restoreArchivedPlan(this.cwd, command.planId, { byId: true });
-                                else if (
-                                    command.kind === "rename-plan" &&
-                                    plan.metadata.archive &&
-                                    !plan.metadata.archive.restoredAt
-                                ) {
+                                if (command.kind === "restore-plan") {
+                                    const { document } = await restoreArchivedPlan(this.cwd, command.planId, {
+                                        byId: true,
+                                        expectedRevision: command.expectedRevision,
+                                    });
+                                    if (!document)
+                                        throw new Error("Restore did not return its committed Project Plan.");
+                                    return { revision: document.revision };
+                                }
+                                if (command.kind === "archive-plan") {
+                                    const { document } = await archivePlan(this.cwd, plan.metadata.name, {
+                                        expectedPlanId: command.planId,
+                                        expectedRevision: command.expectedRevision,
+                                        reason: command.reason,
+                                        force: command.force,
+                                        now: command.now || undefined,
+                                    });
+                                    if (!document)
+                                        throw new Error("Archive did not return its committed Project Plan.");
+                                    return { revision: document.revision };
+                                }
+                                if (plan.metadata.archive && !plan.metadata.archive.restoredAt) {
                                     const { renamePlanPackage } = await import("@runwield/plans/package-storage");
                                     assertSharedPlanWriteAllowed(
                                         (await findPlanEvidenceById(this.cwd, command.planId)).attrs,
@@ -1725,24 +1845,15 @@ export class PreparedProjectStore {
                                     await withLocalPlanWorkflow(
                                         this.cwd,
                                         plan.metadata.name,
-                                        async () => {
-                                            if (command.kind === "archive-plan")
-                                                await archivePlan(this.cwd, plan.metadata.name, {
-                                                    expectedPlanId: command.planId,
-                                                    reason: command.reason,
-                                                    force: command.force,
-                                                    now: command.now || undefined,
-                                                });
-                                            else
-                                                await (
-                                                    await import("./names.ts")
-                                                ).renamePlan(
-                                                    this.cwd,
-                                                    command.planId,
-                                                    command.name,
-                                                    command.expectedRevision,
-                                                );
-                                        },
+                                        async () =>
+                                            await (
+                                                await import("./names.ts")
+                                            ).renamePlan(
+                                                this.cwd,
+                                                command.planId,
+                                                command.name,
+                                                command.expectedRevision,
+                                            ),
                                         command.planId,
                                     );
                             } else if (command.kind === "lifecycle-decision") {
@@ -1750,14 +1861,15 @@ export class PreparedProjectStore {
                                     await import("./events.ts");
                                 if (!isManagedLifecycleDecision(command.decision.event))
                                     throw new Error("Unsupported managed lifecycle decision.");
-                                await recordPlanEvent({
+                                const document = await recordProjectPlanEvent({
                                     cwd: this.cwd,
                                     planName: plan.metadata.name,
-                                    expectedPlanId: command.planId,
+                                    expectedPlanId: requirePlanId(command.planId),
                                     event: command.decision.event,
                                     expectedRevision: command.expectedRevision,
                                     details: managedLifecycleDetails(command.decision.details),
                                 });
+                                return { revision: document.revision };
                             } else if (command.kind === "recover-execution") {
                                 const homeOwner = this.homeOwner;
                                 const launch = this.launch;
@@ -1891,27 +2003,6 @@ export class PreparedProjectStore {
                                             expectedRevision: command.expectedRevision,
                                         });
                                 });
-                            } else if (command.kind === "review-decision") {
-                                const { applySharedPlanReviewDecision } = await import("./review.ts");
-                                const document = await loadPlan(this.cwd, plan.metadata.name);
-                                if (!document) throw new Error("Plan changed after review opened.");
-                                const reviewed = await withLocalPlanWorkflow(this.cwd, plan.metadata.name, () =>
-                                    applySharedPlanReviewDecision({
-                                        cwd: this.cwd,
-                                        planName: plan.metadata.name,
-                                        planPath: document.path,
-                                        planWithFrontMatter: command.sourceMarkdown,
-                                        planRevision: command.expectedRevision,
-                                        originalAttrs: { ...document.attrs, status: command.sourceStatus },
-                                        expectedControllerRevision: command.controllerRevision ?? undefined,
-                                        packageInput: command.input,
-                                        decision: command.decision,
-                                        trustedClassification: command.classification,
-                                        trustedWorkKind: command.workKind ?? undefined,
-                                    }),
-                                );
-                                if (reviewed.cancellationReason || reviewed.recoveryRequired)
-                                    throw new Error(reviewed.feedback || "Review requires refreshed evidence.");
                             } else if (command.kind === "save-epic-artifact") {
                                 const resource = command.resource;
                                 if (!isEpicArtifactName(resource)) throw new Error("Unsupported Epic artifact.");
@@ -2177,7 +2268,7 @@ export class PreparedProjectStore {
                                         this.signal,
                                     );
                                 }
-                                await withLocalPlanWorkflow(this.cwd, plan.metadata.name, () =>
+                                const document = await withLocalPlanWorkflow(this.cwd, plan.metadata.name, () =>
                                     recordManagedExecutionCheckpoint(
                                         this.cwd,
                                         plan.metadata.name,
@@ -2186,6 +2277,7 @@ export class PreparedProjectStore {
                                         command.checkpoint,
                                     ),
                                 );
+                                return { revision: document.revision };
                             } else if (command.kind === "reserve-execution") {
                                 if (this.homeOwner) {
                                     const retained = await (
@@ -2237,13 +2329,14 @@ export class PreparedProjectStore {
                                     attemptId: snapshot.attemptId,
                                 };
                             } else {
-                                await recordPlanEvent({
+                                const document = await recordProjectPlanEvent({
                                     cwd: this.cwd,
                                     planName: plan.metadata.name,
-                                    expectedPlanId: command.planId,
+                                    expectedPlanId: requirePlanId(command.planId),
                                     event: command.event,
                                     expectedRevision: command.expectedRevision,
                                 });
+                                return { revision: document.revision };
                             }
                             return { revision: (await readPlanDocuments(command.planId)).revision };
                         },
@@ -2252,7 +2345,13 @@ export class PreparedProjectStore {
                             command.kind === "reserve-execution" ||
                             command.kind === "settle-in-place" ||
                             command.kind === "settle-publication",
+                        lifecycleDocument ? "lifecycle-document" : undefined,
                     );
+                    if (outcome.status === "completed" && lifecycleDocument) {
+                        const document = readLifecycleOperationDocument(directory, command.operationId, command.planId);
+                        if (document) return { ...outcome, document };
+                    }
+                    return outcome;
                 });
             },
             () => {

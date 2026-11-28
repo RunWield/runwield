@@ -14,19 +14,25 @@ import type {
 import type { LiveSessionInfo } from "../../../shared/session/live-session-connection.ts";
 import type { BrowserNotificationPolicy } from "../../../shared/session/notification-content.ts";
 import type { OwnerCoordinationStore } from "../../../shared/owner-coordination/index.ts";
-import type { SequenceReviewDecision, SequenceReviewDocument } from "../../../plan-store/index.ts";
-import type { PlanFrontMatter } from "@runwield/plans";
-import type { PlanWorktreeExpectation } from "../../../shared/workflow/plan-actions.ts";
+import type { SequenceReviewDecision } from "../../../plan-store/index.ts";
+import type { PlanReviewVersion } from "@runwield/plans/lifecycle";
+import { plans, type PlanFrontMatter } from "@runwield/plans";
+import type { JsonRecord } from "@runwield/parsing/jsonc";
 import type { SharedPlanReviewDecision } from "../../../plan-store/index.ts";
-import type { ReviewImageDecision } from "../../../shared/workflow/review-feedback-images.ts";
+import type { ReviewImageDecision } from "@runwield/plans/lifecycle";
 import type { ThinkingLevel } from "../../../shared/session/named-invocation.ts";
 export interface CodeReviewRefreshContext {
     cwd: string;
     targetBranch: string;
     targetBaseRef?: string;
 }
-import { capturePlanReviewInput } from "../../../plan-store/index.ts";
-import { withLocalPlanWorkflow } from "../../../plan-store/index.ts";
+import {
+    applyPlanReviewConversation,
+    openPlanLifecycleForCheckout,
+    validatePlanReviewSequence,
+} from "../../../plan-store/index.ts";
+
+import { getPlanReviewOperationReference, recoverPlanReviewResult } from "../../../plan-store/lifecycle-review.ts";
 
 import fs, { stat as fsStat } from "node:fs/promises";
 export interface LiveCodeReviewOptions {
@@ -35,8 +41,6 @@ export interface LiveCodeReviewOptions {
     interactionId: string;
     runwieldSessionId: string;
 }
-import { validateSequenceReviewDecision } from "../../../plan-store/index.ts";
-import { resolveWorkflowPlanLocation } from "../../../plan-store/index.ts";
 /* @module ui/workspace/server/session-continuation */
 
 import { mergePlanAssociations } from "../../../shared/session/plan-association.ts";
@@ -48,7 +52,6 @@ import {
     waitForSessionActivationSettlement,
 } from "../../../shared/session/live-session-connection.ts";
 import { createHash } from "node:crypto";
-import { planDocumentsForCheckout } from "../../../plan-store/index.ts";
 import {
     clearMascotEnabledCache,
     getMergedCustomSetting,
@@ -68,8 +71,6 @@ import {
     normalizeBrowserNotificationPolicy,
     type NotificationSettingsRecord,
 } from "../../../shared/session/notification-content.ts";
-import { applySharedPlanReviewDecision } from "../../../plan-store/index.ts";
-import { loadPlanActionEvidence } from "../../../shared/workflow/plan-actions.ts";
 import { loadReviewFeedbackImages } from "../../../shared/workflow/review-feedback-images.ts";
 import { getWorktreeReviewDiff, WorktreeReviewComparisonError } from "../../../shared/workflow/git-snapshot.ts";
 import {
@@ -180,15 +181,10 @@ function safePlanReviewReference(request: RuntimeInteractionRequest) {
     return {
         planId,
         planName,
-        sequenceDocuments: Array.isArray(meta.sequenceDocuments) ? meta.sequenceDocuments : undefined,
+        sequenceDocuments: meta.sequenceDocuments?.map(({ body: _body, ...document }) => document),
         agentLabel: typeof meta.agentLabel === "string" && meta.agentLabel.trim() ? meta.agentLabel.trim() : "Planner",
         classification,
-        expectedRevision: typeof meta.expectedRevision === "string" ? meta.expectedRevision : null,
-        reviewedSource: meta.reviewedSource && typeof meta.reviewedSource === "object" ? meta.reviewedSource : null,
-        packageInput: meta.packageInput,
-        expectedStatus: typeof meta.expectedStatus === "string" ? meta.expectedStatus : null,
-        expectedWorktree:
-            meta.expectedWorktree && typeof meta.expectedWorktree === "object" ? meta.expectedWorktree : null,
+        expectedRevision: meta.displayedVersion?.revision ?? meta.expectedRevision ?? null,
         previousPlan: typeof meta.previousPlan === "string" && meta.previousPlan.trim() ? meta.previousPlan : null,
         planVersions: Array.isArray(meta.planVersions)
             ? meta.planVersions.flatMap((entry) =>
@@ -255,6 +251,22 @@ function readPlanReviewDecisionMeta(response: unknown) {
         throw new Error("Plan review approved must be a boolean.");
     }
     return decision;
+}
+
+function readReviewAnswerReference(body: JsonRecord | null | undefined) {
+    const source = body?.planReview;
+    if (!source || Array.isArray(source) || typeof source !== "object") return undefined;
+    const planId = plans.identity.parse(source.planId);
+    const operationId = source.operationId;
+    return planId && typeof operationId === "string" ? { planId, operationId } : undefined;
+}
+
+function readCompletedInteractionAnswer(body: JsonRecord) {
+    // Earlier Workspace versions saved recovery responses inside an extra result property.
+    const previous = body.result;
+    if (previous && !Array.isArray(previous) && typeof previous === "object" && previous.status === "recovery_required")
+        return previous;
+    return body;
 }
 
 function acceptedInteractionResponse(response: unknown): RuntimeInteractionResponse {
@@ -364,6 +376,7 @@ export interface WorkspaceOperationRecord {
     expectedGeneration?: number;
     pendingConfiguration?: PendingSessionConfiguration;
     liveInteraction?: WorkspaceLiveInteraction;
+    planReviewVersion?: PlanReviewVersion;
     browserNotificationPolicy?: BrowserNotificationPolicy;
     answer?: {
         resolve: (value: RuntimeInteractionResponse) => void | Promise<void>;
@@ -525,6 +538,7 @@ export class WorkspaceSessionContinuationService {
     declare createRequests: Map<string, { requestHash: string; operationId: string }>;
     declare pendingCreateRequests: Map<string, PendingCreateRequest>;
     declare codeReviewRefreshContexts: Map<string, CodeReviewRefreshContext>;
+    private readonly interactionAnswers = new Set<string>();
     declare retainedSessions: Map<string, { sessionId: string; unsubscribe: () => void }>;
     declare closingRetainedSessions: Map<
         string,
@@ -1434,6 +1448,7 @@ export class WorkspaceSessionContinuationService {
         }
         this.setOperation(operationId, {
             ...current,
+            planReviewVersion: planReview ? request._meta?.displayedVersion : undefined,
             liveInteraction: {
                 interactionId,
                 request: {
@@ -1462,52 +1477,7 @@ export class WorkspaceSessionContinuationService {
     createInteractionAdapter(options: OperationOptions): RuntimeInteractionAdapter {
         return {
             supportsInteraction: () => true,
-            requestInteraction: async (request: RuntimeInteractionRequest, signal?: AbortSignal) => {
-                const reviewPlanId = request.type === "plan_review" ? safePlanReviewReference(request)?.planId : null;
-                if (reviewPlanId) {
-                    const operation = this.operations.get(options.operationId);
-                    if (!operation) throw new Error("Workspace operation is not running.");
-                    const root = requireOwnerProjectRoot(this.store, operation.projectId);
-                    await withLocalPlanWorkflow(root, reviewPlanId, async () => {
-                        const reviewPlanName = safePlanReviewReference(request)?.planName || reviewPlanId;
-                        const evidence = await loadPlanActionEvidence(root, reviewPlanId);
-                        if (evidence.kind !== "success") throw new Error(evidence.message);
-                        // Freeze the document presented for this interaction. The decision must
-                        // not substitute the latest Plan as the source that the user reviewed.
-                        const plan = Array.isArray(request._meta?.sequenceDocuments)
-                            ? null
-                            : await planDocumentsForCheckout(root).evidenceById(reviewPlanId);
-                        if (
-                            plan &&
-                            request._meta?.reviewedSource &&
-                            typeof request._meta.reviewedSource === "object" &&
-                            "revision" in request._meta.reviewedSource &&
-                            request._meta.reviewedSource.revision !== plan.revision
-                        ) {
-                            throw new Error("The Plan changed before review. Reload the Plan and review again.");
-                        }
-                        const packageInput = plan
-                            ? await capturePlanReviewInput(root, reviewPlanName, plan.revision)
-                            : undefined;
-                        request._meta = {
-                            ...request._meta,
-                            packageInput,
-                            expectedRevision: evidence.evidence.revision,
-                            expectedStatus: evidence.evidence.status,
-                            expectedWorktree: evidence.evidence.worktree,
-                            ...(plan &&
-                                !request._meta?.reviewedSource && {
-                                    reviewedSource: {
-                                        planName: plan.planName,
-                                        path: plan.path,
-                                        markdown: plan.markdown,
-                                        revision: plan.revision,
-                                        attrs: plan.attrs,
-                                    },
-                                }),
-                        };
-                    });
-                }
+            requestInteraction: (request: RuntimeInteractionRequest, signal?: AbortSignal) => {
                 const interactionId = String(request.id || crypto.randomUUID());
                 return new Promise<RuntimeInteractionResponse>((resolve, reject) => {
                     const current = this.operations.get(options.operationId);
@@ -1522,6 +1492,7 @@ export class WorkspaceSessionContinuationService {
                             this.setOperation(options.operationId, {
                                 ...latest,
                                 liveInteraction: undefined,
+                                planReviewVersion: undefined,
                                 answer: null,
                             });
                         }
@@ -2159,11 +2130,23 @@ export class WorkspaceSessionContinuationService {
     }
 
     async answerInteraction(options: AnswerInteractionOptions) {
-        const operation = this.operations.get(options.operationId);
+        let operation = this.operations.get(options.operationId);
         const durable = this.store.getOperationReceipt(options.operationId);
-        const operationProjectId = operation?.projectId || durable?.projectId || null;
-        if (operationProjectId !== options.projectId) {
+        const runwieldSessionId =
+            operation?.runwieldSessionId || durable?.runwieldSessionId || options.runwieldSessionId;
+        const session =
+            !operation && !durable && runwieldSessionId ? this.store.getSessionById(runwieldSessionId) : null;
+        const operationProjectId = operation?.projectId || durable?.projectId;
+        if (
+            operationProjectId
+                ? operationProjectId !== options.projectId
+                : !session || !sessionBelongsToOwnerProject(this.store, session, options.projectId)
+        ) {
             throw new Error("Live Workspace interaction is not available for this Project.");
+        }
+        if (!runwieldSessionId) throw new Error("Live Workspace interaction is missing Session evidence.");
+        if (options.runwieldSessionId && options.runwieldSessionId !== runwieldSessionId) {
+            throw new Error("Interaction Session does not match the live Workspace operation.");
         }
         const requestHash = stableHash({
             kind: "interaction_answer",
@@ -2171,157 +2154,209 @@ export class WorkspaceSessionContinuationService {
             interactionId: options.interactionId,
             response: options.response,
         });
-        const operationSessionId = operation?.runwieldSessionId || options.runwieldSessionId || null;
-        const existingReceipt = operationSessionId
-            ? this.store.findOperationReceiptByRequest({
-                  deviceId: options.deviceId || null,
-                  requestId: options.requestId,
-                  requestHash,
-                  runwieldSessionId: operationSessionId,
-              })
-            : null;
-        if (existingReceipt?.status === "completed" && existingReceipt.resultBody) return existingReceipt.resultBody;
-        if (existingReceipt && existingReceipt.status !== "accepted") {
+        const request = {
+            deviceId: options.deviceId || null,
+            requestId: options.requestId,
+            requestHash,
+            runwieldSessionId,
+        };
+        const answerKey = JSON.stringify([request.deviceId, request.runwieldSessionId, request.requestId]);
+        if (this.interactionAnswers.has(answerKey))
             throw new Error("Interaction answer request is already in progress.");
-        }
-        if (!operation || operation.status !== "running" || !operation.liveInteraction || !operation.answer) {
-            throw new Error("Live Workspace interaction is not available.");
-        }
-        if (operation.liveInteraction.interactionId !== options.interactionId) {
-            throw new Error("Interaction id does not match the live Workspace operation.");
-        }
-        if (options.runwieldSessionId && operation.runwieldSessionId !== options.runwieldSessionId) {
-            throw new Error("Interaction Session does not match the live Workspace operation.");
-        }
-        if (!operation.runwieldSessionId) throw new Error("Live Workspace interaction is missing Session evidence.");
-        const receipt =
-            existingReceipt ||
-            requireReceipt(
-                this.store.createOrGetOperationReceipt({
-                    deviceId: options.deviceId || null,
-                    requestId: options.requestId,
-                    requestHash,
-                    runwieldSessionId: operation.runwieldSessionId,
-                    projectId: options.projectId,
-                    expectedGeneration: null,
-                    kind: "plan_action",
-                }),
-            );
-        this.store.updateOperationReceipt(receipt.operationId, { status: "running" });
+        this.interactionAnswers.add(answerKey);
         try {
-            let runtimeResponse = acceptedInteractionResponse(options.response);
-            const request = operation.liveInteraction.request;
-            const planReview =
-                request?.planReview && typeof request.planReview === "object" ? request.planReview : null;
-            if (request?.type === "plan_review" && Array.isArray(planReview?.sequenceDocuments)) {
-                const decision = readPlanReviewDecisionMeta(options.response);
-                const location = await resolveWorkflowPlanLocation(
-                    requireOwnerProjectRoot(this.store, options.projectId),
-                    String(planReview.planName),
-                );
-                await validateSequenceReviewDecision(
-                    location.documentRoot,
-                    planReview.sequenceDocuments as SequenceReviewDocument[],
-                    decision as SequenceReviewDecision,
-                );
-                runtimeResponse = {
-                    outcome: "accepted",
-                    _meta: {
-                        approved: decision.approved === true,
-                        approvalAction:
-                            typeof decision.approvalAction === "string"
-                                ? readPlanApprovalAction(decision.approvalAction)
-                                : undefined,
-                        feedback: typeof decision.feedback === "string" ? decision.feedback : undefined,
-                        sequenceDecision: decision,
-                        ...(decision.conversationTurn === true && { conversationTurn: true }),
-                    },
-                };
-            } else if (request?.type === "plan_review" && planReview) {
-                const root = requireOwnerProjectRoot(this.store, options.projectId);
-                const planId = String(planReview.planId || "");
-                const source =
-                    planReview.reviewedSource && typeof planReview.reviewedSource === "object"
-                        ? planReview.reviewedSource
-                        : null;
-                if (
-                    !source ||
-                    typeof source.markdown !== "string" ||
-                    typeof source.path !== "string" ||
-                    typeof source.planName !== "string" ||
-                    !source.attrs ||
-                    typeof source.attrs !== "object"
-                ) {
-                    throw new Error("Live review source is missing. Reload the Plan and review again.");
-                }
-                const attrs = source.attrs as PlanFrontMatter;
-                const decision = readPlanReviewDecisionMeta(options.response);
-                const actionResult = await applySharedPlanReviewDecision({
-                    packageInput: planReview.packageInput as Parameters<
-                        typeof applySharedPlanReviewDecision
-                    >[0]["packageInput"],
-                    cwd: root,
-                    planName: source.planName,
-                    planPath: source.path,
-                    planWithFrontMatter: source.markdown,
-                    planRevision: String(source.revision || planReview.expectedRevision || ""),
-                    originalAttrs: attrs,
-                    trustedClassification: planReview.classification as PlanFrontMatter["classification"],
-                    trustedWorkKind: attrs.workKind,
-                    expectedSessionId: operation.runwieldSessionId,
-                    reviewEvidence: {
-                        planId,
-                        runwieldSessionId: operation.runwieldSessionId,
-                        status: String(planReview.expectedStatus || ""),
-                        worktree: planReview.expectedWorktree as PlanWorktreeExpectation,
-                    },
-                    decision: decision as SharedPlanReviewDecision,
-                });
-                if (actionResult.recoveryRequired) {
-                    const result = {
-                        status: "recovery_required",
-                        message: actionResult.recoveryRequired.message,
-                        entryIds: actionResult.recoveryRequired.entryIds,
-                    };
-                    this.store.updateOperationReceipt(receipt.operationId, {
-                        status: "completed",
-                        resultBody: { result },
-                    });
-                    return result;
-                }
-                if (actionResult.cancellationReason) {
-                    const message =
-                        actionResult.feedback || "Plan review evidence is stale. Reload the Plan and review again.";
-                    operation.answer.reject(new Error(message));
-                    this.setOperation(options.operationId, {
-                        ...operation,
-                        liveInteraction: undefined,
-                        answer: null,
-                    });
+            const existing = this.store.findOperationReceiptByRequest(request);
+            if (existing && existing.projectId !== options.projectId)
+                throw new Error("Live Workspace interaction is not available for this Project.");
+            if (existing?.status === "completed" && existing.resultBody)
+                return readCompletedInteractionAnswer(existing.resultBody);
+            if (existing?.status === "failed" || existing?.status === "conflict")
+                throw new Error(existing.errorMessage || "Live Workspace interaction is not available.");
+            const retainedReference = readReviewAnswerReference(existing?.resultBody);
+            if (
+                (!operation?.liveInteraction || (operation.remote && existing?.status === "running")) &&
+                this.store.getSessionById(runwieldSessionId)
+            ) {
+                if (operation?.remote) await this.refreshOperation(options.operationId);
+                else await this.liveSession(options.projectId, runwieldSessionId);
+                operation = this.operations.get(options.operationId);
+            }
+            if (
+                !operation?.liveInteraction ||
+                operation.liveInteraction.interactionId !== options.interactionId ||
+                !operation.answer
+            ) {
+                if (existing?.status === "running") {
+                    if (retainedReference) {
+                        const root = requireOwnerProjectRoot(this.store, options.projectId);
+                        const decision = readPlanReviewDecisionMeta(options.response);
+                        if (await recoverPlanReviewResult(root, retainedReference, decision))
+                            return this.completeInteractionAnswer(existing.operationId);
+                    }
+                    const message = retainedReference
+                        ? "Live Workspace interaction ended. Reopen the review to try again."
+                        : "Live Workspace interaction is not available.";
+                    this.failInteractionAnswer(existing.operationId, new Error(message));
                     throw new Error(message);
                 }
-                const images = await loadReviewFeedbackImages(decision as ReviewImageDecision, root);
-                runtimeResponse = {
-                    outcome: "accepted",
-                    _meta: {
-                        ...actionResult,
-                        ...(decision.conversationTurn === true && { conversationTurn: true }),
-                        ...(images.length > 0 && { images }),
-                    },
-                };
+                if (operation?.liveInteraction)
+                    throw new Error("Interaction id does not match the live Workspace operation.");
+                throw new Error("Live Workspace interaction is not available.");
             }
-            await operation.answer.resolve(runtimeResponse);
-            this.codeReviewRefreshContexts.delete(`${options.operationId}:${options.interactionId}`);
-            this.setOperation(options.operationId, { ...operation, liveInteraction: undefined, answer: null });
-            const result = { status: "accepted" };
-            this.store.updateOperationReceipt(receipt.operationId, { status: "completed", resultBody: result });
-            return result;
-        } catch (error) {
+            if (operation.status !== "running" || operation.projectId !== options.projectId)
+                throw new Error("Live Workspace interaction is not available.");
+
+            const version = operation.planReviewVersion;
+            const currentReference = version && getPlanReviewOperationReference(version);
+            if (
+                retainedReference &&
+                (currentReference?.operationId !== retainedReference.operationId ||
+                    currentReference?.planId !== retainedReference.planId)
+            ) {
+                const message = "Live review source changed. Reload the Plan and review again.";
+                if (existing) this.failInteractionAnswer(existing.operationId, new Error(message));
+                throw new Error(message);
+            }
+            const receipt =
+                existing ||
+                requireReceipt(
+                    this.store.createOrGetOperationReceipt({
+                        ...request,
+                        projectId: options.projectId,
+                        expectedGeneration: null,
+                        kind: "plan_action",
+                    }),
+                );
             this.store.updateOperationReceipt(receipt.operationId, {
-                status: "failed",
-                errorCode: "interaction_answer_failed",
-                errorMessage: error instanceof Error ? error.message : String(error),
+                status: "running",
+                ...(currentReference && { resultBody: { planReview: { ...currentReference } } }),
             });
+            return await this.deliverInteractionAnswer(
+                options,
+                operation,
+                operation.liveInteraction,
+                operation.answer,
+                receipt.operationId,
+                retainedReference,
+            );
+        } finally {
+            this.interactionAnswers.delete(answerKey);
+        }
+    }
+
+    private completeInteractionAnswer(receiptId: string) {
+        const result = { status: "accepted" };
+        this.store.updateOperationReceipt(receiptId, { status: "completed", resultBody: result });
+        return result;
+    }
+
+    private failInteractionAnswer(receiptId: string, error: Error) {
+        this.store.updateOperationReceipt(receiptId, {
+            status: "failed",
+            errorCode: "interaction_answer_failed",
+            errorMessage: error.message,
+        });
+    }
+
+    private clearLiveInteraction(operationId: string, interactionId: string) {
+        const active = this.operations.get(operationId);
+        if (active?.liveInteraction?.interactionId !== interactionId) return;
+        this.setOperation(operationId, {
+            ...active,
+            liveInteraction: undefined,
+            planReviewVersion: undefined,
+            answer: null,
+        });
+    }
+
+    private async deliverInteractionAnswer(
+        options: AnswerInteractionOptions,
+        operation: WorkspaceOperationRecord,
+        interaction: WorkspaceLiveInteraction,
+        answer: NonNullable<WorkspaceOperationRecord["answer"]>,
+        receiptId: string,
+        retainedReference: ReturnType<typeof getPlanReviewOperationReference>,
+    ) {
+        let committedPlanDecision = false;
+        try {
+            let runtimeResponse = acceptedInteractionResponse(options.response);
+            const request = interaction.request;
+            const planReview =
+                request?.planReview && typeof request.planReview === "object" ? request.planReview : null;
+            if (request?.type === "plan_review" && planReview) {
+                const root = requireOwnerProjectRoot(this.store, options.projectId);
+                const displayedVersion = operation.planReviewVersion;
+                if (!displayedVersion || displayedVersion.planId !== planReview.planId) {
+                    throw new Error("Live review source is missing. Reload the Plan and review again.");
+                }
+                const decision = readPlanReviewDecisionMeta(options.response);
+                if (Array.isArray(planReview.sequenceDocuments)) {
+                    await validatePlanReviewSequence(root, displayedVersion, decision as SequenceReviewDecision);
+                    runtimeResponse = {
+                        outcome: "accepted",
+                        _meta: {
+                            approved: decision.approved === true,
+                            approvalAction:
+                                typeof decision.approvalAction === "string"
+                                    ? readPlanApprovalAction(decision.approvalAction)
+                                    : undefined,
+                            feedback: typeof decision.feedback === "string" ? decision.feedback : undefined,
+                            sequenceDecision: decision,
+                            ...(decision.conversationTurn === true && { conversationTurn: true }),
+                        },
+                    };
+                } else {
+                    const lifecycle = openPlanLifecycleForCheckout(root);
+                    if (!lifecycle) throw new Error("The review Project is no longer available.");
+                    const reviewDecision = decision as SharedPlanReviewDecision;
+                    const recovered =
+                        retainedReference && (await recoverPlanReviewResult(root, retainedReference, reviewDecision));
+                    const actionResult =
+                        recovered ??
+                        (reviewDecision.conversationTurn
+                            ? await applyPlanReviewConversation(root, displayedVersion, reviewDecision)
+                            : await lifecycle.applyEvent(displayedVersion.planId, {
+                                  ...reviewDecision,
+                                  event: reviewDecision.approved === true ? "review_approved" : "review_feedback",
+                                  displayedVersion,
+                              }));
+                    if (actionResult.recoveryRequired) {
+                        const result = {
+                            status: "recovery_required",
+                            message: actionResult.recoveryRequired.message,
+                        };
+                        this.store.updateOperationReceipt(receiptId, {
+                            status: "completed",
+                            resultBody: result,
+                        });
+                        return result;
+                    }
+                    if (actionResult.cancellationReason) {
+                        const message =
+                            actionResult.feedback || "Plan review evidence is stale. Reload the Plan and review again.";
+                        answer.reject(new Error(message));
+                        this.clearLiveInteraction(options.operationId, options.interactionId);
+                        throw new Error(message);
+                    }
+                    committedPlanDecision = true;
+                    const images = await loadReviewFeedbackImages(decision as ReviewImageDecision, root);
+                    runtimeResponse = {
+                        outcome: "accepted",
+                        _meta: {
+                            ...actionResult,
+                            ...(decision.conversationTurn === true && { conversationTurn: true }),
+                            ...(images.length > 0 && { images }),
+                        },
+                    };
+                }
+            }
+            await answer.resolve(runtimeResponse);
+            this.codeReviewRefreshContexts.delete(`${options.operationId}:${options.interactionId}`);
+            this.clearLiveInteraction(options.operationId, options.interactionId);
+            return this.completeInteractionAnswer(receiptId);
+        } catch (error) {
+            if (!committedPlanDecision)
+                this.failInteractionAnswer(receiptId, error instanceof Error ? error : new Error(String(error)));
             throw error;
         }
     }
@@ -2727,6 +2762,7 @@ export class WorkspaceSessionContinuationService {
             // The process may still be opening or finishing its turn. Retry on the next observation.
             return { state, generation, operation: null };
         }
+        const prior = this.operations.get(operationId);
         this.setOperation(operationId, {
             status: "running",
             projectId,
@@ -2739,6 +2775,13 @@ export class WorkspaceSessionContinuationService {
         });
         if (live.interaction) {
             const interactionId = live.interaction.id;
+            if (
+                prior?.planReviewVersion &&
+                prior.liveInteraction?.interactionId === interactionId &&
+                live.interaction._meta?.displayedVersion?.revision === prior.planReviewVersion.revision
+            ) {
+                live.interaction._meta.displayedVersion = prior.planReviewVersion;
+            }
             this.registerInteraction(operationId, live.interaction, {
                 resolve: async (response) => {
                     await this.watchRemoteNotifications(operationId, this.operations.get(operationId));
@@ -2774,10 +2817,16 @@ export class WorkspaceSessionContinuationService {
                     ...operation,
                     status: live.state === "idle" || live.generation !== operation.generation ? "completed" : "unknown",
                     liveInteraction: undefined,
+                    planReviewVersion: undefined,
                     answer: null,
                 });
             } else if (!live.operation) {
-                this.setOperation(operationId, { ...operation, liveInteraction: undefined, answer: null });
+                this.setOperation(operationId, {
+                    ...operation,
+                    liveInteraction: undefined,
+                    planReviewVersion: undefined,
+                    answer: null,
+                });
             }
         }
         return this.getOperation(operationId);
@@ -2791,7 +2840,12 @@ export class WorkspaceSessionContinuationService {
             : live?.sessionInfo || null;
         if (!durable) {
             if (!live) return { operationId, status: "unknown", events: [] };
-            const { answer: _answer, runtimeSessionId: _runtimeSessionId, ...snapshot } = live;
+            const {
+                answer: _answer,
+                runtimeSessionId: _runtimeSessionId,
+                planReviewVersion: _planReviewVersion,
+                ...snapshot
+            } = live;
             return {
                 operationId,
                 ...snapshot,

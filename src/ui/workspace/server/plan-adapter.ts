@@ -776,7 +776,7 @@ function validateLifecycleActionPayload(payload: unknown, options: LifecyclePayl
 /**
  * Apply a Workspace lifecycle action to an already-loaded Plan without writing
  * its markdown file. This is intentionally limited to the Astro dev server;
- * production continues through recordPlanEvent and the canonical Plan store.
+ * production commits through the project-bound Plan lifecycle.
  */
 export function applyWorkspaceLifecycleActionInMemory<T extends LifecyclePlan>(plan: T, payload: unknown) {
     const request = validateLifecycleActionPayload(payload);

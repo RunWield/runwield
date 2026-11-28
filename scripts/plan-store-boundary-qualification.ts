@@ -2,6 +2,22 @@
  * New private imports require a reviewed entry; consumer actions must use the public owner.
  */
 export const PLAN_STORE_QUALIFICATIONS: Readonly<Record<string, { reason: string; modules: readonly string[] }>> = {
+    "src/plan-store/plan-question-approval.test.ts": {
+        reason: "Check the review writer's settlement of answers in the original Plan document.",
+        modules: ["src/plan-store/review.ts"],
+    },
+    "src/plan-store/plan-review-actions.test.ts": {
+        reason: "Qualify individual review transactions against stale and retained checkout evidence.",
+        modules: ["src/plan-store/review.ts"],
+    },
+    "src/plan-store/sequence-review.test.ts": {
+        reason: "Exercise the owner transaction at Sequence approval, handoff, and interruption boundaries.",
+        modules: ["src/plan-store/sequence-review.ts"],
+    },
+    "src/plan-store/lifecycle-review.test.ts": {
+        reason: "Qualify current and older Session wire snapshots through the socket reader and the Plan lifecycle.",
+        modules: ["src/plan-store/lifecycle-review.ts"],
+    },
     "packages/plans/artifact-files.test.ts": {
         reason: "Verify archive and restore roll back earlier artifact moves after a destination collision.",
         modules: ["packages/plans/artifact-files.ts"],
@@ -91,8 +107,12 @@ export const PLAN_STORE_QUALIFICATIONS: Readonly<Record<string, { reason: string
         modules: ["packages/plans/artifact-files.ts"],
     },
     "src/plan-store/operation-results.test.ts": {
-        reason: "Verify exact legacy Sequence result bytes and replay through the typed result owner and receipt driver.",
-        modules: ["packages/plans/operation-receipts.ts", "src/plan-store/operation-results.ts"],
+        reason: "Verify exact Sequence result bytes and prove retained review recovery preserves outside edits.",
+        modules: [
+            "packages/plans/operation-receipts.ts",
+            "src/plan-store/operation-results.ts",
+            "src/plan-store/review.ts",
+        ],
     },
     "src/plan-store/operations.test.ts": {
         reason: "Verify live-owner review contention and inspect its real transition journal.",
@@ -153,13 +173,20 @@ export const PLAN_STORE_QUALIFICATIONS: Readonly<Record<string, { reason: string
     },
     "src/shared/testing/plan-query-fixture.ts": {
         reason: "Observe historical checkout query behavior in retained and managed Plan qualification.",
-        modules: ["src/plan-store/queries.ts"],
+        modules: [
+            "src/plan-store/queries.ts",
+            "src/plan-store/archiving.ts",
+            "src/plan-store/review.ts",
+            "src/plan-store/review-snapshots.ts",
+            "src/plan-store/sequence-review.ts",
+        ],
     },
     "src/shared/testing/plan-state-fixture.ts": {
         reason: "Arrange historical/interrupted states and observe controllers/journals for consumer tests; never production API.",
         modules: [
             "src/plan-store.ts",
             "src/plan-store/controllers.ts",
+            "src/plan-store/events.ts",
             "packages/plans/package-storage.ts",
             "src/plan-store/transitions.ts",
             "src/plan-store/workflows.ts",
@@ -243,8 +270,8 @@ export const PLAN_STORE_QUALIFICATIONS: Readonly<Record<string, { reason: string
         modules: ["packages/plans/collaboration-lock.ts"],
     },
     "src/shared/workflow/plan-lifecycle.test.ts": {
-        reason: "Recognize the shared Plan lock error returned by lifecycle operations.",
-        modules: ["packages/plans/collaboration-lock.ts"],
+        reason: "Exercise the owner event writer, including its checkpoint and lock errors for retained Plans.",
+        modules: ["packages/plans/collaboration-lock.ts", "src/plan-store/events.ts"],
     },
     "src/shared/workflow/state-transition.test.ts": {
         reason: "Owner unit qualification for transition lock sets, revisions, compensation and interrupted effects.",
@@ -314,6 +341,8 @@ export const PLAN_TEST_SUPPORT = new Set([
     "src/shared/workflow/testing/composed-validation-process.ts",
     "src/shared/remote/managed-store-activation-fixture.ts",
     "src/shared/remote/managed-store-client.ts",
+    "src/shared/remote/managed-store-non-git-client.ts",
+    "src/shared/remote/managed-store-reconnect-client.ts",
     "src/cmd/load-plan/publication-cleanup-test-helpers.ts",
     "src/shared/attached/attached-test-fixture.ts",
     "src/shared/attached/delivery-recovery-test-fixture.ts",

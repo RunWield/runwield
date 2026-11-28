@@ -1,3 +1,4 @@
+import { catalogPlanLifecycle } from "@runwield/plans/catalog-lifecycle";
 import { projectPlanFiles } from "@runwield/plans/project-plan-files";
 import { PlanNotFoundError, StalePlanWriteError } from "@runwield/plans/store";
 import { projects } from "@runwield/projects";
@@ -53,9 +54,16 @@ type ArchivePlanResult = {
     relativePath: string;
     attrs: PlanFrontMatter;
     artifacts?: Pick<MoveEpicArtifactResult, "fileName" | "relativePath">[];
+    document?: import("@runwield/plans/store").ProjectPlanDocument;
 };
 
-type RestoreArchivedPlanOptions = { to?: string; now?: string; byId?: boolean };
+type RestoreArchivedPlanOptions = {
+    to?: string;
+    now?: string;
+    byId?: boolean;
+    expectedRevision?: string;
+    expectedPlanId?: string;
+};
 
 type EnsurePlanIdentityLockedOptions = {
     idGenerator?: () => string;
@@ -237,6 +245,7 @@ export interface ArchivePlanOptions {
     /** Archive after the user confirmed abandonment in the active recovery flow. */
     abandonedWorktree?: boolean;
     expectedPlanId?: string;
+    expectedRevision?: string;
 }
 
 export interface ArchivedPlanEntry {
@@ -312,6 +321,7 @@ import {
     PLAN_FRONT_MATTER_KEY_ORDER,
     getDeclaredPlanStatus,
     resolvePlanExecutionPolicy,
+    isPlanId,
     normalizePlanId,
     injectFrontMatter,
     parsePlanFrontMatter,
@@ -360,9 +370,6 @@ import {
 } from "./plan-store/access.ts";
 
 import {
-    archivePlanPackage,
-    restorePlanPackage,
-    renamePlanPackage,
     listPlanPackages,
     listPlanPackageHeaders,
     readPlanPackage,
@@ -2351,40 +2358,35 @@ export async function archivePlan(
     options: ArchivePlanOptions = {},
 ): Promise<ArchivePlanResult> {
     if (!currentPackageProject() && (await inspectLocalHomeStore(cwd)).kind === "local")
-        return await withLocalPlanWorkflow(cwd, planNameOrId, () => archivePlan(cwd, planNameOrId, options));
+        return await withLocalPlanWorkflow(
+            cwd,
+            planNameOrId,
+            () => archivePlan(cwd, planNameOrId, options),
+            options.expectedPlanId,
+        );
     const owner = currentPackageProject();
-    if (owner)
-        return await packageWorkflowLocks([planNameOrId], async () => {
-            const selected = await selectedPackage(planNameOrId);
-            if (options.expectedPlanId !== undefined && selected.metadata.planId !== options.expectedPlanId)
-                throw new Error("Archive source changed Plan ID.");
-            const source = await loadPackageWorkflowPlan({ planId: selected.metadata.planId });
-            const worktreeStatus = options.abandonedWorktree ? "abandoned" : source.attrs.worktreeStatus;
-            if (isRecoverableWorktreeStatus(worktreeStatus))
-                throw new Error(
-                    `Cannot archive ${selected.metadata.name}: worktreeStatus ${worktreeStatus} is recoverable.`,
-                );
-            if (!isTerminalArchivableStatus(source.attrs.status) && !options.force)
-                throw new Error(
-                    `Cannot archive ${selected.metadata.name} with status ${source.attrs.status} without --force.`,
-                );
-            await archivePlanPackage(
-                owner,
-                selected.metadata.planId,
-                selected.metadata.revision,
-                options.reason || "",
-                options.now,
-            );
-            return {
-                name: selected.metadata.name,
-                fromPath: source.path,
-                toPath: source.path,
-                relativePath: projectRelativePath(cwd, source.path),
-                attrs: source.attrs,
-                artifacts: [],
-            };
-        });
+    if (owner) {
+        const selected = await selectedPackage(
+            options.expectedPlanId ? { planId: options.expectedPlanId } : planNameOrId,
+        );
+        const planId = selected.metadata.planId;
+        if (options.expectedPlanId !== undefined && selected.metadata.name !== planNameOrId && planId !== planNameOrId)
+            throw new Error("Archive source changed Plan ID.");
+        if (!isPlanId(planId)) throw new Error("Archive requires a durable Plan ID.");
+        const { source, document } = await catalogPlanLifecycle.archive(owner, planId, options);
+        return {
+            name: source.name,
+            fromPath: source.path,
+            toPath: source.path,
+            relativePath: projectRelativePath(cwd, source.path),
+            attrs: source.attrs,
+            artifacts: [],
+            document,
+        };
+    }
     const source = await resolveActivePlanNameOrId(cwd, planNameOrId);
+    if (options.expectedPlanId !== undefined && source.attrs.planId !== options.expectedPlanId)
+        throw new Error("Archive source changed Plan ID.");
     cwd = getPlanDocumentRoot(source.path);
     if (source.name.split("/")[0] === ARCHIVED_DIR_NAME) {
         throw new Error(`Cannot archive from ${ARCHIVED_DIR_NAME}/...; choose an active Plan name.`);
@@ -2800,29 +2802,33 @@ export async function restoreArchivedPlan(
     if (owner) {
         const archived = await loadArchivedPlan(cwd, archivedPlanNameOrId, options.byId);
         if (!archived) throw new Error(`Archived Plan not found: ${archivedPlanNameOrId}`);
-        return await packageWorkflowLocks(
-            [options.byId ? { planId: archivedPlanNameOrId } : archived.name],
-            async () => {
-                let selected = await selectedPackage(options.byId ? { planId: archivedPlanNameOrId } : archived.name);
-                if (options.to && options.to !== archived.name) {
-                    await renamePlanPackage(owner, selected.metadata.planId, selected.metadata.revision, options.to);
-                    selected = await selectedPackage({ planId: selected.metadata.planId });
-                }
-                await restorePlanPackage(owner, selected.metadata.planId, selected.metadata.revision);
-                const restored = await loadPackageWorkflowPlan({ planId: selected.metadata.planId });
-                return {
-                    name: selected.metadata.name,
-                    fromPath: archived.path,
-                    toPath: restored.path,
-                    relativePath: projectRelativePath(cwd, restored.path),
-                    attrs: restored.attrs,
-                    artifacts: [],
-                };
-            },
-        );
+        const planId = archived.attrs.planId;
+        if (!isPlanId(planId)) throw new Error("Restore requires a durable Plan ID.");
+        const { source, restored, document } = await catalogPlanLifecycle.restore(owner, planId, {
+            destination: options.to,
+            expectedRevision: options.expectedRevision,
+        });
+        return {
+            name: restored.name,
+            fromPath: source.path,
+            toPath: restored.path,
+            relativePath: projectRelativePath(cwd, restored.path),
+            attrs: restored.attrs,
+            artifacts: [],
+            document,
+        };
     }
     await prepareWorktreeRegistry(cwd);
-    const archived = await resolveArchivedPlanNameOrId(cwd, archivedPlanNameOrId);
+    const archived = options.byId
+        ? await loadArchivedPlan(cwd, archivedPlanNameOrId, true)
+        : await resolveArchivedPlanNameOrId(cwd, archivedPlanNameOrId);
+    if (!archived) throw new Error(`Archived Plan not found: ${archivedPlanNameOrId}`);
+    if (options.expectedPlanId !== undefined && archived.attrs.planId !== options.expectedPlanId)
+        throw new Error("Restore source changed Plan ID.");
+    if (options.expectedRevision !== undefined) {
+        const revision = await getPlanRevisionForText(archived.markdown);
+        if (revision !== options.expectedRevision) throw new StalePlanWriteError(options.expectedRevision, revision);
+    }
     cwd = getPlanDocumentRoot(archived.path);
     const destination = getStoredPlanLocation(cwd, options.to || archived.name);
     if (destination.segments[0] === ARCHIVED_DIR_NAME) {

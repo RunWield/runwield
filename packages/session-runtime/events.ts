@@ -6,8 +6,7 @@ import type { JsonValue } from "@runwield/parsing/jsonc";
 import type { ActiveModelState } from "@runwield/pi-ai";
 import type { ToolResult } from "@runwield/pi-ai/turn";
 import type { DeliveryReport } from "../../src/shared/workflow/delivery-report.ts";
-import type { SequenceReviewDocument } from "../../src/plan-store/index.ts";
-import type { PlanActionEvidence } from "../../src/shared/workflow/plan-actions.ts";
+import type { SequenceReviewPresentation } from "@runwield/plans/lifecycle";
 import type { RuntimeInteractionOutcome, RuntimeInteractionType } from "./interactions.ts";
 import type { WorkflowProgressFact } from "../../src/shared/workflow/workflow-presentation.ts";
 
@@ -402,13 +401,12 @@ export type RuntimeTerminalErrorEvent = RuntimeEventBase & {
 
 /** Review facts available to clients while the interaction is pending. */
 export interface RuntimePlanReviewEventDetails {
-    sequenceDocuments?: SequenceReviewDocument[];
+    sequenceDocuments?: Omit<SequenceReviewPresentation, "body">[];
     planId?: string;
     planName?: string;
     classification?: string;
     expectedRevision?: string;
     expectedStatus?: string;
-    expectedWorktree?: PlanActionEvidence["worktree"];
 }
 
 /** Report when a user interaction starts, resolves, or is canceled. */

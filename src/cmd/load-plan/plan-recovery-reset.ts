@@ -1,7 +1,7 @@
 import { resetPlanExecutionMetadata, restoreRecreatedPlanExecution } from "../../plan-store/index.ts";
 import { planDocumentsForCheckout } from "../../plan-store/index.ts";
 
-import { recordPlanEvent } from "../../plan-store/index.ts";
+import { applyObservedPlanEvent, observeCheckoutPlan } from "../../plan-store/index.ts";
 import { runPlanRecoveryEffects } from "../../plan-store/index.ts";
 import { buildPlanRecoveryUserMessage, planRecoveryMessage } from "../../shared/workflow/validation-user-messages.ts";
 import {
@@ -154,21 +154,15 @@ export async function resetRecoveryPlan(
         }
     }
     if (!recreatedWorktree) {
+        const observed = await observeCheckoutPlan(projectRoot, plan);
         const resetTransition = await runPlanRecoveryEffects({
             projectRoot,
             planName: plan.planName,
             planId: plan.attrs.planId,
             worktreeId: context.worktreeContext?.id,
-            expectedRevision: plan.revision,
+            expectedRevision: observed.revision,
             action: "reset",
-            recover: async () =>
-                await recordPlanEvent({
-                    cwd: projectRoot,
-                    planName: plan.planName,
-                    event: "recovery_reset",
-                    currentStatus: plan.attrs.status,
-                    details: { triageMeta: plan.attrs },
-                }),
+            recover: () => applyObservedPlanEvent(projectRoot, observed, "recovery_reset"),
         });
         if (resetTransition.status !== "committed") {
             throw transitionFailureError(resetTransition, `Recovery reset transaction failed for ${plan.planName}.`);

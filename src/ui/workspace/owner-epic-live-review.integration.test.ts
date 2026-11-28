@@ -58,6 +58,20 @@ test("owner Workspace reopens an Architect Epic review and projects the revised 
             const sessionBase = `${origin}/api/owner/projects/${project.projectId}/sessions/${managed.runwieldSessionId}`;
             const post = (url, body) => app(new Request(url, { method: "POST", headers, body: JSON.stringify(body) }));
             const live = () => app(new Request(`${sessionBase}/live`, { headers: { cookie } }));
+            const assertReviewPage = async (review, text: string) => {
+                const reference = JSON.stringify(review.request.planReview);
+                for (const privateField of ["reviewedSource", "displayedVersion", "packageInput"]) {
+                    assert(!reference.includes(`"${privateField}"`));
+                }
+                const response = await app(
+                    new Request(`${origin}${review.request.reviewUrl}`, { headers: { cookie } }),
+                );
+                assertEquals(response.status, 200);
+                const html = await response.text();
+                assertStringIncludes(html, text);
+                assertStringIncludes(html, "interactionAnswerUrl");
+            };
+
             const generation = store.inspectSessionActivation(managed.runwieldSessionId).generation?.generation;
             let modelTurns = 0;
             const reviseArchitecture = async () => {
@@ -105,10 +119,7 @@ test("owner Workspace reopens an Architect Epic review and projects the revised 
                 store.getLastPlanReview(managed.runwieldSessionId, project.projectId)?.planId,
                 "epic-review-id",
             );
-            assertStringIncludes(
-                firstReview.request.planReview.reviewedSource.markdown,
-                "First architecture proposal.",
-            );
+            await assertReviewPage(firstReview, "First architecture proposal.");
             operationId = firstLive.operation.operationId;
             assertStringIncludes(firstReview.request.reviewUrl, `operation=${operationId}`);
             assertStringIncludes(firstReview.request.reviewUrl, `interaction=${firstReview.interactionId}`);
@@ -149,10 +160,7 @@ test("owner Workspace reopens an Architect Epic review and projects the revised 
             assert(secondReview.interactionId !== firstReview.interactionId);
             assert(secondReview.request.planReview.expectedRevision !== originalRevision);
             assertEquals(secondReview.request.planReview.agentLabel, "Architect");
-            assertStringIncludes(
-                secondReview.request.planReview.reviewedSource.markdown,
-                "Revised architecture proposal.",
-            );
+            await assertReviewPage(secondReview, "Revised architecture proposal.");
             assertStringIncludes(secondReview.request.reviewUrl, `interaction=${secondReview.interactionId}`);
             assertStringIncludes(secondReview.request.reviewUrl, `operation=${operationId}`);
             assertStringIncludes(
@@ -191,10 +199,7 @@ test("owner Workspace reopens an Architect Epic review and projects the revised 
             assert(thirdReview.interactionId !== secondReview.interactionId);
             assert(thirdReview.interactionId !== firstReview.interactionId);
             assertEquals(thirdReview.request.planReview.agentLabel, "Architect");
-            assertStringIncludes(
-                thirdReview.request.planReview.reviewedSource.markdown,
-                "Revised architecture proposal round 2.",
-            );
+            await assertReviewPage(thirdReview, "Revised architecture proposal round 2.");
             assertStringIncludes(thirdReview.request.reviewUrl, `interaction=${thirdReview.interactionId}`);
             assertStringIncludes(thirdReview.request.reviewUrl, `operation=${operationId}`);
             assertStringIncludes(

@@ -1,10 +1,10 @@
-import { legacyPlanFixturePath } from "../testing/plan-state-fixture.ts";
-import { seedPlan } from "../testing/plan-state-fixture.ts";
-import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
+import { recordPlanEvent, legacyPlanFixturePath } from "../shared/testing/plan-state-fixture.ts";
+import { seedPlan } from "../shared/testing/plan-state-fixture.ts";
+import { withRetainedPlanFixture } from "../shared/testing/retained-plan-fixture.ts";
 import { readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
-import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { assertEquals, assertStringIncludes } from "../testing/assertions.ts";
 import { join } from "node:path";
 
 import {
@@ -13,17 +13,17 @@ import {
     parsePlanFrontMatter,
     type PlanFrontMatter,
 } from "@runwield/plans/format";
-import { ensurePlanIdentity } from "../../plan-store/index.ts";
-import { loadPlan } from "../testing/plan-query-fixture.ts";
+import { ensurePlanIdentity } from "./index.ts";
+import { loadPlan } from "../shared/testing/plan-query-fixture.ts";
 
-import { addEntry as addRegistryEntry, findById as findRegistryEntryById } from "../worktree-registry.ts";
-import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
-import { applySharedPlanReviewDecision } from "../../plan-store/index.ts";
+import { addEntry as addRegistryEntry, findById as findRegistryEntryById } from "../shared/worktree-registry.ts";
+import { defineCommittedGitFixture, git } from "../shared/git-test-fixture.ts";
+import { applySharedPlanReviewDecision } from "./review.ts";
 import { HostedSession } from "@runwield/session-runtime/host";
-import { createExecutionStartPorts, startActiveExecutionWorkflow } from "./execution-start.ts";
-import { recordPlanEvent } from "../../plan-store/index.ts";
-import { listEntries, updateEntry } from "../worktree-registry.ts";
-import { findReusableWorktree } from "../worktree.ts";
+import { createExecutionStartPorts, startActiveExecutionWorkflow } from "../shared/workflow/execution-start.ts";
+
+import { listEntries, updateEntry } from "../shared/worktree-registry.ts";
+import { findReusableWorktree } from "../shared/worktree.ts";
 
 interface PlanReviewFixture {
     dir: string;

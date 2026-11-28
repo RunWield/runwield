@@ -1,4 +1,4 @@
-import { seedPlanState, seedPlan } from "../testing/plan-state-fixture.ts";
+import { recordPlanEvent, seedPlanState, seedPlan } from "../testing/plan-state-fixture.ts";
 import { makeValidationProjectRoot } from "./validation-test-helpers.ts";
 import { mkdtempSync as fsMkdtempSync, rmSync as fsRmSync } from "node:fs";
 import { join } from "node:path";
@@ -24,7 +24,7 @@ import {
     readValidationReviewState,
     validationCheckpointCanResume,
 } from "./validation-checkpoint.ts";
-import { recordPlanEvent } from "../../plan-store/index.ts";
+
 import { recordValidationRepairCompletion } from "./validation-supervisor.ts";
 
 type HostedSessionManager = NonNullable<ConstructorParameters<typeof HostedSession>[0]["sessionManager"]>;

@@ -1,4 +1,4 @@
-import { seedPlanState } from "../testing/plan-state-fixture.ts";
+import { recordPlanEvent, seedPlanState } from "../testing/plan-state-fixture.ts";
 import { test } from "node:test";
 import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
 import { ok as assert } from "node:assert/strict";
@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { loadPlan } from "../testing/plan-query-fixture.ts";
 import { listEntries } from "../worktree-registry.ts";
 import { executionInput } from "./execution-test-fixture.ts";
-import { recordPlanEvent } from "../../plan-store/index.ts";
+
 import { loadAttachedWorkflowRecord, locateAttachedWorkflows, writeAttachedWorkflowRecord } from "./record-store.ts";
 import { readAttachedAction, applyAttachedReviewDecision, openAttachedReviewRound } from "./coordinator.ts";
 import {

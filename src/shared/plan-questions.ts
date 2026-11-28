@@ -1,9 +1,6 @@
 import type { InterviewQuestion } from "@runwield/tools";
 
-export interface PlanQuestionAnswer {
-    id: string;
-    value: boolean | string;
-}
+import type { PlanQuestionAnswer } from "@runwield/plans/lifecycle";
 
 export interface PlanQuestionBlock {
     id?: string;

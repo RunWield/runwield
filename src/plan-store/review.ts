@@ -1,5 +1,4 @@
-import type { PackageWorkflowInput } from "@runwield/plans/store";
-import { StalePlanWriteError } from "@runwield/plans/store";
+import type { IndividualReviewSource, SharedPlanReviewEvidence } from "@runwield/plans/live-review";
 import { managedPlanStoreActive, applyManagedReview } from "./managed.ts";
 import { withPlanAccess, type PlanAccess } from "./handles.ts";
 import { selectPlanAccess } from "./handles.ts";
@@ -14,12 +13,14 @@ import {
 import { currentPackageSelection } from "./workflows.ts";
 import { savePlanDocument } from "./index.ts";
 import { preparePlanWorkflow } from "./index.ts";
-import { resolvePlanQuestions, type PlanQuestionAnswer } from "../shared/plan-questions.ts";
+import { resolvePlanQuestions } from "../shared/plan-questions.ts";
 import {
     projectPlanType,
     injectFrontMatter,
     parsePlanFrontMatter,
     splitPlanMarkdownBody,
+    getPlanRevisionForText,
+    planDocumentMarkdown,
 } from "@runwield/plans/format";
 import { resolve } from "node:path";
 import { reviewSourceStillMatches } from "@runwield/plans/review-markdown";
@@ -27,50 +28,35 @@ import { getStoredPlanPath, loadPlanFileStrict, writePlanMarkdownWithRevision } 
 
 import { loadPlan } from "./queries.ts";
 import { buildPlanEventUpdates, isPlanReviewableWithoutReopen, reopensReviewOnEdit } from "@runwield/plans/lifecycle";
-import { recordPlanEvent } from "./index.ts";
+import { recordPlanEvent } from "./events.ts";
 import { assertSharedPlanWriteAllowed } from "@runwield/plans/collaboration-lock";
-import { runPlanReviewDecisionTransition } from "./transitions.ts";
+import { runPlanReviewDecisionTransition, withOrderedTransitionResources } from "./transitions.ts";
+import {
+    readPendingRetainedReview,
+    retainPlanReviewOperationResult,
+    type RetainedReviewCommit,
+} from "./operation-results.ts";
+import { captureBatchOperation } from "@runwield/plans/operation-receipts";
 import { PLAN_APPROVAL_ACTIONS } from "../shared/workflow/plan-approval.ts";
 import { pickControllerState, stripRuntimeFields } from "@runwield/plans/controller-state";
-import { writeControllerState } from "./controllers.ts";
+import { controllerStatesEqual, readControllerRecord, writeControllerState } from "./controllers.ts";
 import { loadPlanActionEvidence } from "../shared/workflow/plan-actions.ts";
 import { resolveWorkflowPlanLocation } from "./index.ts";
 import type { PlanFrontMatter } from "@runwield/plans";
-import type { PlanApprovalAction } from "../shared/workflow/plan-approval.ts";
-import type { PlanWorktreeExpectation } from "../shared/workflow/plan-actions.ts";
+import type { PlanApprovalAction, PlanReviewContent } from "@runwield/plans/lifecycle";
+import type { PlanWorktreeExpectation } from "@runwield/plans/lifecycle";
 
-export interface SharedPlanReviewDecision {
+export interface SharedPlanReviewDecision extends PlanReviewContent {
     approved?: boolean;
     conversationTurn?: boolean;
-    questionAnswers?: PlanQuestionAnswer[];
-    feedback?: string;
     approvalAction?: PlanApprovalAction;
-    plan?: string;
-    executionAgent?: "engineer" | "frontend-engineer";
-    collaborationRecommendation?: "autonomous" | "pair";
 }
 
-export interface SharedPlanReviewEvidence {
-    planId: string;
-    runwieldSessionId?: string;
-    status: string;
-    worktree: PlanWorktreeExpectation;
-}
-
-export interface SharedPlanReviewActionOptions {
+export interface SharedPlanReviewActionOptions extends IndividualReviewSource {
     packageSelection?: PlanAccess;
-    packageInput?: PackageWorkflowInput;
-    cwd: string;
-    planName: string;
-    planPath: string;
-    planWithFrontMatter: string;
-    planRevision: string;
-    expectedControllerRevision?: number;
-    originalAttrs: PlanFrontMatter;
-    trustedClassification?: PlanFrontMatter["classification"];
-    trustedWorkKind?: PlanFrontMatter["workKind"];
-    expectedSessionId?: string;
-    reviewEvidence?: SharedPlanReviewEvidence;
+    operationId?: string;
+    allowPackageTimestampChanges?: boolean;
+    requireExactPlanRevision?: boolean;
     decision: SharedPlanReviewDecision;
 }
 
@@ -97,6 +83,22 @@ function readApprovedExecutionPolicy(
 
 function reviewRejected(message: string): SharedPlanReviewActionResult {
     return { approved: false, feedback: message, cancellationReason: "stale_plan_review" };
+}
+
+export class StaleRetainedReviewWriteError extends Error {}
+
+function reviewTransitionRejected(
+    transition: { status: string; message?: string; transitionId?: string },
+    fallback: string,
+): SharedPlanReviewActionResult {
+    const message = transition.message || fallback;
+    return {
+        ...reviewRejected(message),
+        ...(transition.status === "needs_recovery" &&
+            transition.transitionId && {
+                recoveryRequired: { message, entryIds: [transition.transitionId] },
+            }),
+    };
 }
 
 function validatedClassification(
@@ -147,6 +149,79 @@ async function validateReviewEvidence(
     return null;
 }
 
+async function finishRetainedReviewWrite(
+    cwd: string,
+    proof: RetainedReviewCommit,
+    reviewEvidence?: SharedPlanReviewEvidence,
+) {
+    const location = await resolveWorkflowPlanLocation(cwd, proof.planName, { readOnly: true });
+    const current = location.plan;
+    if (
+        !current ||
+        current.attrs.planId !== proof.planId ||
+        resolve(current.path) !== resolve(proof.path) ||
+        ![proof.beforeRevision, proof.afterRevision].includes(current.revision)
+    )
+        throw new StaleRetainedReviewWriteError(
+            "The reviewed Plan changed outside the decision. Current edits were preserved.",
+        );
+    if (current.revision === proof.beforeRevision) {
+        const issue = await validateReviewEvidence(cwd, proof.planName, reviewEvidence);
+        if (issue) throw new StaleRetainedReviewWriteError(issue.feedback);
+    }
+    const identity = { planName: proof.planName, planId: proof.planId };
+    const controller = await readControllerRecord(location.documentRoot, identity);
+    const revision = controller?.revision || 0;
+    const alreadyWritten =
+        controllerStatesEqual(controller?.state || {}, proof.controllerState) &&
+        JSON.stringify(controller?.recovery) === JSON.stringify(proof.controllerRecovery);
+    if (revision !== proof.controllerRevision && (!alreadyWritten || revision !== proof.controllerRevision + 1))
+        throw new StaleRetainedReviewWriteError(
+            "The Plan controller changed after review. Current edits were preserved.",
+        );
+    if (current.revision !== proof.afterRevision)
+        await writePlanMarkdownWithRevision(current.path, proof.markdown, proof.beforeRevision);
+    if (!alreadyWritten) {
+        const clears = Object.fromEntries(Object.keys(controller?.state || {}).map((field) => [field, undefined]));
+        await writeControllerState(
+            location.documentRoot,
+            identity,
+            { ...clears, ...proof.controllerState },
+            {
+                expectedRevision: revision,
+                recovery: proof.controllerRecovery ?? null,
+            },
+        );
+    }
+}
+
+/** Resume only the exact generations recorded before a retained checkout review started writing. */
+export async function resumeRetainedReviewWrite(
+    cwd: string,
+    source: IndividualReviewSource,
+): Promise<SharedPlanReviewActionResult | undefined> {
+    const pending = readPendingRetainedReview();
+    const proof = pending?.retained;
+    if (!proof || !pending) return undefined;
+    if (
+        proof.planId !== source.originalAttrs.planId ||
+        proof.planName !== source.planName ||
+        resolve(proof.path) !== resolve(source.planPath)
+    )
+        throw new Error("Retained review write belongs to a different Plan source.");
+    return await withOrderedTransitionResources(
+        cwd,
+        [
+            { kind: "plan", id: proof.planName },
+            ...(proof.worktreeId ? [{ kind: "attempt" as const, id: proof.worktreeId }] : []),
+        ],
+        async () => {
+            await finishRetainedReviewWrite(cwd, proof, source.reviewEvidence);
+            return pending.result;
+        },
+    );
+}
+
 export async function applySharedPlanReviewDecision(
     options: SharedPlanReviewActionOptions,
 ): Promise<SharedPlanReviewActionResult> {
@@ -173,12 +248,15 @@ async function applySharedPlanReviewDecisionInScope({
     planRevision,
     expectedControllerRevision,
     originalAttrs,
+    allowPackageTimestampChanges,
+    requireExactPlanRevision,
     trustedClassification,
     trustedWorkKind,
     expectedSessionId,
     reviewEvidence,
     decision,
 }: SharedPlanReviewActionOptions): Promise<SharedPlanReviewActionResult> {
+    const exactPlanRevision = requireExactPlanRevision ? planRevision : undefined;
     if (!currentPackageSelection()) await preparePlanWorkflow(cwd, planName);
     const location = currentPackageSelection()
         ? { plan: await loadPackageWorkflowPlan(planName), documentRoot: cwd }
@@ -233,6 +311,12 @@ async function applySharedPlanReviewDecisionInScope({
 
     if (currentPackageSelection()) {
         if (!packageInput) return reviewRejected("Package review requires the complete retained input.");
+        const result = {
+            approved,
+            ...(conversationTurn ? { conversationTurn: true } : {}),
+            feedback: decision.feedback,
+            approvalAction: decision.approvalAction,
+        };
         const transition = await runPlanReviewDecisionTransition({
             projectRoot: cwd,
             planName,
@@ -240,9 +324,18 @@ async function applySharedPlanReviewDecisionInScope({
             decide: async ({ beforePlan }) => {
                 if (!beforePlan || beforePlan.attrs.status !== originalAttrs.status)
                     throw new Error("Plan Status changed after review opened.");
+                if (exactPlanRevision !== undefined && beforePlan.revision !== exactPlanRevision)
+                    throw new Error("Plan changed after review opened. Refresh the review before deciding.");
                 if (
                     expectedControllerRevision !== undefined &&
-                    beforePlan.controllerRevision !== expectedControllerRevision
+                    beforePlan.controllerRevision !== expectedControllerRevision &&
+                    !(
+                        allowPackageTimestampChanges &&
+                        controllerStatesEqual(
+                            { ...originalAttrs, updatedAt: undefined },
+                            { ...beforePlan.attrs, updatedAt: undefined },
+                        )
+                    )
                 )
                     throw new Error("Plan changed after review opened. Refresh the review before deciding.");
                 await assertPackageWorkflowInput(planName, packageInput, { kind: "markdown" });
@@ -253,8 +346,9 @@ async function applySharedPlanReviewDecisionInScope({
                 let text = typeof decision.plan === "string" ? decision.plan : beforePlan.markdown;
                 if (approved) text = resolvePlanQuestions(text, decision.questionAnswers);
                 if (conversationTurn) {
+                    retainPlanReviewOperationResult(result);
                     await savePlanDocument(current.metadata.planId, "context.md", beforePlan.revision, text);
-                    return (await loadPackageWorkflowPlan(planName)).attrs;
+                    return await loadPackageWorkflowPlan(planName);
                 }
 
                 const nextAttrs = {
@@ -299,18 +393,15 @@ async function applySharedPlanReviewDecisionInScope({
                     beforePlan.revision,
                     { review: approved ? retained : undefined, readiness: undefined },
                     approved ? "approved" : undefined,
-                    { text, input: retained },
+                    { text, input: retained, result },
                 );
                 return await loadPackageWorkflowPlan(planName);
             },
         });
-        if (transition.status !== "committed") return reviewRejected(transition.message || "Package review changed.");
-        const current = await loadPackageWorkflowPlan(planName);
+        if (transition.status !== "committed") return reviewTransitionRejected(transition, "Package review changed.");
+        const current = transition.value as Awaited<ReturnType<typeof loadPackageWorkflowPlan>>;
         return {
-            approved,
-            ...(conversationTurn ? { conversationTurn: true } : {}),
-            feedback: decision.feedback,
-            approvalAction: decision.approvalAction,
+            ...result,
             revision: current.revision,
             ...(approved ? { planAttrs: current.attrs } : {}),
         };
@@ -322,11 +413,20 @@ async function applySharedPlanReviewDecisionInScope({
         const current = await loadPlanFileStrict(planPath);
         if (
             current.kind !== "loaded" ||
+            (exactPlanRevision !== undefined && current.revision !== exactPlanRevision) ||
+            (expectedControllerRevision !== undefined && current.controllerRevision !== expectedControllerRevision) ||
             (current.revision !== planRevision &&
                 !reviewSourceStillMatches(current, originalAttrs, splitPlanMarkdownBody(planWithFrontMatter).body))
         )
             return reviewRejected("Plan changed while review was open. Reload the Plan and review again.");
-        return { approved: false, conversationTurn: true, feedback: decision.feedback, revision: current.revision };
+        const result = {
+            approved: false,
+            conversationTurn: true,
+            feedback: decision.feedback,
+            revision: current.revision,
+        };
+        retainPlanReviewOperationResult(result);
+        return result;
     }
 
     let reviewedPlan = typeof decision.plan === "string" ? decision.plan : planWithFrontMatter;
@@ -359,148 +459,111 @@ async function applySharedPlanReviewDecisionInScope({
         reviewBaseBody,
     );
     const revisionCancelsApproval = meaningChanged && reopensReviewOnEdit(originalAttrs.status);
-    const canonicalPlanPath = getStoredPlanPath(cwd, planName);
-    let lifecycleMeta: PlanFrontMatter = reviewedAttrs;
-    let committedRevision: string | undefined;
-    if (resolve(canonicalPlanPath) === resolve(planPath)) {
-        const reopenWorktreeId = isPlanReviewableWithoutReopen(originalAttrs.status)
-            ? undefined
-            : (originalAttrs.worktreeId ?? undefined);
-        const reviewTransition = await runPlanReviewDecisionTransition({
-            projectRoot: cwd,
-            planName,
+    if (resolve(getStoredPlanPath(cwd, planName)) !== resolve(planPath))
+        return reviewRejected("The selected review document is no longer the Plan's saved source.");
+    const reopenWorktreeId = isPlanReviewableWithoutReopen(originalAttrs.status)
+        ? undefined
+        : (originalAttrs.worktreeId ?? undefined);
+    const decide = async (beforePlan: Awaited<ReturnType<typeof loadPlan>>): Promise<SharedPlanReviewActionResult> => {
+        if (
+            !beforePlan ||
+            resolve(beforePlan.path) !== resolve(planPath) ||
+            beforePlan.attrs.planId !== originalAttrs.planId
+        )
+            throw new Error("The reviewed Plan document is no longer the selected source.");
+        if (
+            (exactPlanRevision !== undefined && beforePlan.revision !== exactPlanRevision) ||
+            (expectedControllerRevision !== undefined &&
+                beforePlan.controllerRevision !== expectedControllerRevision) ||
+            (beforePlan.revision !== planRevision &&
+                !reviewSourceStillMatches(beforePlan, originalAttrs, reviewBaseBody))
+        ) {
+            throw new Error("Plan changed after review opened; reload the review before applying this decision.");
+        }
+        let nextMarkdown = reviewedPlan;
+        let nextAttrs = { ...beforePlan.attrs, ...stripRuntimeFields(reviewedAttrs) };
+        let status = beforePlan.attrs.status;
+        if ((!conversationTurn && !isPlanReviewableWithoutReopen(status)) || revisionCancelsApproval) {
+            const reopenUpdates = buildPlanEventUpdates("review_reopened", status, {
+                triageMeta: nextAttrs,
+            });
+            nextMarkdown = injectFrontMatter(nextMarkdown, reopenUpdates);
+            nextAttrs = { ...nextAttrs, ...reopenUpdates };
+            status = "draft";
+        }
+        if (!conversationTurn) {
+            const event = approved ? "review_approved" : "review_feedback";
+            const eventUpdates = buildPlanEventUpdates(event, status, {
+                triageMeta: nextAttrs,
+                failureReason: decision.feedback,
+            });
+            nextMarkdown = injectFrontMatter(nextMarkdown, eventUpdates);
+            nextAttrs = { ...nextAttrs, ...eventUpdates };
+        }
+        const decisionResult = {
             approved,
-            worktreeId: reopenWorktreeId,
-            decide: async ({ beforePlan }) => {
-                if (!beforePlan) throw new Error(`Plan not found: ${planName}`);
-                if (
-                    (expectedControllerRevision !== undefined &&
-                        beforePlan.controllerRevision !== expectedControllerRevision) ||
-                    (beforePlan.revision !== planRevision &&
-                        !reviewSourceStillMatches(beforePlan, originalAttrs, reviewBaseBody))
-                ) {
-                    throw new Error(
-                        "Plan changed after review opened; reload the review before applying this decision.",
-                    );
-                }
-                let nextMarkdown = reviewedPlan;
-                let nextAttrs = { ...beforePlan.attrs, ...stripRuntimeFields(reviewedAttrs) };
-                let status = beforePlan.attrs.status;
-                if ((!conversationTurn && !isPlanReviewableWithoutReopen(status)) || revisionCancelsApproval) {
-                    const reopenUpdates = buildPlanEventUpdates("review_reopened", status, {
-                        triageMeta: nextAttrs,
-                    });
-                    nextMarkdown = injectFrontMatter(nextMarkdown, reopenUpdates);
-                    nextAttrs = { ...nextAttrs, ...reopenUpdates };
-                    status = "draft";
-                }
-                if (!conversationTurn) {
-                    const event = approved ? "review_approved" : "review_feedback";
-                    const eventUpdates = buildPlanEventUpdates(event, status, {
-                        triageMeta: nextAttrs,
-                        failureReason: decision.feedback,
-                    });
-                    nextMarkdown = injectFrontMatter(nextMarkdown, eventUpdates);
-                    nextAttrs = { ...nextAttrs, ...eventUpdates };
-                }
-                await writeControllerState(
-                    cwd,
-                    { planName, planId: beforePlan.attrs.planId },
-                    pickControllerState(nextAttrs),
-                    {
-                        expectedRevision: beforePlan.controllerRevision,
-                        ...(reopenWorktreeId ? { recovery: null } : {}),
-                    },
-                );
-                const revision = await writePlanMarkdownWithRevision(
-                    beforePlan.path,
-                    nextMarkdown,
-                    beforePlan.revision,
-                );
-                return { attrs: (await loadPlan(cwd, planName))?.attrs || nextAttrs, revision };
-            },
-        });
-        if (reviewTransition.status !== "committed") {
-            return {
-                approved: false,
-                feedback:
-                    reviewTransition.message || "Plan changed while review was open. Reload the Plan and review again.",
-                cancellationReason: "stale_plan_review",
+            ...(conversationTurn && { conversationTurn: true }),
+            feedback: decision.feedback,
+            ...(decision.approvalAction && { approvalAction: decision.approvalAction }),
+        };
+        const identity = { planName, planId: beforePlan.attrs.planId };
+        const updates = pickControllerState(nextAttrs);
+        if (captureBatchOperation() && identity.planId) {
+            const controller = await readControllerRecord(cwd, identity);
+            const markdown = planDocumentMarkdown(nextMarkdown);
+            const revision = await getPlanRevisionForText(markdown);
+            const proof: RetainedReviewCommit = {
+                path: beforePlan.path,
+                planId: identity.planId,
+                planName,
+                beforeRevision: beforePlan.revision,
+                afterRevision: revision,
+                markdown,
+                controllerRevision: beforePlan.controllerRevision,
+                controllerState: { ...controller?.state, ...updates },
+                controllerRecovery: reopenWorktreeId ? undefined : controller?.recovery,
+                worktreeId: reopenWorktreeId,
             };
+            const result = {
+                ...decisionResult,
+                revision,
+                ...(approved && { planAttrs: nextAttrs }),
+            };
+            retainPlanReviewOperationResult(result, proof);
+            await finishRetainedReviewWrite(cwd, proof, reviewEvidence);
+            return result;
         }
-        const transitionValue = reviewTransition.value as { attrs?: PlanFrontMatter; revision?: string } | undefined;
-        lifecycleMeta = transitionValue?.attrs || reviewedAttrs;
-        committedRevision = transitionValue?.revision;
-    } else {
-        try {
-            const current = await loadPlanFileStrict(planPath);
-            if (current.kind !== "loaded") {
-                return reviewRejected("Plan could not be read after review. Reload the Plan and review again.");
-            }
-            if (
-                current.revision !== planRevision &&
-                !reviewSourceStillMatches(current, originalAttrs, reviewBaseBody)
-            ) {
-                return reviewRejected("Plan changed while review was open. Reload the Plan and review again.");
-            }
-            committedRevision = await writePlanMarkdownWithRevision(planPath, reviewedPlan, current.revision);
-        } catch (error) {
-            if (error instanceof StalePlanWriteError) {
-                return {
-                    approved: false,
-                    feedback: "Plan changed while review was open. Reload the Plan and review again.",
-                    cancellationReason: "stale_plan_review",
-                };
-            }
-            throw error;
-        }
-
-        const statusAllowsReview = isPlanReviewableWithoutReopen(originalAttrs.status);
-        if ((!conversationTurn && !statusAllowsReview) || revisionCancelsApproval) {
-            const reopenedMeta = await recordPlanEvent({
-                cwd,
-                planName,
-                event: "review_reopened",
-                currentStatus: originalAttrs.status,
-                details: { triageMeta: lifecycleMeta },
-                expectedRevision: committedRevision,
-            });
-            if (reopenedMeta) lifecycleMeta = { ...lifecycleMeta, ...reopenedMeta };
-        }
-        const postReopenStatus = statusAllowsReview ? originalAttrs.status : "draft";
-        if (approved) {
-            const approvedMeta = await recordPlanEvent({
-                cwd,
-                planName,
-                event: "review_approved",
-                currentStatus: postReopenStatus,
-                details: { triageMeta: lifecycleMeta },
-                expectedRevision: committedRevision,
-            });
-            if (approvedMeta) lifecycleMeta = { ...lifecycleMeta, ...approvedMeta };
-        } else if (!conversationTurn) {
-            const feedbackMeta = await recordPlanEvent({
-                cwd,
-                planName,
-                event: "review_feedback",
-                currentStatus: postReopenStatus,
-                details: { triageMeta: lifecycleMeta, failureReason: decision.feedback },
-                expectedRevision: committedRevision,
-            });
-            if (feedbackMeta) lifecycleMeta = { ...lifecycleMeta, ...feedbackMeta };
-        }
-        const latestPlan = await loadPlan(cwd, planName).catch(() => null);
-        if (latestPlan?.revision) committedRevision = latestPlan.revision;
-    }
-
-    return {
-        approved,
-        ...(conversationTurn && { conversationTurn: true }),
-        feedback: decision.feedback,
-        ...(decision.approvalAction && { approvalAction: decision.approvalAction }),
-        ...(approved && { planAttrs: lifecycleMeta }),
-        ...(committedRevision && { revision: committedRevision }),
+        await writeControllerState(cwd, identity, updates, {
+            expectedRevision: beforePlan.controllerRevision,
+            ...(reopenWorktreeId ? { recovery: null } : {}),
+        });
+        const revision = await writePlanMarkdownWithRevision(beforePlan.path, nextMarkdown, beforePlan.revision);
+        return {
+            ...decisionResult,
+            revision,
+            ...(approved && { planAttrs: (await loadPlan(cwd, planName))?.attrs || nextAttrs }),
+        };
     };
+    if (captureBatchOperation()) {
+        return await withOrderedTransitionResources(
+            cwd,
+            [
+                { kind: "plan", id: planName },
+                ...(reopenWorktreeId ? [{ kind: "attempt" as const, id: reopenWorktreeId }] : []),
+            ],
+            async () => await decide(await loadPlan(cwd, planName)),
+        );
+    }
+    const transition = await runPlanReviewDecisionTransition({
+        projectRoot: cwd,
+        planName,
+        approved,
+        worktreeId: reopenWorktreeId,
+        decide: ({ beforePlan }) => decide(beforePlan),
+    });
+    return transition.status === "committed"
+        ? (transition.value as SharedPlanReviewActionResult)
+        : reviewTransitionRejected(transition, "Plan changed while review was open. Reload the Plan and review again.");
 }
 
 /** Bind approval, readiness and the returned revision under the same owner locks. */

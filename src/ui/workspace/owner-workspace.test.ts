@@ -1,5 +1,10 @@
 import { seedPlanState, seedPlan } from "../../shared/testing/plan-state-fixture.ts";
-import { withLocalPlanWorkflow, capturePlanReviewInput } from "../../plan-store/index.ts";
+import {
+    preparePlanReviewVersion,
+    prepareSequenceReviewPresentation,
+    prepareSequenceReviewVersion,
+    withLocalPlanWorkflow,
+} from "../../plan-store/index.ts";
 import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 import {
     mkdir as fsMkdir,
@@ -889,8 +894,11 @@ test("owner Workspace rejects stale live Plan review before answering Runtime", 
         });
         const plan = await loadPlan(projectRoot, "owner-plan");
         const openedRevision = plan.revision;
-        const packageInput = await withLocalPlanWorkflow(projectRoot, "owner-plan", () =>
-            capturePlanReviewInput(projectRoot, "owner-plan", plan.revision),
+        const { displayedVersion: planReviewVersion } = await preparePlanReviewVersion(
+            projectRoot,
+            "owner-plan",
+            plan.path,
+            { runwieldSessionId: "session-owned", expectedRevision: openedRevision },
         );
         await seedPlanState(projectRoot, "owner-plan", { status: "approved" }, plan.attrs, {
             expectedRevision: plan.revision,
@@ -903,6 +911,7 @@ test("owner Workspace rejects stale live Plan review before answering Runtime", 
             projectId: project.projectId,
             runwieldSessionId: "session-owned",
             events: [],
+            planReviewVersion,
             liveInteraction: {
                 interactionId: "interaction-stale",
                 request: {
@@ -910,18 +919,9 @@ test("owner Workspace rejects stale live Plan review before answering Runtime", 
                     prompt: "Review Plan",
                     planReview: {
                         planId: "owner-plan-id",
-                        packageInput,
+                        planName: "owner-plan",
                         classification: "PLANNED_CHANGE",
                         expectedRevision: openedRevision,
-                        reviewedSource: {
-                            markdown: plan.markdown,
-                            path: plan.path,
-                            planName: "owner-plan",
-                            attrs: plan.attrs,
-                            revision: openedRevision,
-                        },
-                        expectedStatus: "draft",
-                        expectedWorktree: { kind: "none" },
                     },
                 },
             },
@@ -931,7 +931,7 @@ test("owner Workspace rejects stale live Plan review before answering Runtime", 
             },
         });
 
-        await assertRejects(
+        const stale = await assertRejects(
             () =>
                 appObject.sessionContinuation.answerInteraction({
                     deviceId: "device-owned",
@@ -948,8 +948,8 @@ test("owner Workspace rejects stale live Plan review before answering Runtime", 
                     },
                 }),
             Error,
-            "Plan Status changed after review opened",
         );
+        assertStringIncludes(stale.message, "Plan Status changed after review opened");
         assertEquals(resolved, false);
         assertStringIncludes(rejectedMessage, "Plan Status changed after review opened");
         assertEquals((await loadPlan(projectRoot, "owner-plan"))?.attrs.status, "approved");
@@ -961,7 +961,6 @@ test("owner Workspace rejects stale live Plan review before answering Runtime", 
 });
 
 test("owner Workspace reviews a complete Sequence and rejects stale sibling evidence", async () => {
-    const { prepareSequenceReview } = await import("../../plan-store/index.ts");
     const { WorkspaceSessionContinuationService } = await import("./server/session-continuation.ts");
     const dir = await fsMkdtemp(join(tmpdir(), "runwield-owner-sequence-review-"));
     const root = `${dir}/project`;
@@ -983,16 +982,17 @@ test("owner Workspace reviews a complete Sequence and rejects stale sibling evid
         }
         const project = store.projects.register({ root, displayName: "Sequence project" });
         const service = new WorkspaceSessionContinuationService({ store });
-        const documents = await withLocalPlanWorkflow(root, "sequence", () => prepareSequenceReview(root, "sequence"));
-        const packageInput = await withLocalPlanWorkflow(root, "sequence", () =>
-            capturePlanReviewInput(root, "sequence", documents[0].revision),
+        const documents = await withLocalPlanWorkflow(root, "sequence", () =>
+            prepareSequenceReviewPresentation(root, "sequence"),
         );
+        const planReviewVersion = await prepareSequenceReviewVersion(root, "sequence", documents, "sequence-session");
         const answers = [];
         service.operations.set("sequence-review", {
             status: "running",
             projectId: project.projectId,
             runwieldSessionId: "sequence-session",
             events: [],
+            planReviewVersion,
             liveInteraction: {
                 interactionId: "sequence-interaction",
                 request: {
@@ -1002,7 +1002,6 @@ test("owner Workspace reviews a complete Sequence and rejects stale sibling evid
                         planId: documents[0].planId,
                         planName: "sequence",
                         sequenceDocuments: documents,
-                        packageInput,
                     },
                 },
             },
@@ -1037,11 +1036,12 @@ test("owner Workspace reviews a complete Sequence and rejects stale sibling evid
         assertEquals((await loadPlan(root, "sequence"))?.attrs.status, "draft", "the workflow owns the grouped commit");
         service.operations.set("sequence-review", {
             ...service.operations.get("sequence-review"),
+            planReviewVersion,
             liveInteraction: {
                 interactionId: "sequence-chat",
                 request: {
                     type: "plan_review",
-                    planReview: { planName: "sequence", sequenceDocuments: documents },
+                    planReview: { planId: documents[0].planId, planName: "sequence", sequenceDocuments: documents },
                 },
             },
             answer: {

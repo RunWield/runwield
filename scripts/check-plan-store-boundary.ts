@@ -12,9 +12,12 @@ const compilerOptions = ts.parseJsonConfigFileContent(configuration.config, ts.s
 const projectStoreSurface = "packages/plans/store.ts";
 const collaborationLock = "packages/plans/collaboration-lock.ts";
 const projectPlanAuthoring = "packages/plans/project-plan-authoring.ts";
+const packageStorage = "packages/plans/package-storage.ts";
 const publicStoreErrors = new Set(["PlanNotFoundError", "StalePlanWriteError"]);
 const privateMembers = new Set([
     projectStoreSurface,
+    "packages/plans/catalog-lifecycle.ts",
+    "packages/plans/live-review.ts",
     "src/plan-store.ts",
     "packages/plans/file-snapshots.ts",
     "packages/plans/history-files.ts",
@@ -23,7 +26,7 @@ const privateMembers = new Set([
     "packages/plans/artifact-files.ts",
     "packages/plans/publication-files.ts",
     "packages/plans/package-files.ts",
-    "packages/plans/package-storage.ts",
+    packageStorage,
     "packages/plans/operation-receipts.ts",
     collaborationLock,
     "packages/plans/share-attempt-journal.ts",
@@ -86,6 +89,59 @@ const remoteBootstrapCallers = new Set([
 const plansSurface = "packages/plans/index.ts";
 const pureSurface = "packages/plans/format.ts";
 const publicSurface = "src/plan-store/index.ts";
+const lifecycleDrivers = new Set([
+    packageStorage,
+    "packages/plans/live-review.ts",
+    "src/plan-store.ts",
+    "src/plan-store/queries.ts",
+    "src/plan-store/managed.ts",
+    "src/plan-store/events.ts",
+    "src/plan-store/archiving.ts",
+    "src/plan-store/project-lifecycle.ts",
+    "src/plan-store/lifecycle-review.ts",
+    "src/plan-store/review.ts",
+    "src/plan-store/review-snapshots.ts",
+    "src/plan-store/sequence-review.ts",
+    "packages/plans/catalog-lifecycle.ts",
+]);
+const privateLifecycleMembers = new Set([
+    "applyWorkflowPlanEvent",
+    "WorkflowPlanEvent",
+    "archiveSavedPlan",
+    "restoreSavedPlan",
+    "archivePlanPackage",
+    "restorePlanPackage",
+    "archivePlansByStatus",
+    "archivePlan",
+    "restoreArchivedPlan",
+    "archiveManagedPlan",
+    "restoreManagedPlan",
+    "catalogPlanLifecycle",
+    "recordPlanEvent",
+    "RecordPlanEventRequest",
+    "SharedPlanReviewActionOptions",
+    "SharedPlanReviewEvidence",
+    "SequenceReviewDocument",
+    "applyAttachedPlanReview",
+    "applyProjectPlanReviewEvent",
+    "PlanReviewOperationReference",
+    "getPlanReviewOperationReference",
+    "recoverPlanReviewResult",
+    "presentPlanReviewResult",
+    "applyRetainedPlanReviewConversation",
+    "applySequencePlanReviewForWorkflow",
+    "restoreLegacyPlanReviewVersion",
+    "restorePlanReviewVersion",
+    "serializePlanReviewVersion",
+    "applySharedPlanReviewDecision",
+    "applyPlanReviewForExecution",
+    "applySequenceReviewDecision",
+    "capturePlanReviewInput",
+    "preparePlanReviewDocument",
+    "prepareSequenceReview",
+    "snapshotSequenceReview",
+    "validateSequenceReviewDecision",
+]);
 
 export interface PlanStoreBoundaryViolation {
     file: string;
@@ -97,6 +153,106 @@ function ownerMember(path: string): boolean {
 }
 function relativeName(path: string): string {
     return relative(root, path).replaceAll("\\", "/");
+}
+
+const workflowLifecycleCallers = new Set([
+    "packages/session-runtime/runtime/workflows.ts",
+    "packages/workflow/implementation-checkpoint.ts",
+    "src/shared/workflow/epic-continuation.ts",
+    "src/shared/workflow/epic-integration.ts",
+    "src/shared/workflow/execution-start.ts",
+    "src/shared/workflow/plan-executor.ts",
+    "src/shared/workflow/validation-context.ts",
+    "src/shared/workflow/validation-types.ts",
+]);
+
+function isWorkflowLifecycleImport(file: string, specifier: ts.Node): boolean {
+    if (!workflowLifecycleCallers.has(file)) return false;
+    const statement = specifier.parent;
+    if (ts.isImportDeclaration(statement)) {
+        const bindings = statement.importClause?.namedBindings;
+        return (
+            !statement.importClause?.name &&
+            !!bindings &&
+            ts.isNamedImports(bindings) &&
+            bindings.elements.length === 1 &&
+            (bindings.elements[0].propertyName ?? bindings.elements[0].name).text === "applyWorkflowPlanEvent"
+        );
+    }
+    if (ts.isLiteralTypeNode(statement) && ts.isImportTypeNode(statement.parent))
+        return statement.parent.qualifier?.getText() === "applyWorkflowPlanEvent";
+    if (!ts.isCallExpression(statement) || !ts.isAwaitExpression(statement.parent)) return false;
+    const assignment = statement.parent.parent;
+    if (!ts.isVariableDeclaration(assignment) || !ts.isObjectBindingPattern(assignment.name)) return false;
+    const [binding] = assignment.name.elements;
+    return (
+        assignment.name.elements.length === 1 &&
+        !binding.dotDotDotToken &&
+        (binding.propertyName ?? binding.name).getText() === "applyWorkflowPlanEvent"
+    );
+}
+
+const attachedPlanLifecycle = "src/plan-store/project-lifecycle.ts";
+
+function isPrivateReviewHandoffImport(file: string, specifier: ts.Node): boolean {
+    const expected =
+        file === "src/shared/attached/coordinator.ts"
+            ? "applyAttachedPlanReview"
+            : file === "src/cmd/load-plan/plan-review-flow.ts" ||
+                file === "src/tools/plan-written.ts" ||
+                file === "src/plan-store/lifecycle-review.test.ts"
+              ? "applySequencePlanReviewForWorkflow"
+              : undefined;
+    if (!expected) return false;
+    const statement = specifier.parent;
+    if (!ts.isImportDeclaration(statement) || statement.importClause?.name) return false;
+    const bindings = statement.importClause?.namedBindings;
+    if (!bindings || !ts.isNamedImports(bindings) || bindings.elements.length !== 1) return false;
+    const [binding] = bindings.elements;
+    return (binding.propertyName ?? binding.name).text === expected;
+}
+
+const liveReviewTransport = "src/plan-store/lifecycle-review.ts";
+const liveReviewEvidence = "packages/plans/live-review.ts";
+const liveReviewTransportMembers = new Set([
+    "restoreLegacyPlanReviewVersion",
+    "restorePlanReviewVersion",
+    "serializePlanReviewVersion",
+]);
+const liveReviewTransportTypes = new Set(["LegacyPlanReviewMetadata", "SerializedPlanReviewVersion"]);
+const workspaceReviewReceiptMembers = new Set(["getPlanReviewOperationReference", "recoverPlanReviewResult"]);
+
+function isLiveReviewTransportImport(file: string, target: string, specifier: ts.Node): boolean {
+    const isSessionConnection = file === "src/shared/session/live-session-connection.ts";
+    const isWorkspaceReceipt = file === "src/ui/workspace/server/session-continuation.ts";
+    const isWorkspaceReceiptFixture = file === "src/ui/workspace/workspace-plan-review.integration.test.ts";
+    if (!isSessionConnection && !isWorkspaceReceipt && !isWorkspaceReceiptFixture) return false;
+    const statement = specifier.parent;
+    if (!ts.isImportDeclaration(statement) || statement.importClause?.name) return false;
+    const bindings = statement.importClause?.namedBindings;
+    if (!bindings || !ts.isNamedImports(bindings) || !bindings.elements.length) return false;
+    if (isWorkspaceReceiptFixture)
+        return (
+            target === liveReviewTransport &&
+            bindings.elements.length === 1 &&
+            (bindings.elements[0].propertyName ?? bindings.elements[0].name).text === "getPlanReviewOperationReference"
+        );
+    if (isWorkspaceReceipt)
+        return (
+            target === liveReviewTransport &&
+            bindings.elements.every((member) =>
+                workspaceReviewReceiptMembers.has((member.propertyName ?? member.name).text),
+            )
+        );
+    if (target === liveReviewEvidence)
+        return bindings.elements.every(
+            (member) =>
+                (statement.importClause?.isTypeOnly || member.isTypeOnly) &&
+                liveReviewTransportTypes.has((member.propertyName ?? member.name).text),
+        );
+    return bindings.elements.every((member) =>
+        liveReviewTransportMembers.has((member.propertyName ?? member.name).text),
+    );
 }
 
 function isCollaborationLockImport(file: string, specifier: ts.Node): boolean {
@@ -298,6 +454,21 @@ export function inspectPlanStoreImports(file: string, source: string): PlanStore
                 });
         }
     }
+    if (file === publicSurface) {
+        for (const statement of parsed.statements) {
+            if (
+                !ts.isExportDeclaration(statement) ||
+                !statement.moduleSpecifier ||
+                !statement.exportClause ||
+                !ts.isNamedExports(statement.exportClause)
+            )
+                violations.push({
+                    file,
+                    line: parsed.getLineAndCharacterOfPosition(statement.getStart(parsed)).line + 1,
+                    message: "The Plan facade supports direct, named reexports only.",
+                });
+        }
+    }
     const check = (node: ts.Node): void => {
         const reference = literal(node);
         if (!reference) return;
@@ -321,6 +492,22 @@ export function inspectPlanStoreImports(file: string, source: string): PlanStore
                 line: parsed.getLineAndCharacterOfPosition(node.getStart(parsed)).line + 1,
                 message: `The Plans package cannot depend on an application module (${specifier}).`,
             });
+        if (file === publicSurface && lifecycleDrivers.has(target) && ts.isExportDeclaration(node.parent)) {
+            const { exportClause } = node.parent;
+            if (
+                exportClause &&
+                ts.isNamedExports(exportClause) &&
+                (target === liveReviewEvidence ||
+                    exportClause.elements.some((member) =>
+                        privateLifecycleMembers.has((member.propertyName ?? member.name).text),
+                    ))
+            )
+                violations.push({
+                    file,
+                    line: parsed.getLineAndCharacterOfPosition(node.getStart(parsed)).line + 1,
+                    message: "Direct transition writes and retained review data are private to the Plan lifecycle.",
+                });
+        }
         if (target === managedExecutionAdoption && !isManagedExecutionAdoptionImport(file, node)) {
             violations.push({
                 file,
@@ -383,6 +570,14 @@ export function inspectPlanStoreImports(file: string, source: string): PlanStore
             !(target === managedStoreHost && isManagedHostImport(file, node)) &&
             ownerMember(target) &&
             !isWorkflowSnapshotImport(file, target, node) &&
+            !(
+                target === attachedPlanLifecycle &&
+                (isPrivateReviewHandoffImport(file, node) || isWorkflowLifecycleImport(file, node))
+            ) &&
+            !(
+                (target === liveReviewTransport || target === liveReviewEvidence) &&
+                isLiveReviewTransportImport(file, target, node)
+            ) &&
             !PLAN_STORE_QUALIFICATIONS[file]?.modules.includes(target)
         )
             violations.push({

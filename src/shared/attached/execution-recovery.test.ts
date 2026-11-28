@@ -1,5 +1,5 @@
 import { openWorkflow } from "@runwield/workflow";
-import { seedPlanState } from "../testing/plan-state-fixture.ts";
+import { recordPlanEvent, seedPlanState } from "../testing/plan-state-fixture.ts";
 import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import { readAttachedAction } from "./coordinator.ts";
 import { test } from "node:test";
@@ -9,9 +9,8 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
 
-import { archivePlan } from "../../plan-store/index.ts";
-import { loadPlan } from "../testing/plan-query-fixture.ts";
-import { recordPlanEvent } from "../../plan-store/index.ts";
+import { archivePlan, loadPlan } from "../testing/plan-query-fixture.ts";
+
 import { createWorktreeGitArtifacts, settleWorktreeAttempt } from "../worktree.ts";
 import { listTransitionRecoveryRecords } from "../../plan-store/index.ts";
 import { findById, listEntries, updateEntry } from "../worktree-registry.ts";

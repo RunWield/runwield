@@ -1,4 +1,3 @@
-import { StalePlanWriteError } from "@runwield/plans/store";
 import { isCanonicalPlanStatus } from "@runwield/plans/store-format";
 import { isChildFeaturePlan, compareChildPlansByOrder } from "@runwield/plans/format";
 import { managedPlanStoreActive, archiveManagedPlan, restoreManagedPlan, readManagedArchive } from "./managed.ts";
@@ -7,7 +6,8 @@ import { relative } from "node:path";
 import { archivePlan, restoreArchivedPlan, loadArchivedPlan, getPlanDocumentRoot } from "../plan-store.ts";
 import { loadPlan, listPlans } from "./queries.ts";
 import { runArchiveTransition, type TransitionResult } from "./transitions.ts";
-import { currentPackageProject, loadPackageWorkflowPlan, packageWorkflowLocks } from "./workflows.ts";
+import { currentPackageProject } from "./workflows.ts";
+import { type ObservedCheckoutPlan } from "./project-lifecycle.ts";
 import { withLocalProjectAction } from "./access.ts";
 
 export interface ArchivePlanOptions {
@@ -16,6 +16,7 @@ export interface ArchivePlanOptions {
     now?: string;
     expectedRevision?: string;
     expectedPlanId?: string;
+    abandonedWorktree?: boolean;
 }
 interface ArchiveTransitionValue<T> {
     value: T;
@@ -46,31 +47,69 @@ export async function archiveSavedPlan(cwd: string, name: string, options: Archi
     });
 }
 
+type ObservedArchiveOptions = Omit<ArchivePlanOptions, "expectedRevision" | "expectedPlanId">;
+
+/** Archive a displayed checkout Plan while preserving the command's path and artifact report. */
+export async function archiveObservedPlan(
+    cwd: string,
+    plan: ObservedCheckoutPlan,
+    options: ObservedArchiveOptions = {},
+) {
+    if (!plan.revision) throw new Error("Archive requires an observed Plan revision.");
+    return await archiveSavedPlan(cwd, plan.planName, {
+        ...options,
+        expectedRevision: plan.revision,
+        expectedPlanId: plan.planId,
+    });
+}
+
+/** Restore the observed archived entry, allowing the legacy destination option. */
+export async function restoreObservedPlan(
+    cwd: string,
+    source: Pick<ObservedCheckoutPlan, "planName" | "planId" | "revision">,
+    destination?: string,
+) {
+    if (!source.revision) throw new Error("Restore requires an observed Plan revision.");
+    const managedId = managedPlanStoreActive() ? source.planId : undefined;
+    return await restoreSavedPlan(
+        cwd,
+        managedId ?? source.planName,
+        destination,
+        source.revision,
+        managedId !== undefined,
+        source.planId,
+    );
+}
+
 export async function restoreSavedPlan(
     cwd: string,
     reference: string,
     destination?: string,
     expectedRevision?: string,
+    byId = expectedRevision !== undefined,
+    expectedPlanId?: string,
 ) {
     if (managedPlanStoreActive()) return await restoreManagedPlan(cwd, reference, destination, expectedRevision);
     return await withLocalProjectAction(cwd, async () => {
-        const source = await loadArchivedPlan(cwd, reference, expectedRevision !== undefined);
+        const canonicalId = currentPackageProject() ? expectedPlanId : undefined;
+        const selected = canonicalId ?? reference;
+        const selectById = byId || canonicalId !== undefined;
+        const source = await loadArchivedPlan(cwd, selected, selectById);
         if (!source) throw new Error(`Archived Plan not found: ${reference}`);
+        if (expectedPlanId !== undefined && source.attrs.planId !== expectedPlanId)
+            throw new Error("Restore source changed Plan ID.");
         return committedArchive<Awaited<ReturnType<typeof restoreArchivedPlan>>>(
             await runArchiveTransition({
                 projectRoot: cwd,
                 planName: source.name,
                 action: "restore",
-                move: async () => {
-                    if (expectedRevision === undefined)
-                        return await restoreArchivedPlan(cwd, reference, { to: destination });
-                    return await packageWorkflowLocks([{ planId: reference }], async () => {
-                        const plan = await loadPackageWorkflowPlan({ planId: reference });
-                        if (plan.revision !== expectedRevision)
-                            throw new StalePlanWriteError(expectedRevision, plan.revision);
-                        return await restoreArchivedPlan(cwd, reference, { to: destination, byId: true });
-                    });
-                },
+                move: () =>
+                    restoreArchivedPlan(cwd, selected, {
+                        to: destination,
+                        byId: selectById,
+                        expectedPlanId,
+                        expectedRevision,
+                    }),
             }),
         );
     });
@@ -84,10 +123,14 @@ export async function archivedPlanProjectRoot(cwd: string, reference: string): P
 }
 
 /** The legacy child directory is disposable only after its Plans have been archived. */
-export async function archiveEpicPlanFamily(cwd: string, epicName: string, childNames: string[]) {
+export async function archiveEpicPlanFamily(
+    cwd: string,
+    observedEpic: ObservedCheckoutPlan,
+    children: ObservedCheckoutPlan[],
+) {
     return await withLocalProjectAction(cwd, async () => {
-        const epic = await loadPlan(cwd, epicName);
-        if (!epic) throw new Error(`Epic not found: ${epicName}`);
+        const epic = await loadPlan(cwd, observedEpic.planName);
+        if (!epic) throw new Error(`Epic not found: ${observedEpic.planName}`);
         const legacyDirectory =
             currentPackageProject() || managedPlanStoreActive()
                 ? null
@@ -96,8 +139,8 @@ export async function archiveEpicPlanFamily(cwd: string, epicName: string, child
                   : `${epic.path}.children`;
         const now = new Date().toISOString();
         const archived: Awaited<ReturnType<typeof archiveSavedPlan>>[] = [];
-        for (const child of childNames) archived.push(await archiveSavedPlan(cwd, child, { now, force: true }));
-        archived.push(await archiveSavedPlan(cwd, epicName, { now }));
+        for (const child of children) archived.push(await archiveObservedPlan(cwd, child, { now, force: true }));
+        archived.push(await archiveObservedPlan(cwd, observedEpic, { now }));
         let cleanupMessage: string | undefined;
         if (legacyDirectory) {
             const path = relative(cwd, legacyDirectory).replaceAll("\\", "/");

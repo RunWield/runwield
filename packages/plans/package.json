@@ -31,6 +31,8 @@
         "./history-files": "./history-files.ts",
         "./artifact-files": "./artifact-files.ts",
         "./lifecycle": "./lifecycle.ts",
+        "./live-review": "./live-review.ts",
+        "./catalog-lifecycle": "./catalog-lifecycle.ts",
         "./controller-state": "./controller-state.ts",
         "./work-records": "./work-records.ts",
         "./work-record-files": "./work-record-files.ts"

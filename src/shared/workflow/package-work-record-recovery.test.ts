@@ -76,7 +76,7 @@ test("pending records require proof and no-copy recovery survives execution clea
                     record.body + "\nEditor note.\n",
                 ),
             );
-            const { recordPlanEvent } = await import("../../plan-store/index.ts");
+            const { recordPlanEvent } = await import("../testing/plan-state-fixture.ts");
             await recordPlanEvent({
                 cwd: f.root,
                 planName: "one",

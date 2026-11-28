@@ -1,7 +1,7 @@
-import { seedPlanState, seedPlan } from "../testing/plan-state-fixture.ts";
+import { recordPlanEvent, seedPlanState, seedPlan } from "../testing/plan-state-fixture.ts";
 import { openWorkflow } from "@runwield/workflow";
 import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
-import { recordPlanEvent } from "../../plan-store/index.ts";
+
 import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 /**

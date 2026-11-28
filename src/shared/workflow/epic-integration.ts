@@ -38,7 +38,7 @@ import {
 } from "./process-output.ts";
 import { workflowEpicArtifacts } from "../../plan-store/index.ts";
 import type { HostedSession } from "@runwield/session-runtime/host";
-import { recordPlanEvent } from "../../plan-store/index.ts";
+import { applyWorkflowPlanEvent } from "../../plan-store/project-lifecycle.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 
 import { findTargetBranchPlansByParent, prepareTargetBranchPlansByParent } from "./planning-worktree.ts";
@@ -318,7 +318,7 @@ export async function reconcileEpicDelivery(projectRoot: string, epicPlanName: s
     let status = epic.attrs.status;
 
     if (status === "ready_for_work" && state.allSettled) {
-        const attrs = await recordPlanEvent({
+        const attrs = await applyWorkflowPlanEvent({
             cwd: primaryRoot,
             planName: epicPlanName,
             event: "epic_children_delivered",
@@ -357,7 +357,7 @@ export async function reconcileEpicDelivery(projectRoot: string, epicPlanName: s
                 commit: epic.attrs.validatedCommit,
             }))
         ) {
-            const attrs = await recordPlanEvent({
+            const attrs = await applyWorkflowPlanEvent({
                 cwd: primaryRoot,
                 planName: epicPlanName,
                 event: "epic_publication_confirmed",
@@ -367,7 +367,7 @@ export async function reconcileEpicDelivery(projectRoot: string, epicPlanName: s
             return { state, status: attrs.status, gateReady: false, gateRetryReady: false };
         }
         if (unchanged) return { state, status, gateReady: false, gateRetryReady: false };
-        const attrs = await recordPlanEvent({
+        const attrs = await applyWorkflowPlanEvent({
             cwd: primaryRoot,
             planName: epicPlanName,
             event: "epic_integration_stale",
@@ -966,7 +966,7 @@ export async function runEpicIntegrationGate(
             const reportRelativePath = artifacts.integrationReportPath;
             if (findings.length) {
                 await artifacts.saveIntegrationReport(renderReport(epicPlanName, state, base, findings));
-                await recordPlanEvent({
+                await applyWorkflowPlanEvent({
                     cwd: primaryRoot,
                     planName: epicPlanName,
                     event: "epic_integration_failed",
@@ -1030,7 +1030,7 @@ export async function runEpicIntegrationGate(
                         expectedRevision: latest.revision,
                     });
                 }
-                await recordPlanEvent({
+                await applyWorkflowPlanEvent({
                     cwd: primaryRoot,
                     planName: epicPlanName,
                     event: "epic_integration_passed",
@@ -1049,7 +1049,7 @@ export async function runEpicIntegrationGate(
                 for (const draft of repairDrafts) {
                     // Branch snapshots need a writable, registered document before lifecycle writes.
                     if (draft.planningNotStarted) await preparePlanRepairDraft(primaryRoot, draft.name);
-                    await recordPlanEvent({
+                    await applyWorkflowPlanEvent({
                         cwd: primaryRoot,
                         planName: draft.name,
                         event: "manual_closed_without_verification",
@@ -1075,7 +1075,7 @@ export async function runEpicIntegrationGate(
             if (codeReview?.kind === "changes_requested") {
                 findings.push(codeReview.finding);
                 await artifacts.saveIntegrationReport(renderReport(epicPlanName, state, base, findings));
-                await recordPlanEvent({
+                await applyWorkflowPlanEvent({
                     cwd: primaryRoot,
                     planName: epicPlanName,
                     event: "epic_integration_failed",

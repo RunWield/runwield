@@ -1,4 +1,5 @@
 import { projectPlanType } from "@runwield/plans/format";
+import type { PlanApprovalAction } from "@runwield/plans/lifecycle";
 /**
  * @module shared/workflow/plan-approval
  * Approval-intent contract shared by Plan Review transport and workflow routing.
@@ -15,8 +16,6 @@ export const PLAN_APPROVAL_ACTIONS: PlanApprovalActions = Object.freeze({
     DECOMPOSE: "decompose",
     LATER: "later",
 });
-
-export type PlanApprovalAction = (typeof PLAN_APPROVAL_ACTIONS)[keyof typeof PLAN_APPROVAL_ACTIONS];
 
 export interface PlanApprovalOptions {
     classification?: string | null;

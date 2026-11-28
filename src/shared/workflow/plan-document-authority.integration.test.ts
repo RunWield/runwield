@@ -15,8 +15,15 @@ import { fileURLToPath as fromFileUrl } from "node:url";
 import { dirname, join } from "node:path";
 
 import { hashPlanBody } from "@runwield/plans/format";
-import { archivePlan, archiveSavedPlan, updatePlanCollaborationMetadata } from "../../plan-store/index.ts";
-import { listArchivedPlans, listPlans, loadPlan, restoreArchivedPlan } from "../testing/plan-query-fixture.ts";
+import { archiveObservedPlan, observeCheckoutPlan, updatePlanCollaborationMetadata } from "../../plan-store/index.ts";
+
+import {
+    archivePlan,
+    listArchivedPlans,
+    listPlans,
+    loadPlan,
+    restoreArchivedPlan,
+} from "../testing/plan-query-fixture.ts";
 
 import { COLLABORATION_LOCK_BYPASS } from "@runwield/plans/collaboration-lock";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
@@ -145,11 +152,8 @@ test("archive rejects an explicit primary revision without changing the executio
         const execution = await loadPlan(tree, "demo");
         assert(primary && execution);
         assert(primary.revision !== execution.revision);
-        await assertRejects(
-            () => archiveSavedPlan(root, "demo", { expectedRevision: primary.revision }),
-            Error,
-            "changed after this operation read it",
-        );
+        const observed = await observeCheckoutPlan(root, { ...primary, planName: "demo" });
+        await assertRejects(() => archiveObservedPlan(root, observed), Error, "changed after this operation read it");
         assertEquals((await loadPlan(tree, "demo"))?.revision, execution.revision);
         assertEquals((await loadPlan(root, "demo"))?.revision, primary.revision);
         assertEquals(await listArchivedPlans(root), []);

@@ -10,7 +10,13 @@ import { preparePlanWorkflow } from "../../plan-store/index.ts";
 import { parseArgs } from "../../shared/cli-args.ts";
 import { relative } from "node:path";
 import { CLI_BIN, getCwd } from "../../constants.ts";
-import { archiveSavedPlan, restoreSavedPlan, archivedPlanProjectRoot } from "../../plan-store/index.ts";
+import {
+    archiveObservedPlan,
+    restoreObservedPlan,
+    observeCheckoutPlan,
+    archivedPlanProjectRoot,
+    type ObservedCheckoutPlan,
+} from "../../plan-store/index.ts";
 import { isChildFeaturePlan } from "@runwield/plans/format";
 import {
     type ArchivedPlanEntry,
@@ -120,7 +126,7 @@ function normalizePlanNameArgument(target: string): string {
         .replace(/\.md$/i, "");
 }
 
-async function resolveActiveArchiveTarget(cwd: string, target: string): Promise<{ name: string; revision?: string }> {
+async function resolveActiveArchiveTarget(cwd: string, target: string): Promise<ObservedCheckoutPlan> {
     const normalized = normalizePlanNameArgument(target);
     const catalog = await planDocumentsForCheckout(cwd).list();
     const named = catalog.find((plan) => plan.name === normalized);
@@ -128,16 +134,21 @@ async function resolveActiveArchiveTarget(cwd: string, target: string): Promise<
     if (!named && identified.length > 1)
         throw new Error(`Duplicate planId values found for ${target}; use a Plan name instead.`);
     const normalizedName = named?.name || identified[0]?.name || normalized;
+    const observed = (await resolveWorkflowPlanLocation(cwd, normalizedName, { readOnly: true })).plan;
     await confirmArchivePlanRoot(cwd, normalizedName);
     const byName = (await resolveWorkflowPlanLocation(cwd, normalizedName, { readOnly: true })).plan;
-    if (byName) return { name: normalizedName, revision: byName.revision };
+    if (byName)
+        return await observeCheckoutPlan(cwd, {
+            ...(observed?.attrs.planId ? observed : byName),
+            planName: normalizedName,
+        });
     const matches = (await planDocumentsForCheckout(cwd).list()).filter((plan) => plan.attrs.planId === target);
     if (matches.length > 1) throw new Error(`Duplicate planId values found for ${target}; use a Plan name instead.`);
     if (matches.length !== 1) throw new Error(`Active Plan not found: ${target}`);
     await confirmArchivePlanRoot(cwd, matches[0].name);
     const loaded = await planDocumentsForCheckout(cwd).load(matches[0].name);
     if (!loaded) throw new Error(`Active Plan not found: ${matches[0].name}`);
-    return { name: matches[0].name, revision: loaded.revision };
+    return await observeCheckoutPlan(cwd, { ...loaded, planName: matches[0].name });
 }
 
 async function archivePlansByStatusTransactionally(
@@ -160,7 +171,24 @@ async function archivePlansByStatusTransactionally(
         .filter((plan) => !isChildFeatureArchiveCandidate(plan) && plan.attrs.status === status)
         .sort((a, b) => a.name.localeCompare(b.name));
     const matchingPlans = matchingParentPlans.flatMap((plan) => [plan, ...(childrenByParent.get(plan.name) || [])]);
-    for (const plan of matchingPlans) await confirmArchivePlanRoot(cwd, plan.name);
+    const observedPlans = new Map<string, ObservedCheckoutPlan | Error>();
+    for (const plan of matchingPlans) {
+        try {
+            const { plan: loaded } = await resolveWorkflowPlanLocation(cwd, plan.name, { readOnly: true });
+            if (!loaded) throw new Error(`Active Plan not found: ${plan.name}`);
+            if (
+                loaded.attrs.status !== plan.attrs.status ||
+                (plan.attrs.planId && loaded.attrs.planId !== plan.attrs.planId)
+            )
+                throw new Error(`Plan changed while selecting Plans to archive: ${plan.name}`);
+            observedPlans.set(plan.name, await observeCheckoutPlan(cwd, { ...loaded, planName: plan.name }));
+        } catch (error) {
+            observedPlans.set(plan.name, error instanceof Error ? error : new Error(String(error)));
+        }
+    }
+    for (const plan of matchingPlans) {
+        if (!(observedPlans.get(plan.name) instanceof Error)) await confirmArchivePlanRoot(cwd, plan.name);
+    }
     const matched = matchingPlans.map((plan) => ({ name: plan.name, relativePath: relative(cwd, plan.path) }));
     const archived: BulkArchivePlanEntry[] = [];
     const failed: BulkArchivePlanFailure[] = [];
@@ -175,7 +203,12 @@ async function archivePlansByStatusTransactionally(
         ];
         for (const item of queue) {
             try {
-                const result = await archiveSavedPlan(cwd, item.plan.name, { ...item.options, now });
+                const observed = observedPlans.get(item.plan.name)!;
+                if (observed instanceof Error) throw observed;
+                const result = await archiveObservedPlan(cwd, observed, {
+                    ...item.options,
+                    now,
+                });
                 archived.push({ name: result.name, relativePath: result.relativePath });
             } catch (error) {
                 failed.push({
@@ -217,10 +250,16 @@ async function runPlansArchiveCommandInScope(argv: string[]): Promise<void> {
         const target = positionals[1];
         if (!target) throw new Error("Missing archived Plan name or id for restore.");
         if (positionals.length > 2) throw new Error(`Unexpected restore argument: ${positionals[2]}`);
+        const source = await planDocumentsForCheckout(getCwd()).archived(target);
         const root = await archivedPlanProjectRoot(getCwd(), target);
         if (!(await confirmProjectDirectory(root))) return;
         if (!(await admitProjectWithIdentityChoice(root))) return;
-        const restored = await restoreSavedPlan(getCwd(), target, parsed.to);
+        if (!source) throw new Error(`Archived Plan not found: ${target}`);
+        const restored = await restoreObservedPlan(
+            getCwd(),
+            { planName: source.name, planId: source.attrs.planId, revision: source.revision },
+            parsed.to,
+        );
         console.log(`[RunWield] Restored ${target} to ${restored.relativePath}`);
         return;
     }
@@ -247,8 +286,7 @@ async function runPlansArchiveCommandInScope(argv: string[]): Promise<void> {
 
     if (positionals.length > 1) throw new Error(`Unexpected archive argument: ${positionals[1]}`);
     const target = await resolveActiveArchiveTarget(getCwd(), positionals[0]);
-    const archived = await archiveSavedPlan(getCwd(), target.name, {
-        expectedRevision: target.revision,
+    const archived = await archiveObservedPlan(getCwd(), target, {
         reason: parsed.reason,
         force: Boolean(parsed.force),
     });

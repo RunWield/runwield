@@ -1,4 +1,5 @@
 import type { BrowserPort } from "../../shared/browser-port.ts";
+import type { PlanSequenceDocumentDecision } from "@runwield/plans/lifecycle";
 
 export interface ReviewImageDecision {
     path: string;
@@ -22,7 +23,7 @@ export interface ReviewAnnotationDecision {
 
 export interface ReviewDecisionBody {
     reviewRevision?: number;
-    documents?: import("../../plan-store/index.ts").SequenceDocumentDecision[];
+    documents?: PlanSequenceDocumentDecision[];
     approved?: boolean;
     conversationTurn?: boolean;
     feedback?: string;

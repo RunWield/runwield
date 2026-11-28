@@ -2,8 +2,8 @@ import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
 import { withRetainedPlanFixture } from "../../shared/testing/retained-plan-fixture.ts";
 import { test } from "node:test";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
-import { archivePlan } from "../../plan-store/index.ts";
-import { loadArchivedPlan } from "../../shared/testing/plan-query-fixture.ts";
+
+import { archivePlan, loadArchivedPlan } from "../../shared/testing/plan-query-fixture.ts";
 
 import { runPlansReadCommand } from "./read.ts";
 import { getRunWieldRuntimeDir } from "@runwield/project-runtime/legacy-paths";

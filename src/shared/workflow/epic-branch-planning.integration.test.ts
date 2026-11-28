@@ -1,3 +1,4 @@
+import { recordPlanEvent } from "../testing/plan-state-fixture.ts";
 import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 import {
     mkdir as fsMkdir,
@@ -30,7 +31,7 @@ import { COLLABORATION_LOCK_BYPASS } from "@runwield/plans/collaboration-lock";
 import { listEntries } from "../worktree-registry.ts";
 import { createExecutionStartPorts, startActiveExecutionWorkflow } from "./execution-start.ts";
 import { resolveEpicContinuation, runEpicChildContinuation } from "./epic-continuation.ts";
-import { recordPlanEvent } from "../../plan-store/index.ts";
+
 import { PlanningNotStartedError, resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";
 import { findTargetBranchPlansByParent, preparePlanningWorktreeForPlan } from "./planning-worktree.ts";

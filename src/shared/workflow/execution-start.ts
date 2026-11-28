@@ -67,7 +67,7 @@ import {
     emitReusingExecutionWorktree,
     emitUpdatingPlanStatusToInProgress,
 } from "./execution-preparation-progress.ts";
-import { recordPlanEvent } from "../../plan-store/index.ts";
+import { applyWorkflowPlanEvent } from "../../plan-store/project-lifecycle.ts";
 import { buildPlanEventUpdates } from "@runwield/plans/lifecycle";
 import { recordWorkflowMetric } from "./metrics.ts";
 import { listTransitionRecoveryRecords, runExecutionPreparationTransition } from "../../plan-store/index.ts";
@@ -362,7 +362,7 @@ async function startActiveExecutionWorkflowInScope({
         throw new Error(`Plan not found: ${planName}`);
     }
     if (currentStatus === "approved") {
-        triageMeta = await recordPlanEvent({
+        triageMeta = await applyWorkflowPlanEvent({
             cwd: sourceLocation.documentRoot,
             planName,
             event: "readiness_passed",
@@ -449,7 +449,7 @@ async function startActiveExecutionWorkflowInScope({
                 };
                 if (needsExecutionStartedEvent) {
                     emitUpdatingPlanStatusToInProgress(hostedSession);
-                    await recordPlanEvent({
+                    await applyWorkflowPlanEvent({
                         cwd: projectRoot,
                         planName,
                         event: "execution_started",
@@ -913,7 +913,7 @@ async function startActiveExecutionWorkflowInScope({
                             worktreeStatus: "active",
                         }),
                     );
-                await recordPlanEvent({
+                await applyWorkflowPlanEvent({
                     cwd: worktree.path,
                     planName,
                     event: "execution_started",

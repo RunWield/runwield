@@ -21,7 +21,7 @@ import {
     executeReadyPlanWithRepair,
     validateCompletedExecution,
 } from "./plan-execution.ts";
-import { recordPlanEvent } from "../../plan-store/index.ts";
+import { applyObservedPlanEvent, observeCheckoutPlan } from "../../plan-store/index.ts";
 import { discardWorktreeGitArtifacts, validateWorktreeDiscard } from "../../shared/worktree.ts";
 import {
     findById as findWorktreeRegistryEntry,
@@ -405,6 +405,7 @@ export async function continueRecoveryPlan(context: RecoveryActionContext): Prom
             context.worktreeContext = await context.refreshRecoveryWorktree();
         }
     }
+    const observed = await observeCheckoutPlan(context.projectRoot, context.plan);
     const confirmed = await confirmAffectedPathChangesBeforeExecution({
         projectRoot: context.projectRoot,
         planName: context.plan.planName,
@@ -433,13 +434,7 @@ export async function continueRecoveryPlan(context: RecoveryActionContext): Prom
             context.plan.attrs.executionMode === "worktree" && context.worktreeContext?.path
                 ? context.worktreeContext.path
                 : context.projectRoot;
-        context.plan.attrs = await recordPlanEvent({
-            cwd: authorityRoot,
-            planName: context.plan.planName,
-            event: "recovery_continue",
-            currentStatus: context.plan.attrs.status,
-            details: { triageMeta: context.plan.attrs },
-        });
+        context.plan.attrs = await applyObservedPlanEvent(authorityRoot, observed, "recovery_continue");
     }
     await executeReadyPlanWithRepair({
         projectRoot: context.projectRoot,

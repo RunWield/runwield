@@ -1,3 +1,4 @@
+import type { SequenceReviewPresentation } from "@runwield/plans/lifecycle";
 import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
 import { withRetainedPlanFixture } from "../../shared/testing/retained-plan-fixture.ts";
 import { assertEquals } from "../../testing/assertions.ts";
@@ -21,11 +22,7 @@ import { preparePlanningWorktreeForPlan } from "../../shared/workflow/planning-w
 import { loadPlanActionEvidence } from "../../shared/workflow/plan-actions.ts";
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
 import { WorkspaceSessionContinuationService } from "../../ui/workspace/server/session-continuation.ts";
-import {
-    prepareSequenceReview,
-    type SequenceReviewDocument,
-    validateSequenceReviewDecision,
-} from "../../plan-store/index.ts";
+import { prepareSequenceReviewPresentation, validatePlanReviewSequence } from "../../plan-store/index.ts";
 import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { RuntimeInteractionTypes } from "@runwield/session-runtime/interactions";
@@ -90,13 +87,18 @@ test("reopened Sequence sends a complete group decision from its registered plan
                 runtime.setInteractionAdapter(sessionId, {
                     async requestInteraction(request) {
                         if (request.type !== RuntimeInteractionTypes.PLAN_REVIEW) return { outcome: "canceled" };
-                        const documents = request._meta?.sequenceDocuments as SequenceReviewDocument[];
+                        const documents = request._meta?.sequenceDocuments as SequenceReviewPresentation[];
                         const decision = {
                             approved: true,
                             approvalAction: "later" as const,
                             documents: documents.map((doc) => ({ planId: doc.planId, plan: doc.plan })),
                         };
-                        await validateSequenceReviewDecision(String(request._meta?.cwd), documents, decision);
+                        assert(request._meta?.displayedVersion);
+                        await validatePlanReviewSequence(
+                            String(request._meta.cwd),
+                            request._meta.displayedVersion,
+                            decision,
+                        );
                         return { outcome: "accepted", _meta: { sequenceDecision: decision } };
                     },
                 });
@@ -129,7 +131,7 @@ test("Approve & Run executes the first Sequence child saved only in its planning
                 runtime.setInteractionAdapter(sessionId, {
                     requestInteraction(request) {
                         if (request.type !== RuntimeInteractionTypes.PLAN_REVIEW) return { outcome: "canceled" };
-                        const documents = request._meta?.sequenceDocuments as SequenceReviewDocument[];
+                        const documents = request._meta?.sequenceDocuments as SequenceReviewPresentation[];
                         return {
                             outcome: "accepted",
                             _meta: {
@@ -194,7 +196,7 @@ test("Workspace accepts a live Sequence group decision from a registered plannin
                 planId: "sequence-id",
                 targetBranch: "review-target",
             });
-            const documents = await prepareSequenceReview(planning.entry.path, "sequence");
+            const documents = await prepareSequenceReviewPresentation(planning.entry.path, "sequence");
             assertEquals(await loadPlan(repo, "sequence"), null);
             const fixture = await makeManagedSessionFixture({ home: homeDir, projectRoot: repo });
             const store = fixture.openStore();
@@ -253,6 +255,10 @@ test("Workspace accepts a live Sequence group decision from a registered plannin
                     await new Promise((resolve) => setTimeout(resolve, 25));
                 }
                 assert(operation?.liveInteraction?.request?.reviewUrl, "The Sequence review must appear in Workspace");
+                const browserOperation = JSON.stringify(operation);
+                for (const field of ["packageInput", "reviewVersion", "displayedVersion", "planReviewVersion"]) {
+                    assert(!browserOperation.includes(`"${field}"`), `Live review disclosed ${field}`);
+                }
                 const decision = {
                     approved: true,
                     approvalAction: "later" as const,

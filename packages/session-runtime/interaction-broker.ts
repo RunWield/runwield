@@ -2,6 +2,7 @@ import { emitHostedSessionRuntimeEvent } from "./event-publication.ts";
 import { RuntimeEventTypes } from "./events.ts";
 import { RuntimeInteractionOutcomes, RuntimeInteractionTypes } from "./interactions.ts";
 
+import type { ParsePlanFrontMatterResult } from "@runwield/plans";
 import type { ManagedOperationCapability } from "../../src/shared/session/managed-operation.ts";
 import type { HostedSession } from "./hosted-session.ts";
 import type {
@@ -83,46 +84,51 @@ async function requestHostedSessionInteractionInScope(
     capability?.assertLive?.();
     const id = request.id || createInteractionId();
     const interaction = { ...request, id };
-    if (
-        request.type === RuntimeInteractionTypes.PLAN_REVIEW &&
-        !Array.isArray(request._meta?.sequenceDocuments) &&
-        typeof request._meta?.planPath === "string" &&
-        !request._meta?.reviewedSource
-    ) {
-        // Keep file-backed review authority out of browser bundles that import
-        // the shared interaction outcome helpers from this module.
-        const { preparePlanReviewDocument } = await import("../../src/plan-store/index.ts");
-        const { loadPlanActionEvidence } = await import("../../src/shared/workflow/plan-actions.ts");
-        const { document: source, packageInput } = await preparePlanReviewDocument(request._meta.planPath);
-        if (source.kind !== "loaded") {
-            throw new Error("The Plan could not be opened for review. Your files have not been changed.");
-        }
-        const triage = request._meta.triageMeta;
-        const planId =
-            request._meta.reviewContainerPlanId ||
-            request._meta.planId ||
-            (triage && typeof triage === "object" && "planId" in triage ? triage.planId : null);
-        if (typeof planId !== "string" || source.attrs.planId !== planId) {
+    let reviewBase: ParsePlanFrontMatterResult | undefined;
+    const reviewRequest = request.type === RuntimeInteractionTypes.PLAN_REVIEW ? request._meta : undefined;
+    const reviewCwd = reviewRequest?.cwd || hostedSession.cwd;
+    const runwieldSessionId = hostedSession.getManagedMetadata?.()?.runwieldSessionId;
+    if (reviewRequest?.sequenceDocuments && !reviewRequest.displayedVersion) {
+        const { prepareSequenceReviewVersion, resolveWorkflowPlanLocation } =
+            await import("../../src/plan-store/index.ts");
+        const [parent] = reviewRequest.sequenceDocuments;
+        if (!parent) throw new Error("Review the Sequence and every child together.");
+        const documentRoot =
+            reviewRequest.cwd ??
+            (await resolveWorkflowPlanLocation(reviewCwd, parent.planName, { readOnly: true })).documentRoot;
+        const displayedVersion = await prepareSequenceReviewVersion(
+            documentRoot,
+            parent.planName,
+            reviewRequest.sequenceDocuments,
+            runwieldSessionId,
+        );
+        interaction._meta = { ...reviewRequest, displayedVersion };
+    } else if (reviewRequest && !reviewRequest.displayedVersion) {
+        const { preparePlanReviewVersion, resolveWorkflowPlanLocation } = await import("../../src/plan-store/index.ts");
+        const meta = reviewRequest;
+        const planId = meta.reviewContainerPlanId || meta.planId || meta.triageMeta?.planId;
+        const planName = meta.reviewContainerPlanName || meta.planName || planId;
+        if (!planId || !planName) {
             throw new Error("The Plan identity changed before review. Reload the Plan and review again.");
         }
-        const evidence = await loadPlanActionEvidence(hostedSession.cwd, planId);
-        if (evidence.kind !== "success") throw new Error(evidence.message);
-        if (evidence.evidence.revision !== source.revision) {
-            throw new Error("The Plan changed before review. Reload the Plan and review again.");
+        const planPath =
+            meta.planPath ?? (await resolveWorkflowPlanLocation(reviewCwd, planName, { readOnly: true })).plan?.path;
+        if (!planPath) throw new Error("The Plan could not be opened for review. Your files have not been changed.");
+        const { displayedVersion, document, markdown } = await preparePlanReviewVersion(reviewCwd, planName, planPath, {
+            triage: meta.triageMeta,
+            runwieldSessionId,
+        });
+        if (document.attrs.planId !== planId) {
+            throw new Error("The Plan identity changed before review. Reload the Plan and review again.");
         }
+        const { parsePlanFrontMatter } = await import("@runwield/plans/format");
+        reviewBase = parsePlanFrontMatter(markdown);
         interaction._meta = {
-            ...request._meta,
-            packageInput,
-            expectedRevision: evidence.evidence.revision,
-            expectedStatus: evidence.evidence.status,
-            expectedWorktree: evidence.evidence.worktree,
-            reviewedSource: {
-                planName: request._meta.planName,
-                path: source.path,
-                markdown: source.markdown,
-                revision: source.revision,
-                attrs: source.attrs,
-            },
+            ...meta,
+            planPath,
+            expectedRevision: displayedVersion.revision,
+            expectedStatus: document.attrs.status,
+            displayedVersion,
         };
     }
 
@@ -157,26 +163,15 @@ async function requestHostedSessionInteractionInScope(
             planningAgentName.trim()
         ) {
             reviewContainerPlanId = planId;
-            const { parsePlanFrontMatter } = await import("@runwield/plans/format");
             if (Array.isArray(meta.sequenceDocuments)) {
                 for (const doc of meta.sequenceDocuments) {
                     hostedSession.planReviewConversations.rememberReviewBase(doc.planId, {
                         attrs: doc.frontmatter,
-                        body: doc.packageInput ? doc.plan : parsePlanFrontMatter(doc.plan).body,
+                        body: doc.body,
                     });
                 }
-            } else if (
-                interaction._meta?.reviewedSource &&
-                typeof interaction._meta.reviewedSource === "object" &&
-                "attrs" in interaction._meta.reviewedSource &&
-                "markdown" in interaction._meta.reviewedSource &&
-                typeof interaction._meta.reviewedSource.markdown === "string"
-            ) {
-                const source = interaction._meta.reviewedSource;
-                hostedSession.planReviewConversations.rememberReviewBase(
-                    planId,
-                    parsePlanFrontMatter(String(source.markdown)),
-                );
+            } else if (reviewBase) {
+                hostedSession.planReviewConversations.rememberReviewBase(planId, reviewBase);
             }
             const conversation = hostedSession.getPlanReviewConversation({ planId, planningAgentName });
             interaction._meta = { ...meta, reviewConversation: conversation, agentLabel: conversation.agentLabel };
@@ -198,7 +193,7 @@ async function requestHostedSessionInteractionInScope(
     const reviewMeta =
         request.type === RuntimeInteractionTypes.PLAN_REVIEW && request._meta
             ? {
-                  sequenceDocuments: request._meta.sequenceDocuments,
+                  sequenceDocuments: request._meta.sequenceDocuments?.map(({ body: _body, ...document }) => document),
                   planId: typeof request._meta.planId === "string" ? request._meta.planId : undefined,
                   planName: typeof request._meta.planName === "string" ? request._meta.planName : undefined,
                   classification:
@@ -207,10 +202,6 @@ async function requestHostedSessionInteractionInScope(
                       typeof request._meta.expectedRevision === "string" ? request._meta.expectedRevision : undefined,
                   expectedStatus:
                       typeof request._meta.expectedStatus === "string" ? request._meta.expectedStatus : undefined,
-                  expectedWorktree:
-                      request._meta.expectedWorktree && typeof request._meta.expectedWorktree === "object"
-                          ? request._meta.expectedWorktree
-                          : undefined,
               }
             : undefined;
     const emitRequested = () =>

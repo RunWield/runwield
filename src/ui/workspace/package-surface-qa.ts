@@ -10,9 +10,10 @@ import { openOwnerCoordinationStore } from "../../shared/owner-coordination/inde
 import { restoreWorkRecordDocument } from "../../shared/work-records/store.ts";
 import { recordAttrs, recordBody } from "../../shared/work-records/test-fixtures/package-records.ts";
 import {
-    prepareSequenceReview,
+    prepareSequenceReviewPresentation,
     registeredWorkRecords,
-    validateSequenceReviewDecision,
+    prepareSequenceReviewVersion,
+    validatePlanReviewSequence,
 } from "../../plan-store/index.ts";
 import { startPlanReviewSurface } from "../review/review-launcher.ts";
 import { submitPlanForReview } from "../review/plan-review.ts";
@@ -111,14 +112,17 @@ await withPackageWorkflow(
             await restoreWorkRecordDocument(root, recordAttrs(), recordBody);
         startWorkspaceServer({ mode: "owner", host: "127.0.0.1", port, store });
         if (sequence) {
-            const documents = await prepareSequenceReview(root, plan.metadata.name);
+            const documents = await prepareSequenceReviewPresentation(root, plan.metadata.name);
+            const displayedVersion = await prepareSequenceReviewVersion(root, plan.metadata.name, documents);
             const surface = await startPlanReviewSurface({
                 cwd: root,
                 plan: documents[0].plan,
                 planPath: documents[0].planPath,
                 sequenceDocuments: documents,
                 browser: { open: () => Promise.resolve(false) },
-                onDecision: (decision) => validateSequenceReviewDecision(root, documents, decision),
+                onDecision: async (decision) => {
+                    if (!decision.exit) await validatePlanReviewSequence(root, displayedVersion, decision);
+                },
             });
             await fs.writeFile(join(directory, "review-url.txt"), surface.url);
             console.log(`Sequence review: ${surface.url}`);

@@ -1,3 +1,4 @@
+import { recordPlanEvent } from "../testing/plan-state-fixture.ts";
 import { openWorkflow } from "@runwield/workflow";
 import { projects } from "@runwield/projects";
 import { plans } from "@runwield/plans";
@@ -21,7 +22,7 @@ import { join } from "node:path";
 import { create, read, packageFixture, startDriver } from "../testing/plan-package-fixture.ts";
 import { loadPackageWorkflowPlan } from "../../plan-store/workflows.ts";
 import { withPackageWorkflow } from "../../plan-store/workflows.ts";
-import { recordPlanEvent } from "../../plan-store/index.ts";
+
 import { startActiveExecutionWorkflow, createExecutionStartPorts } from "./execution-start.ts";
 import { inspectWorktreeRegistry } from "../worktree-registry.ts";
 import { git } from "../git-test-fixture.ts";

@@ -1,5 +1,10 @@
 import { create as createPlanPackageFixture, packageFixture } from "../../shared/testing/plan-package-fixture.ts";
-import { seedPlanState, seedPlan, seedPlanController } from "../../shared/testing/plan-state-fixture.ts";
+import {
+    recordPlanEvent,
+    seedPlanState,
+    seedPlan,
+    seedPlanController,
+} from "../../shared/testing/plan-state-fixture.ts";
 import { withRetainedPlanFixture } from "../../shared/testing/retained-plan-fixture.ts";
 import { preparePlanWorkflow } from "../../plan-store/index.ts";
 import { prepareSessionPlanningWorktree } from "../../shared/workflow/session-planning-worktree.ts";
@@ -43,12 +48,14 @@ import { discardWorktreeGitArtifacts } from "../../shared/worktree.ts";
 import { addEntry, findById, removeEntry, updateEntry } from "../../shared/worktree-registry.ts";
 import { setCustomSetting } from "../../shared/settings.ts";
 import { executePlanAction, loadPlanActionEvidence } from "../../shared/workflow/plan-actions.ts";
-import { importPlans, PlanAccessMismatchError, recordPlanEvent } from "../../plan-store/index.ts";
+import { importPlans, PlanAccessMismatchError } from "../../plan-store/index.ts";
 
 import { defineCommittedGitFixture } from "../../shared/git-test-fixture.ts";
 import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import { createTestWorktreeAttempt } from "../../shared/worktree-test-helpers.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
+import { putPlanOnHold } from "./plan-hold.ts";
+import { openProjectPlanStore } from "../../plan-store/index.ts";
 import { runLoadPlanCommand } from "./index.ts";
 import { getLoadPlanCompletions } from "./getArgumentCompletions.ts";
 import { AGENTS } from "../../shared/session/agent-registry.ts";
@@ -1070,6 +1077,34 @@ test("load-plan puts a draft Plan on hold through the lifecycle transaction", as
             runtime.closeAllSessions();
         }
     });
+});
+
+test("putting a Plan on hold rejects a body edit made while the reason was open", async () => {
+    const fixture = await packageFixture();
+    try {
+        const store = openProjectPlanStore(fixture.identity.projectId, { admitted: fixture.identity });
+        const opened = await store.create({ planName: "paused", contextMarkdown: "Original plan.\n" });
+        const ui = makeUi([]);
+        ui.uiAPI.promptText = async () => {
+            await store.editBody(opened.planId, { body: "New plan.\n", expectedRevision: opened.revision });
+            return "Wait for review";
+        };
+        await assertRejects(
+            () =>
+                putPlanOnHold({
+                    projectRoot: fixture.root,
+                    plan: { planName: opened.name, attrs: opened.attrs, revision: opened.revision },
+                    uiAPI: ui.uiAPI,
+                }),
+            Error,
+            "changed",
+        );
+        const saved = await store.read(opened.planId);
+        assertEquals(saved.attrs.status, "draft");
+        assertEquals(saved.body, "New plan.\n");
+    } finally {
+        await fixture.cleanup();
+    }
 });
 
 test("load-plan resumes an on-hold Plan after the real non-Git Resume Check", async () => {

@@ -1,4 +1,4 @@
-import { seedPlanState, seedPlan } from "../testing/plan-state-fixture.ts";
+import { recordPlanEvent, seedPlanState, seedPlan } from "../testing/plan-state-fixture.ts";
 import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 import { makeReadOnlyDirectoryFixture } from "../../testing/read-only-directory-fixture.ts";
 import { test } from "node:test";
@@ -15,13 +15,20 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { join } from "node:path";
 
-import { archivePlan, savePlanBodyById } from "../../plan-store/index.ts";
-import { listPlans, loadPlan, loadPlanBodyById, restoreArchivedPlan } from "../testing/plan-query-fixture.ts";
+import { savePlanBodyById } from "../../plan-store/index.ts";
+
+import {
+    archivePlan,
+    listPlans,
+    loadPlan,
+    loadPlanBodyById,
+    restoreArchivedPlan,
+} from "../testing/plan-query-fixture.ts";
 
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { addEntry, findById, updateEntry } from "../worktree-registry.ts";
 import { resolvePlanWithPrimaryRecovery } from "../../plan-store/index.ts";
-import { recordPlanEvent } from "../../plan-store/index.ts";
+
 import { HostedSession } from "@runwield/session-runtime/host";
 import { createExecutionStartPorts, startActiveExecutionWorkflow } from "./execution-start.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";

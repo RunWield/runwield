@@ -1,9 +1,9 @@
 import { projects } from "@runwield/projects";
 import { parsePlanFrontMatter } from "@runwield/plans/format";
-import { seedPlan } from "../shared/testing/plan-state-fixture.ts";
+import { recordPlanEvent, seedPlan } from "../shared/testing/plan-state-fixture.ts";
 import { loadPlanActionEvidence } from "../shared/workflow/plan-actions.ts";
-import { applySharedPlanReviewDecision } from "../plan-store/index.ts";
-import { capturePlanReviewInput } from "../plan-store/index.ts";
+import { applySharedPlanReviewDecision } from "../shared/testing/plan-query-fixture.ts";
+import { capturePlanReviewInput } from "../shared/testing/plan-query-fixture.ts";
 import { importUnfinishedPlanFixture, withRetainedPlanFixture } from "../shared/testing/retained-plan-fixture.ts";
 import { importPlans } from "../plan-store/index.ts";
 import process from "node:process";
@@ -290,14 +290,10 @@ test("plan_written reviews a canonical Plan from an unregistered linked checkout
                     assertEquals(request._meta?.planId, "linked-only-id");
                     assertEquals(request._meta?.planPath, plan.path);
                     assertEquals(request._meta?.expectedRevision, plan.revision);
-                    assertEquals(request._meta?.reviewedSource, {
-                        planName: "linked-only",
-                        path: plan.path,
-                        markdown: plan.markdown,
+                    assertEquals(request._meta?.displayedVersion, {
+                        planId: "linked-only-id",
                         revision: plan.revision,
-                        attrs: plan.attrs,
                     });
-                    assertEquals(request._meta?.expectedWorktree, { kind: "none" });
                     reviewed = true;
                     return {
                         outcome: "accepted",
@@ -371,7 +367,7 @@ test("submitting plain Plan text assigns identity before review", async () => {
     });
 });
 
-import { authorLocalPlan, recordPlanEvent, renamePlan } from "../plan-store/index.ts";
+import { authorLocalPlan, renamePlan } from "../plan-store/index.ts";
 
 test("plan_written persists policy in the original checkout selected for an unfinished import", async () => {
     const root = await LINKED_REVIEW_GIT.checkout();

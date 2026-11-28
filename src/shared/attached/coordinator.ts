@@ -1,14 +1,15 @@
 import { openWorkflow } from "@runwield/workflow";
 import { PlanAccessMismatchError } from "../../plan-store/index.ts";
 import { readPlanPublicationReference } from "../../plan-store/index.ts";
-import { capturePlanReviewInput } from "../../plan-store/index.ts";
+import { preparePlanReviewVersion } from "../../plan-store/index.ts";
+import { applyAttachedPlanReview } from "../../plan-store/project-lifecycle.ts";
 import { withPlanReadScope, readPlanResource } from "../../plan-store/index.ts";
 import { requiresPlanWorkflow } from "../../plan-store/index.ts";
 
 import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
 import { withPlanSubmission, type PlanSubmissionDocument, type PlanSubmissionOptions } from "../../plan-store/index.ts";
 
-import type { PackageWorkflowInput } from "@runwield/plans/store";
+import type { PlanReviewVersion } from "@runwield/plans/lifecycle";
 
 import { readWorkRecordById, searchWorkRecords, formatWorkRecordReadResult } from "../work-records/search.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";
@@ -54,7 +55,6 @@ import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import { runWieldGitignoreNeedsUpdate } from "@runwield/project-runtime/owned-paths";
 import { VERSION } from "../version.js";
 
-import { applyPlanReviewForExecution } from "../../plan-store/index.ts";
 import { isAnsweredPlanReview } from "../workflow/plan-review-recovery.ts";
 
 import { loadReviewFeedbackImagePaths } from "../workflow/review-feedback-images.ts";
@@ -1338,7 +1338,8 @@ export async function taskCompleted(
 
 /** The reviewed document and durable round identity a carrier must present together. */
 export interface AttachedReviewPayloadBasis {
-    packageInput?: PackageWorkflowInput;
+    displayedVersion: PlanReviewVersion;
+    displayedMarkdown: string;
     review: NonNullable<AttachedWorkflowRecord["review"]>;
     planName: string;
     planPath: string;
@@ -1378,6 +1379,16 @@ export async function openAttachedReviewRound(
                 readOnly: true,
             });
             if (!plan) throw new Error(`Plan not found: ${current.plan.planName}`);
+            const { displayedVersion, markdown: displayedMarkdown } = await preparePlanReviewVersion(
+                documentRoot,
+                current.plan.planName,
+                plan.path,
+                {
+                    expectedRevision: plan.revision,
+                    triage: current.triageOutcome ?? undefined,
+                    renderMarkdown: true,
+                },
+            );
             const review = {
                 ...current.review,
                 planRevision: plan.revision,
@@ -1393,7 +1404,8 @@ export async function openAttachedReviewRound(
                     kind: "opened",
                     basis: {
                         review,
-                        packageInput: await capturePlanReviewInput(projectRoot, current.plan.planName, plan.revision),
+                        displayedVersion,
+                        displayedMarkdown,
                         planName: current.plan.planName,
                         planPath: plan.path,
                         documentRoot,
@@ -1475,19 +1487,13 @@ export async function applyAttachedReviewDecision(
             if (canceled) {
                 outcome = { kind: "canceled" };
             } else {
-                const applied = await applyPlanReviewForExecution({
-                    packageInput: round.packageInput,
-                    cwd: round.documentRoot,
-                    planName: round.planName,
-                    planPath: round.planPath,
-                    planWithFrontMatter: round.markdown,
-                    planRevision: saved.planRevision,
-                    expectedControllerRevision: saved.controllerRevision,
-                    originalAttrs: round.attrs,
-                    trustedClassification: current.triageOutcome?.classification,
-                    trustedWorkKind: current.triageOutcome?.workKind,
-                    decision,
+                const applied = await applyAttachedPlanReview(round.documentRoot, round.displayedVersion.planId, {
+                    ...decision,
+                    event: decision.approved === true ? "review_approved" : "review_feedback",
+                    displayedVersion: round.displayedVersion,
                 });
+                if (applied.cancellationReason || applied.recoveryRequired)
+                    throw new Error(applied.feedback || "The Plan changed. Reload this review.");
                 approvalControllerRevision = applied.approvalControllerRevision;
                 outcome = applied.approved
                     ? {

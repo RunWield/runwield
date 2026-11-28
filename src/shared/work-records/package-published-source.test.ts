@@ -1,3 +1,4 @@
+import { recordPlanEvent } from "../testing/plan-state-fixture.ts";
 import { renamePlan } from "../../plan-store/index.ts";
 import { findPlanById } from "../testing/plan-query-fixture.ts";
 import { test } from "node:test";
@@ -8,7 +9,7 @@ import { publicationFixture } from "../workflow/testing/package-publication-fixt
 import { captureForegroundProcess } from "@runwield/resources/process";
 import { git } from "../git-test-fixture.ts";
 import { read } from "../testing/plan-package-fixture.ts";
-import { recordPlanEvent } from "../../plan-store/index.ts";
+
 import { openPublication } from "@runwield/workflow/publication-runtime";
 import { readPublishedDeliverySources } from "../../plan-store/index.ts";
 import type { WorkRecordSource } from "./generation.ts";

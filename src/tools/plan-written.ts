@@ -1,19 +1,25 @@
+import type { SequenceReviewPresentation } from "@runwield/plans/lifecycle";
 import { planSessionArtifactAlias } from "../plan-store/index.ts";
 import { withPlanSubmission, type PlanSubmissionDocument, type PlanSubmissionOptions } from "../plan-store/index.ts";
 import { buildPlanConversationRequest } from "../shared/workflow/plan-review-conversation.ts";
 import { reviewSourceStillMatches } from "@runwield/plans/review-markdown";
 import {
     isSequencePlan,
-    parsePlanFrontMatter,
     projectPlanType,
-    planDocumentMarkdown,
     planArtifactReference,
     resolvePlanExecutionPolicy,
     assertNotReservedEpicArtifactPlanName,
     canonicalizeStoredPlanName,
 } from "@runwield/plans/format";
-import { applySequenceReviewDecision, prepareSequenceReview } from "../plan-store/index.ts";
-import type { SequenceReviewDecision, SequenceReviewDocument } from "../plan-store/index.ts";
+import {
+    applyObservedPlanEvent,
+    observeCheckoutPlan,
+    prepareSequenceReviewPresentation,
+    snapshotSequenceReviewPresentation,
+    prepareSequenceReviewVersion,
+} from "../plan-store/index.ts";
+import type { SequenceReviewDecision } from "../plan-store/index.ts";
+import { applySequencePlanReviewForWorkflow } from "../plan-store/project-lifecycle.ts";
 /**
  * @module plan-written
  * Custom tool for planning agents to declare a plan and
@@ -35,7 +41,6 @@ import { type AgentToolResult, defineTool } from "@earendil-works/pi-coding-agen
 import { toolRegistry, type PlanWrittenExecutionPolicy } from "@runwield/tools";
 import { CLI_BIN } from "../constants.ts";
 import { ensurePlanIdentity, planDocumentsForCheckout } from "../plan-store/index.ts";
-import { recordPlanEvent } from "../plan-store/index.ts";
 import { loadPlanActionEvidence } from "../shared/workflow/plan-actions.ts";
 import { normalizePlanApprovalAction, PLAN_APPROVAL_ACTIONS } from "../shared/workflow/plan-approval.ts";
 import { recordWorkflowMetric } from "../shared/workflow/metrics.ts";
@@ -52,7 +57,7 @@ import {
     requestRecoverablePlanReview,
     SESSION_COMPLETE_GUIDANCE,
 } from "../shared/workflow/plan-review-recovery.ts";
-import { workflowEvents } from "@runwield/workflow/events";
+import { workflowEvents, type PlanWrittenEventPayload } from "@runwield/workflow/events";
 import type { HostedSession } from "@runwield/session-runtime/host";
 import type { TriageMeta } from "@runwield/workflow/state";
 
@@ -381,11 +386,11 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                 hostedSession.getManagedOperationCapability?.()?.assertLive();
 
                 let effectiveMeta = await resolveTriageMeta(triageMeta, planName, reviewCwd);
-                let sequenceDocuments: SequenceReviewDocument[] | undefined;
+                let sequenceDocuments: SequenceReviewPresentation[] | undefined;
                 try {
                     projectPlanType(effectiveMeta);
                     if (isSequencePlan(effectiveMeta)) {
-                        sequenceDocuments = await prepareSequenceReview(reviewCwd, planName, params.plans);
+                        sequenceDocuments = await prepareSequenceReviewPresentation(reviewCwd, planName, params.plans);
                         effectiveMeta = { ...effectiveMeta, ...sequenceDocuments[0].frontmatter };
                     } else if (params.plans) {
                         throw new Error("Multiple Plans require a PROJECT container with type: sequence.");
@@ -516,13 +521,14 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
 
                 // Presenting changed meaning cancels an earlier approval. A formatter
                 // does not cancel it, and merely reopening the saved review writes nothing.
+                let sequenceReopened = false;
                 for (const document of sequenceDocuments ?? [undefined]) {
                     const name = document?.planName ?? planName;
                     const documents = planDocumentsForCheckout(reviewCwd);
                     const current = document
                         ? {
                               attrs: document.frontmatter,
-                              body: document.packageInput ? document.plan : parsePlanFrontMatter(document.plan).body,
+                              body: document.body,
                               revision: document.revision,
                           }
                         : await documents.load(name);
@@ -544,14 +550,11 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                         const updated = await documents.load(name);
                         if (updated?.attrs.planId !== planId) throw new Error(`Plan identity changed: ${name}`);
                         if (name === planName) effectiveMeta = updated.attrs;
-                        if (document) {
-                            document.plan = document.packageInput
-                                ? updated.body
-                                : planDocumentMarkdown(updated.markdown);
-                            document.frontmatter = updated.attrs;
-                            document.revision = updated.revision;
-                        }
+                        if (document) sequenceReopened = true;
                     }
+                }
+                if (sequenceReopened) {
+                    sequenceDocuments = await snapshotSequenceReviewPresentation(reviewCwd, planName);
                 }
 
                 const initialReviewEvidence = await loadPlanActionEvidence(
@@ -600,6 +603,14 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                         });
                     }
                 }
+                const displayedVersion = sequenceDocuments
+                    ? await prepareSequenceReviewVersion(
+                          reviewCwd,
+                          planName,
+                          sequenceDocuments,
+                          hostedSession.getManagedMetadata?.()?.runwieldSessionId,
+                      )
+                    : undefined;
                 const recoverableReview = await requestRecoverablePlanReview({
                     requestReview: () =>
                         requestHostedSessionInteraction(
@@ -616,10 +627,10 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                                     planningAgentName: agentName,
                                     planPath,
                                     sequenceDocuments,
+                                    displayedVersion,
                                     classification: effectiveMeta.classification,
                                     expectedRevision: canonicalReviewEvidence?.revision,
                                     expectedStatus: canonicalReviewEvidence?.status,
-                                    expectedWorktree: canonicalReviewEvidence?.worktree,
                                     previousPlan,
                                     planVersions: planVersions.map((entry) => ({ ...entry })),
                                     triageMeta: effectiveMeta,
@@ -663,28 +674,46 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                 updateToolBlock("Plan review decision received.");
                 const reviewMeta = parsePlanReviewMeta(reviewResponse._meta);
                 if (
-                    sequenceDocuments &&
+                    displayedVersion &&
                     reviewMeta.sequenceDecision &&
                     reviewResponse.outcome !== RuntimeInteractionOutcomes.CANCELED
                 ) {
-                    const accepted = await applySequenceReviewDecision({
-                        cwd: reviewCwd,
-                        documents: sequenceDocuments,
-                        decision: reviewMeta.sequenceDecision,
-                        hostedSession,
-                        toolCallId,
-                    });
+                    const decision = reviewMeta.sequenceDecision;
+                    const accepted = await applySequencePlanReviewForWorkflow(reviewCwd, displayedVersion, decision);
                     if (accepted.cancellationReason) {
                         return textResult(accepted.feedback || "Refresh the Sequence review.", {
                             outcome: "repair_required",
                             planName,
-                            reason:
-                                accepted.cancellationReason === "sequence_handoff_failed"
-                                    ? accepted.cancellationReason
-                                    : "sequence_review_changed",
+                            reason: "sequence_review_changed",
                         });
                     }
-                    const outcome = accepted.workflowOutcome!;
+                    const { sequence } = accepted;
+                    if (!sequence?.planAttrs) throw new Error("The lifecycle did not return the reviewed Sequence.");
+                    const execute = accepted.approved && accepted.approvalAction === PLAN_APPROVAL_ACTIONS.RUN;
+                    const outcome: PlanWrittenEventPayload = {
+                        outcome: execute
+                            ? "approved_execute"
+                            : accepted.approved
+                              ? "saved"
+                              : accepted.conversationTurn
+                                ? "conversation"
+                                : "feedback",
+                        planName: sequence.planName,
+                        triageMeta: sequence.planAttrs,
+                        feedback: accepted.feedback,
+                        ...(sequence.images && { images: sequence.images }),
+                    };
+                    if (execute) hostedSession.setWorkflowPlanName(sequence.planName);
+                    try {
+                        workflowEvents(hostedSession).publish({ toolCallId, kind: "plan_written", payload: outcome });
+                    } catch (error) {
+                        return textResult(
+                            `The Sequence decision was saved, but its workflow handoff could not be published. Reopen the saved Sequence to retry. ${
+                                error instanceof Error ? error.message : String(error)
+                            }`,
+                            { outcome: "repair_required", planName, reason: "sequence_handoff_failed" },
+                        );
+                    }
                     return textResult(
                         accepted.approved
                             ? accepted.approvalAction === "run"
@@ -839,17 +868,18 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                     action: reviewResult.approvalAction,
                 });
 
+                const applyReadiness = async (event: "readiness_passed" | "epic_readiness_passed") => {
+                    const observed = await observeCheckoutPlan(reviewCwd, {
+                        planName,
+                        attrs: { status: "approved", planId: boundPlanId },
+                        revision: reviewResult.revision,
+                    });
+                    await applyObservedPlanEvent(reviewCwd, observed, event);
+                };
+
                 if (approvedMeta.classification === "PROJECT") {
                     const projectMeta = { ...approvedMeta };
-                    await recordPlanEvent({
-                        cwd: reviewCwd,
-                        planName,
-                        expectedPlanId: boundPlanId,
-                        event: "epic_readiness_passed",
-                        currentStatus: "approved",
-                        details: { triageMeta: projectMeta },
-                        expectedRevision: reviewResult.revision,
-                    });
+                    await applyReadiness("epic_readiness_passed");
                     await recordWorkflowMetricFn({
                         category: "planning",
                         event: "readiness_outcome",
@@ -937,15 +967,7 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                     );
                 }
 
-                await recordPlanEvent({
-                    cwd: reviewCwd,
-                    planName,
-                    expectedPlanId: boundPlanId,
-                    event: "readiness_passed",
-                    currentStatus: "approved",
-                    details: { triageMeta: approvedMeta },
-                    expectedRevision: reviewResult.revision,
-                });
+                await applyReadiness("readiness_passed");
                 await recordWorkflowMetricFn({
                     category: "planning",
                     event: "readiness_outcome",

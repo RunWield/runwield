@@ -1,3 +1,4 @@
+import { recordPlanEvent } from "../testing/plan-state-fixture.ts";
 import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
@@ -33,7 +34,7 @@ import {
     runExecutionPreparationTransition,
     runImplementationCheckpointTransition,
 } from "../../plan-store/index.ts";
-import { recordPlanEvent } from "../../plan-store/index.ts";
+
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";

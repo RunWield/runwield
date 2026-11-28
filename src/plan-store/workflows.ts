@@ -24,6 +24,12 @@ import { continueImportedPackage } from "./legacy.ts";
 import { currentRetainedCheckoutSource } from "@runwield/plans/retained-checkout";
 import { withWorkRecordOwner, withoutWorkRecordOwner } from "../shared/work-records/owner.ts";
 import { journalPackageMetadataWrite } from "./transitions.ts";
+import {
+    requiresLifecycleOperationDocument,
+    stageLifecycleOperationDocument,
+} from "@runwield/plans/operation-receipts";
+import { retainPlanReviewOperationResult } from "./operation-results.ts";
+import type { SharedPlanReviewActionResult } from "./review.ts";
 /** Explicit internal package authority. A scope propagates an admitted source through existing workflow owners. */
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
@@ -41,7 +47,7 @@ import {
     type PackageWorkflowEvidence,
 } from "@runwield/plans/package-storage";
 import type { WorkflowControllerState } from "@runwield/plans/controller-state";
-import type { PlanFrontMatter, PlanId } from "@runwield/plans";
+import { plans, type PlanFrontMatter, type PlanId } from "@runwield/plans";
 
 export interface PlanExecutionHost {
     projectId: string;
@@ -295,7 +301,11 @@ export async function updatePackageWorkflowMetadata(
     expectedRevision?: string,
     workflowUpdate?: PackageWorkflowEvidence,
     milestone?: "approved" | { delivered: PackageInputReference },
-    reviewedContext?: { text: string; input: PackageWorkflowInput },
+    reviewedContext?: {
+        text: string;
+        input: PackageWorkflowInput;
+        result?: SharedPlanReviewActionResult;
+    },
 ) {
     return await packageWorkflowLocks([planName], async () => {
         const current = (await selectedPackage(planName))!;
@@ -377,6 +387,14 @@ export async function updatePackageWorkflowMetadata(
         const previous = packageDocumentText(current.documents);
         if (reviewedContext) {
             const inputs = await files.retainedReviewWrites(current, reviewedContext.input);
+            if (reviewedContext.result) {
+                retainPlanReviewOperationResult({
+                    ...reviewedContext.result,
+                    ...(reviewedContext.result.approved && {
+                        planAttrs: await files.projectWorkflowGeneration({ ...current, metadata: nextMetadata }),
+                    }),
+                });
+            }
             await commitPlanPackageBatch(
                 identity,
                 [
@@ -389,6 +407,11 @@ export async function updatePackageWorkflowMetadata(
                 { inputs, reopened },
             );
         } else {
+            const planId = plans.identity.parse(current.metadata.planId);
+            if (planId && requiresLifecycleOperationDocument(planId))
+                stageLifecycleOperationDocument(
+                    await files.projectLifecycleGeneration({ ...current, metadata: nextMetadata }, planId),
+                );
             await updatePlanPackageMetadata(
                 identity,
                 current.metadata.planId,

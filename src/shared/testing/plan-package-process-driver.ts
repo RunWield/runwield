@@ -291,7 +291,7 @@ try {
                 }
                 const { openWorkflow } = await import("@runwield/workflow");
                 const { withPackageWorkflow, loadPackageWorkflowPlan } = await import("../../plan-store/workflows.ts");
-                const { recordPlanEvent } = await import("../../plan-store/index.ts");
+                const { recordPlanEvent } = await import("./plan-state-fixture.ts");
                 const { preparePlanWorkflow } = await import("../../plan-store/index.ts");
                 result = await withPackageWorkflow(
                     request.identity.checkoutRoot,
@@ -311,7 +311,7 @@ try {
                         }
                         if (request.command === "review-race" || request.command === "review") {
                             const { capturePackageWorkflowInput } = await import("../../plan-store/workflows.ts");
-                            const { applySharedPlanReviewDecision } = await import("../../plan-store/index.ts");
+                            const { applySharedPlanReviewDecision } = await import("./plan-query-fixture.ts");
                             const plan = await loadPackageWorkflowPlan(current.metadata.name);
                             const input = await capturePackageWorkflowInput(current.metadata.name);
                             return await applySharedPlanReviewDecision({
@@ -335,7 +335,7 @@ try {
                         }
                         if (request.command === "sequence" || request.command === "sequence-race") {
                             const { prepareSequenceReview, applySequenceReviewDecision } =
-                                await import("../../plan-store/index.ts");
+                                await import("./plan-query-fixture.ts");
                             const documents = await prepareSequenceReview(
                                 request.identity.checkoutRoot,
                                 current.metadata.name,

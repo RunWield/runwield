@@ -2,14 +2,7 @@ import { readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
 /** Image loading shared by single and grouped review decisions. */
 import { isAbsolute, resolve } from "node:path";
 import { mimeTypeForImagePath } from "../session/image-attachments.ts";
-export interface ReviewImageInput {
-    path?: string;
-    name?: string;
-}
-
-export interface ReviewAnnotationInput {
-    images?: ReviewImageInput[];
-}
+import type { ReviewAnnotationInput, ReviewImageDecision, ReviewImageInput } from "@runwield/plans/lifecycle";
 
 export interface LoadedReviewImage {
     base64: string;
@@ -17,12 +10,6 @@ export interface LoadedReviewImage {
     name: string;
 }
 
-export interface ReviewImageDecision {
-    images?: ReviewImageInput[];
-    globalAttachments?: ReviewImageInput[];
-    annotations?: ReviewAnnotationInput[];
-    codeAnnotations?: ReviewAnnotationInput[];
-}
 const MAX_REVIEW_IMAGE_BYTES = 20 * 1024 * 1024;
 
 /**

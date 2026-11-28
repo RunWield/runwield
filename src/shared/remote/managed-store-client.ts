@@ -110,7 +110,6 @@ async function executeManagedFixture() {
         const {
             authorLocalPlan,
             openPlanStoreForCheckout,
-            recordPlanEvent,
             withLocalPlanWorkflow,
             reservePlanExecution,
             readPlanResource,
@@ -118,6 +117,7 @@ async function executeManagedFixture() {
             savePlanProse,
             savePlanDefinition,
         } = await import("../../plan-store/index.ts");
+        const { recordPlanEvent } = await import("../testing/plan-state-fixture.ts");
         const { loadPlan, listPlans } = await import("../testing/plan-query-fixture.ts");
         const before = await listPlans(input.cwd);
         if (before.length) throw new Error("Passive catalog must remain empty before authoring.");
@@ -417,7 +417,8 @@ async function executeManagedFixture() {
             { summary: "Exercise managed ownership" },
             { expectedRevision: updated.revision },
         );
-        const { capturePlanReviewInput, applyPlanReviewForExecution } = await import("../../plan-store/index.ts");
+        const { capturePlanReviewInput, applyPlanReviewForExecution } =
+            await import("../testing/plan-query-fixture.ts");
         const reviewPlan = await loadPlan(input.cwd, "public-tool");
         if (!reviewPlan) throw new Error("Review Plan is unavailable.");
         const { assertAuthorizedPlanPath, assertReadablePlanResource, loadPlanDetail, readPlanReviewPresentation } =
@@ -633,7 +634,8 @@ async function executeManagedFixture() {
         });
         if (!searched.records.some((entry) => entry.recordId === recordId))
             throw new Error("Public record search omitted confirmed delivery.");
-        const { renamePlan, archiveSavedPlan, restoreSavedPlan } = await import("../../plan-store/index.ts");
+        const { renamePlan } = await import("../../plan-store/index.ts");
+        const { archiveSavedPlan, restoreSavedPlan } = await import("../testing/plan-query-fixture.ts");
         const { listArchivedPlans, loadArchivedPlan, deleteArchivedPlanUnit } =
             await import("../testing/plan-query-fixture.ts");
         const delivered = await loadPlan(input.cwd, "public-tool");
@@ -710,7 +712,7 @@ async function executeManagedFixture() {
             (await findPlansByParent(input.cwd, "managed-sequence")).length !== 2
         )
             throw new Error("Managed child family did not retain its owner.");
-        const { prepareSequenceReview, applySequenceReviewDecision } = await import("../../plan-store/index.ts");
+        const { prepareSequenceReview, applySequenceReviewDecision } = await import("../testing/plan-query-fixture.ts");
         const sequenceDocuments = await prepareSequenceReview(input.cwd, "managed-sequence");
         if (sequenceDocuments.length !== 3) throw new Error("Managed Sequence snapshot omitted family members.");
         const sequenceDecision = await applySequenceReviewDecision({
@@ -1179,7 +1181,7 @@ async function executeManagedFixture() {
         await importedPlanCopyChoice(input.cwd, "docs/plans", input.copyDocuments);
         if (await importedPlanCopyChoice(input.cwd, "docs/plans"))
             throw new Error("Managed repository copy choice was not retained.");
-        const { archivePlansByStatus } = await import("../../plan-store/index.ts");
+        const { archivePlansByStatus } = await import("../testing/plan-query-fixture.ts");
         const bulk = await archivePlansByStatus(input.cwd, "draft", { force: true });
         if (
             bulk.failed.length ||

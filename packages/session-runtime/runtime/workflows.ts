@@ -461,7 +461,7 @@ ${outcome.feedback || ""}`,
                 session.getManagedOperationCapability?.()?.assertLive();
                 const { executePlan } = await import("../../../src/shared/workflow/workflow.ts");
                 const { resolveWorkflowPlanLocation } = await import("../../../src/plan-store/index.ts");
-                const { recordPlanEvent } = await import("../../../src/plan-store/index.ts");
+                const { applyWorkflowPlanEvent } = await import("../../../src/plan-store/project-lifecycle.ts");
                 const location = await resolveWorkflowPlanLocation(session.cwd, options.planName || "", {
                     readOnly: true,
                 });
@@ -472,7 +472,7 @@ ${outcome.feedback || ""}`,
                 if (interrupted && location.plan) {
                     // Resume the saved attempt in this segment. The execution runner restores
                     // its worktree and tools; an ordinary user turn cannot establish that context.
-                    await recordPlanEvent({
+                    await applyWorkflowPlanEvent({
                         cwd: location.documentRoot,
                         planName: options.planName || "",
                         event: "recovery_continue",

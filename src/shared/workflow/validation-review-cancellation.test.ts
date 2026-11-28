@@ -1,7 +1,7 @@
 import { openWorkflow } from "@runwield/workflow";
-import { seedPlanState, seedPlan } from "../testing/plan-state-fixture.ts";
+import { recordPlanEvent, seedPlanState, seedPlan } from "../testing/plan-state-fixture.ts";
 import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
-import { recordPlanEvent } from "../../plan-store/index.ts";
+
 import { startActiveExecutionWorkflow, createExecutionStartPorts } from "./execution-start.ts";
 import { test } from "node:test";
 import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";

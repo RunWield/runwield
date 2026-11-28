@@ -1,10 +1,11 @@
+import { recordPlanEvent } from "../../testing/plan-state-fixture.ts";
 import { openWorkflow } from "@runwield/workflow";
 import fs from "node:fs/promises";
 import { join } from "node:path";
 import { packageFixture, create, read } from "../../testing/plan-package-fixture.ts";
 import { loadPackageWorkflowPlan, type PackageWorkflowSelection } from "../../../plan-store/workflows.ts";
 import { withPackageWorkflow } from "../../../plan-store/workflows.ts";
-import { recordPlanEvent } from "../../../plan-store/index.ts";
+
 import { createExecutionStartPorts, startActiveExecutionWorkflow } from "../execution-start.ts";
 import { git } from "../../git-test-fixture.ts";
 import { captureForegroundProcess } from "@runwield/resources/process";

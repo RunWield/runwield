@@ -1,3 +1,4 @@
+import { recordPlanEvent } from "../testing/plan-state-fixture.ts";
 import { readAttachedAction } from "./coordinator.ts";
 import { test } from "node:test";
 import type { AttachedJsonObject } from "./operations.ts";
@@ -18,7 +19,7 @@ import {
 import { conversation, pendingChat, reply, reviewApi, sendChat, status } from "./review-chat-test-fixture.ts";
 import { loadAttachedWorkflowRecord, locateAttachedWorkflows } from "./record-store.ts";
 import { loadPlan } from "../testing/plan-query-fixture.ts";
-import { recordPlanEvent } from "../../plan-store/index.ts";
+
 
 test("Plan page chat queues in order, replies through the saved source, and still accepts a structured decision", async () => {
     await withProject(async (root) => {

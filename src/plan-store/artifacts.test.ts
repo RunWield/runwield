@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { loadPlan } from "../shared/testing/plan-query-fixture.ts";
 
 import { moveCheckoutEpicArtifacts } from "@runwield/plans/artifact-files";
-import { openPlanStoreForCheckout, workflowEpicArtifacts } from "./index.ts";
+import { openPlanLifecycleForCheckout, openPlanStoreForCheckout, workflowEpicArtifacts } from "./index.ts";
 import { packageFixture } from "../shared/testing/plan-package-fixture.ts";
 import { plans } from "@runwield/plans";
 import { withRetainedPlanFixture } from "../shared/testing/retained-plan-fixture.ts";
@@ -167,7 +167,10 @@ test("project-bound artifact access uses the Epic ID and its current revision", 
         );
         assertEquals(await store.artifacts.read(epic.planId, "integration-report.md"), reportAfterContextEdit);
 
-        await store.archive(epic.planId, { expectedRevision: editedEpic.revision, force: true });
+        await openPlanLifecycleForCheckout(fixture.root)!.archive(epic.planId, {
+            expectedRevision: editedEpic.revision,
+            force: true,
+        });
         const planReadError = await assertRejects(() => store.read(epic.planId), PlanNotFoundError);
         const artifactReadError = await assertRejects(
             () => store.artifacts.read(epic.planId, "integration-report.md"),

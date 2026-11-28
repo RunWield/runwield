@@ -6,7 +6,7 @@ import {
     managedPersonalStoreActive,
 } from "@runwield/plans/managed-project-connection";
 import { currentManagedRetainedExecution } from "./managed.ts";
-import { hasRetainedCheckoutSource } from "@runwield/plans/retained-checkout";
+import { hasRetainedCheckoutSource, validatedRetainedCheckoutSource } from "@runwield/plans/retained-checkout";
 import { currentPackageProject, currentPackageSelection, withPackageProject } from "./workflows.ts";
 
 export class PlanAccessMismatchError extends Error {}
@@ -60,4 +60,21 @@ export function checkoutPlanIdentity(cwd: string) {
     const inspected = projects.checkout.inspect(cwd);
     if (inspected.kind === "invalid") throw new Error(inspected.message);
     return inspected.kind === "existing" ? inspected.identity : undefined;
+}
+
+/** An admitted retained checkout can review its own document without opening the canonical writer. */
+export function bindCheckoutPlanLifecycle(cwd: string) {
+    const retained = validatedRetainedCheckoutSource(cwd);
+    if (retained && !managedPersonalStoreActive()) {
+        const run: ReturnType<typeof bindProjectPlanStore> = async (operation, mode = "write") => {
+            if (mode !== "retained") throw new Error("This Plan transition requires the canonical Project owner.");
+            if (managedPersonalStoreActive() || validatedRetainedCheckoutSource(cwd) !== retained)
+                throw new PlanAccessMismatchError("The retained Plan review source changed. Reopen review.");
+            return await operation(cwd);
+        };
+        return { projectId: retained.projectId, run };
+    }
+    const admitted = checkoutPlanIdentity(cwd);
+    if (!admitted) return undefined;
+    return { projectId: admitted.projectId, run: bindProjectPlanStore(admitted.projectId, { admitted }) };
 }

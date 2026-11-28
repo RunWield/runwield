@@ -1,12 +1,18 @@
 import { authenticatedProjectStoreRequest } from "../shared/remote/project-store-request.ts";
 import { workRecords } from "@runwield/plans/work-records";
 import { openNativeFileLock } from "@runwield/resources/fs";
+import { planOperationReceiptDirectory } from "@runwield/plans/operation-receipts";
 import { workRecordFiles } from "@runwield/plans/work-record-files";
 import { parseProjectId, projects, type HomeProjectOwner } from "@runwield/projects";
 import { constants, tmpdir } from "node:os";
-import { parseHistoryList, parseMilestoneDocuments } from "../shared/remote/project-store-protocol.ts";
+import {
+    parseHistoryList,
+    parseMilestoneDocuments,
+    validateProjectStoreReply,
+    validateProjectStoreRequest,
+} from "../shared/remote/project-store-protocol.ts";
 import { test } from "node:test";
-import { equal, deepEqual, rejects } from "node:assert/strict";
+import { equal, deepEqual, ok, rejects } from "node:assert/strict";
 import { randomUUID, createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 import { readFile, writeFile, unlink, mkdir, mkdtemp, rm, rename, symlink, stat, utimes } from "node:fs/promises";
@@ -74,6 +80,134 @@ test("a lost receipt is reconciled before a later local edit and original retrie
         await fixture.cleanup();
     }
 });
+
+for (const wire of ["current", "legacy"] as const) {
+    test(`a managed live review with ${wire} evidence replays its receipt after a newer Plan generation`, async () => {
+        const fixture = await packageFixture();
+        try {
+            await authorLocalPlan(fixture.root, { planName: "proposal", contextMarkdown: "# Before\n" });
+            const before = await loadPlan(fixture.root, "proposal");
+            ok(before?.attrs.planId);
+            const owner = new PreparedProjectStore(fixture.root);
+            const capture = await owner.execute({
+                kind: "capture-review",
+                planId: before.attrs.planId,
+                expectedRevision: before.revision,
+            });
+            ok("reviewInput" in capture.result);
+            const command = {
+                kind: "review-decision" as const,
+                planId: before.attrs.planId,
+                operationId: randomUUID(),
+                expectedRevision: before.revision,
+                sourceStatus: before.attrs.status,
+                sourceMarkdown: before.markdown,
+                controllerRevision: wire === "current" ? before.controllerRevision : null,
+                sourceWorktree: { kind: "none" as const },
+                input: capture.result.reviewInput,
+                decision: { approved: true, approvalAction: "later" as const, plan: "# Reviewed\n" },
+                classification: "PLANNED_CHANGE" as const,
+                workKind: null,
+            };
+            const request = { binding: owner.binding, command };
+            validateProjectStoreRequest(request);
+            const first = await owner.execute(command);
+            validateProjectStoreReply(first, request);
+            ok("reviewResult" in first.result && first.result.reviewResult?.approved && first.result.revision);
+            await savePlanProse(fixture.root, "proposal", "# External later edit\n", first.result.revision);
+            deepEqual(await new PreparedProjectStore(fixture.root).execute(command), first);
+            await rejects(owner.execute({ ...command, operationId: randomUUID() }), /changed|review/i);
+            equal((await loadPlan(fixture.root, "proposal"))?.body, "# External later edit\n");
+        } finally {
+            await fixture.cleanup();
+        }
+    });
+}
+
+test("an ordinary managed review approves its unchanged displayed source", async () => {
+    const { withProcessGlobalTestLock } = await import("../testing/process-global-lock.ts");
+    const { composedRemoteFixture } = await import("../shared/remote/composed-store-fixture.ts");
+    await withProcessGlobalTestLock(async () => {
+        const fixture = await composedRemoteFixture();
+        try {
+            ok(await fixture.run("managed-author"));
+            deepEqual(JSON.parse(await fixture.run("managed-live-review")), { approved: true });
+            equal((await loadPlan(fixture.root, "repeatable"))?.attrs.status, "approved");
+        } finally {
+            await fixture.cleanup();
+        }
+    });
+});
+
+for (const scenario of [
+    { wire: "current", update: "meaningful controller evidence" },
+    { wire: "current", update: "controller timestamp only" },
+    { wire: "legacy", update: "meaningful controller evidence" },
+] as const) {
+    test(`a ${scenario.wire} managed review requires a refresh after changing ${scenario.update}`, async () => {
+        const { withProcessGlobalTestLock } = await import("../testing/process-global-lock.ts");
+        const { composedRemoteFixture } = await import("../shared/remote/composed-store-fixture.ts");
+        const { seedPlanController } = await import("../shared/testing/plan-state-fixture.ts");
+        const { withLocalPlanWorkflow } = await import("./index.ts");
+        await withProcessGlobalTestLock(async () => {
+            const fixture = await composedRemoteFixture();
+            let changedPlan: Awaited<ReturnType<typeof loadPlan>> = null;
+            const proxy = Bun.serve({
+                port: 0,
+                hostname: "127.0.0.1",
+                async fetch(request) {
+                    const path = new URL(request.url).pathname;
+                    if (path === "/project-store") {
+                        const payload: ProjectStoreRequest = await request.clone().json();
+                        const { command } = payload;
+                        if (command.kind === "review-decision") {
+                            const displayed = await loadPlan(fixture.root, "repeatable");
+                            ok(displayed);
+                            equal(command.controllerRevision, displayed.controllerRevision);
+                            equal(command.expectedRevision, displayed.revision);
+                            deepEqual(command.sourceWorktree, { kind: "none" });
+                            const updates =
+                                scenario.update === "controller timestamp only"
+                                    ? { updatedAt: "2026-11-05T12:00:00Z" }
+                                    : { failureReason: "New Core evidence." };
+                            await withLocalPlanWorkflow(fixture.root, "repeatable", () =>
+                                seedPlanController(fixture.root, { planName: "repeatable" }, updates),
+                            );
+                            changedPlan = await loadPlan(fixture.root, "repeatable");
+                            ok(changedPlan && changedPlan.controllerRevision !== command.controllerRevision);
+                            equal(changedPlan.body, displayed.body);
+                            equal(changedPlan.attrs.status, "draft");
+                            if (scenario.wire === "legacy")
+                                return await fetch(new URL(path, fixture.endpoint), {
+                                    method: request.method,
+                                    headers: { ...fixture.headers, "Content-Type": "application/json" },
+                                    body: JSON.stringify({
+                                        ...payload,
+                                        command: { ...command, controllerRevision: null },
+                                    }),
+                                });
+                        }
+                    }
+                    return await fetch(new Request(new URL(path, fixture.endpoint), request));
+                },
+            });
+            try {
+                ok(await fixture.run("managed-author"));
+                deepEqual(JSON.parse(await fixture.run("managed-live-review", proxy.port)), {
+                    approved: false,
+                    cancellationReason: "stale_plan_review",
+                });
+                ok(changedPlan);
+                deepEqual(await loadPlan(fixture.root, "repeatable"), changedPlan);
+                deepEqual(JSON.parse(await fixture.run("managed-live-review")), { approved: true });
+                equal((await loadPlan(fixture.root, "repeatable"))?.attrs.status, "approved");
+            } finally {
+                proxy.stop(true);
+                await fixture.cleanup();
+            }
+        });
+    });
+}
 
 test("concurrent duplicates have one outcome while a stale competing write is refused", async () => {
     const fixture = await packageFixture();
@@ -189,6 +323,142 @@ test("definition and lifecycle commands preserve owner policy and reject protect
     }
 });
 
+test("a failed lifecycle snapshot write leaves the Plan unchanged and the same command retryable", async () => {
+    const fixture = await packageFixture();
+    try {
+        const service = new PreparedProjectStore(fixture.root);
+        const { planId, revision } = await service.author({
+            planName: "proposal",
+            contextMarkdown: "# Original Plan\n",
+        });
+        const read = { kind: "plan-resource" as const, planId };
+        const before = await service.execute(read);
+        const command = {
+            kind: "archive-plan" as const,
+            operationId: randomUUID(),
+            planId,
+            expectedRevision: revision,
+            reason: "Archive after retaining the snapshot",
+            force: true,
+            now: "2026-11-01T00:00:00.000Z",
+        };
+        const directory = planOperationReceiptDirectory(fixture.identity);
+        const snapshotPath = join(directory, "plan-lifecycle-documents", `${command.operationId}.json`);
+        await mkdir(snapshotPath, { recursive: true });
+
+        await rejects(service.execute(command));
+        deepEqual(await service.execute(read), before);
+        const probe = { kind: "reconcile" as const, planId, operationId: command.operationId };
+        const receipt = await service.execute(probe);
+        equal("status" in receipt.result && receipt.result.status, "unstarted");
+
+        await rm(snapshotPath, { recursive: true });
+        const retried = await service.execute(command);
+        ok("document" in retried.result && retried.result.document);
+        equal(retried.result.document.revision, retried.result.revision);
+        equal(retried.result.document.attrs.archivedAt, command.now);
+        equal(retried.result.document.body, "# Original Plan\n");
+        ok(retried.result.document.revision !== revision);
+        const committed = await service.execute(read);
+        deepEqual(await service.execute(command), retried);
+        deepEqual(await service.execute(read), committed);
+    } finally {
+        await fixture.cleanup();
+    }
+});
+
+test("lifecycle mutation retries return their committed documents after subsequent writes", async () => {
+    const fixture = await packageFixture();
+    try {
+        const service = new PreparedProjectStore(fixture.root);
+        const body = "# Original Plan\n";
+        const { planId, revision } = await service.author({ planName: "proposal", contextMarkdown: body });
+        const event = {
+            kind: "record-event" as const,
+            operationId: randomUUID(),
+            planId,
+            expectedRevision: revision,
+            event: "review_approved" as const,
+        };
+        const metadataPath = join(dirname((await loadPlan(fixture.root, "proposal"))!.path), "plan.wld.json");
+        const before = await readFile(metadataPath, "utf8");
+        const committedEvent = await service.execute(event);
+        validateProjectStoreReply(JSON.parse(JSON.stringify(committedEvent)), {
+            binding: committedEvent.binding,
+            command: event,
+        });
+        ok("document" in committedEvent.result && committedEvent.result.document);
+        equal(committedEvent.result.document.attrs.status, "approved");
+        equal(committedEvent.result.document.body, body);
+
+        // Interrupt the owner after recording its effect and before replacing the package or receipt.
+        const directory = planOperationReceiptDirectory(fixture.identity);
+        const receiptPath = join(directory, "operations", `${event.operationId}.json`);
+        const snapshotPath = join(directory, "plan-lifecycle-documents", `${event.operationId}.json`);
+        const receipt = JSON.parse(await readFile(receiptPath, "utf8"));
+        equal(receipt.lifecycleDocumentDigest, hash(await readFile(snapshotPath, "utf8")));
+        const after = await readFile(metadataPath, "utf8");
+        await writeFile(metadataPath, before);
+        await writeFile(
+            receiptPath,
+            JSON.stringify({
+                version: receipt.version,
+                operationId: event.operationId,
+                digest: receipt.digest,
+                planId,
+                outcome: { operationId: event.operationId, status: "unstarted" },
+            }),
+        );
+        await writeFile(
+            join(directory, "operation-effect.json"),
+            JSON.stringify({
+                version: 1,
+                receipt,
+                path: metadataPath,
+                beforeHash: hash(before),
+                after,
+                afterHash: hash(after),
+            }),
+        );
+
+        const archive = {
+            kind: "archive-plan" as const,
+            operationId: randomUUID(),
+            planId,
+            expectedRevision: committedEvent.result.document.revision,
+            reason: "Owner decision",
+            force: true,
+            now: "2026-11-01T00:00:00.000Z",
+        };
+        const committedArchive = await service.execute(archive);
+        ok("document" in committedArchive.result && committedArchive.result.document);
+        equal(committedArchive.result.document.attrs.archivedAt, archive.now);
+        equal(committedArchive.result.document.attrs.archiveReason, archive.reason);
+        equal(committedArchive.result.document.body, body);
+        const restore = {
+            kind: "restore-plan" as const,
+            operationId: randomUUID(),
+            planId,
+            expectedRevision: committedArchive.result.document.revision,
+        };
+        const committedRestore = await service.execute(restore);
+        ok("document" in committedRestore.result && committedRestore.result.document);
+        ok(committedRestore.result.document.attrs.restoredAt);
+        equal(committedRestore.result.document.body, body);
+
+        await savePlanProse(fixture.root, "proposal", "# Later Plan\n", committedRestore.result.document.revision);
+        const reopened = new PreparedProjectStore(fixture.root);
+        deepEqual(await reopened.execute(event), committedEvent);
+        deepEqual(await reopened.execute(archive), committedArchive);
+        deepEqual(await reopened.execute(restore), committedRestore);
+        await unlink(snapshotPath);
+        await rejects(reopened.execute(event), /ENOENT|lifecycle document evidence/);
+        equal((await loadPlan(fixture.root, "proposal"))!.body, "# Later Plan\n");
+    } finally {
+        await fixture.cleanup();
+    }
+});
+
 test("missing or corrupt receipts never turn a reserved identity into a new mutation", async () => {
     const fixture = await packageFixture();
     try {
@@ -284,7 +554,6 @@ test("a registered home-only Project authors and edits Plans without a source ch
 
 import { publicationFixture } from "../shared/workflow/testing/package-publication-fixture.ts";
 import { git } from "../shared/git-test-fixture.ts";
-import { ok } from "node:assert/strict";
 
 test("home-owned snapshot publication retains frozen documents without touching the execution checkout", async () => {
     const fixture = await publicationFixture();
@@ -612,13 +881,9 @@ async function connectOwner(owner: HomeProjectOwner) {
 test("family QA retries recover the child effect and finish the exact parent artifact", async () => {
     const fixture = await packageFixture();
     try {
-        const {
-            saveChildFeaturePlans,
-            recordPlanEvent,
-            withLocalPlanWorkflow,
-            reservePlanExecution,
-            readPlanResource,
-        } = await import("./index.ts");
+        const { saveChildFeaturePlans, withLocalPlanWorkflow, reservePlanExecution, readPlanResource } =
+            await import("./index.ts");
+        const { recordPlanEvent } = await import("../shared/testing/plan-state-fixture.ts");
         await authorLocalPlan(fixture.root, {
             planName: "family",
             contextMarkdown: "# Family\n",
@@ -1590,6 +1855,8 @@ test("managed Plan revision requires an exact ID and revision and replays after 
                 now: "",
             });
             ok("status" in archived.result && archived.result.status === "completed");
+            equal(archived.result.document?.body, laterBody);
+            equal(archived.result.document?.attrs.archiveReason, "Test retained receipts");
             const fresh = {
                 ...command,
                 operationId: randomUUID(),

@@ -1,9 +1,9 @@
 import { openWorkflow } from "@runwield/workflow";
-import { seedPlanState, seedPlan } from "../../testing/plan-state-fixture.ts";
+import { recordPlanEvent, seedPlanState, seedPlan } from "../../testing/plan-state-fixture.ts";
 import { rememberNonGitExecutionConsent } from "../../non-git-execution-consent.ts";
 import { withLocalPlanWorkflow } from "../../../plan-store/index.ts";
 import { startActiveExecutionWorkflow, createExecutionStartPorts } from "../execution-start.ts";
-import { recordPlanEvent } from "../../../plan-store/index.ts";
+
 import { runtimeSourceArgs } from "../../../testing/runtime-source-args.ts";
 import { tmpdir } from "node:os";
 import {

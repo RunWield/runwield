@@ -1,5 +1,5 @@
 import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
-import { capturePlanReviewInput } from "../../plan-store/index.ts";
+import { capturePlanReviewInput } from "../../shared/testing/plan-query-fixture.ts";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
@@ -16,9 +16,9 @@ import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { RuntimeInteractionTypes } from "@runwield/session-runtime/interactions";
-import { applySharedPlanReviewDecision } from "../../plan-store/index.ts";
+import { applySharedPlanReviewDecision } from "../../shared/testing/plan-query-fixture.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
-import type { SequenceReviewDocument } from "../../plan-store/index.ts";
+import type { SequenceReviewPresentation as SequenceReviewDocument } from "@runwield/plans/lifecycle";
 
 const image = {
     base64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",

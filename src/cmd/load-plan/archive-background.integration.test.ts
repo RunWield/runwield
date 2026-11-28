@@ -4,7 +4,7 @@ import { withRetainedPlanFixture } from "../../shared/testing/retained-plan-fixt
 import { test } from "node:test";
 import { assertEquals } from "../../testing/assertions.ts";
 
-import { archiveSavedPlan } from "../../plan-store/index.ts";
+import { archiveObservedPlan } from "../../plan-store/index.ts";
 import { loadArchivedPlan, loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
 import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
@@ -92,11 +92,46 @@ test("Epic archive uses the child document in its planning worktree", async () =
     });
 });
 
+test("an Epic edited while its menu is open keeps its catalog entry and its children", async () => {
+    await withRuntimeCommandFixture("archive-stale-epic-", async ({ projectRoot }) => {
+        await withRetainedPlanFixture(projectRoot, async () => {
+            await seedPlan(projectRoot, "epic", "# Original", { classification: "PROJECT", status: "verified" });
+            await seedPlan(projectRoot, "epic/child", "# Child", { parentPlan: "epic", status: "draft" });
+            const opened = await loadPlan(projectRoot, "epic");
+            ok(opened);
+            await seedPlan(projectRoot, "epic", "# Edited", opened.attrs, { expectedRevision: opened.revision });
+            const messages: string[] = [];
+            const uiAPI: UiAPI = {
+                abortActivePrompt: () => {},
+                appendSystemMessage: (message) => messages.push(message),
+                appendAgentMessageStart: () => ({ appendText: () => {} }),
+                requestRender: () => {},
+                promptText: () => Promise.resolve(null),
+                showModelSelector: () => {},
+                promptSelect: () => {
+                    throw new Error("Stale archive reached confirmation");
+                },
+            };
+            assertEquals(
+                await archiveEpicWithChildren({ projectRoot, plan: { ...opened, planName: "epic" }, uiAPI }),
+                false,
+            );
+            ok(messages.some((message) => message.includes("selected Epic changed")));
+            assertEquals((await loadPlan(projectRoot, "epic"))?.body, "# Edited");
+            assertEquals((await loadPlan(projectRoot, "epic/child"))?.body, "# Child");
+        });
+    });
+});
+
 test("stale archive metadata blocks without claiming an interrupted Plan update", async () => {
     await withRuntimeCommandFixture("archive-stale-metadata-", async ({ projectRoot }) => {
         await seedPlan(projectRoot, "finished", "# Finished", { status: "verified" });
         await rejects(
-            archiveSavedPlan(projectRoot, "finished", { expectedRevision: "unread-revision" }),
+            archiveObservedPlan(
+                projectRoot,
+                { planName: "finished", revision: "unread-revision", status: "verified" },
+                {},
+            ),
             (error: Error) => {
                 assertEquals(error.message.includes("changed after this operation read it"), true);
                 assertEquals(error.message.includes("Reload the Plan and retry"), true);

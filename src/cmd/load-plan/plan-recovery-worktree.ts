@@ -28,7 +28,7 @@ import { buildPlanSummary } from "../../shared/plan-presentation.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { enterProjectRuntime } from "@runwield/project-runtime/layout";
 
-import { recordPlanEvent } from "../../plan-store/index.ts";
+import { applyObservedPlanEvent, observeCheckoutPlan } from "../../plan-store/index.ts";
 import type { PlanFrontMatter } from "@runwield/plans";
 import type { PlanStatus } from "@runwield/plans/lifecycle";
 import type { UiAPI } from "../../ui/tui/api.ts";
@@ -156,24 +156,19 @@ export async function reopenPlanForReview({
     worktreeContext,
     session,
 }: ReopenPlanForReviewOptions): Promise<void> {
+    const observed = await observeCheckoutPlan(projectRoot, plan);
     const priorWorktree =
         worktreeContext === undefined ? await resolveRecoveryWorktree(projectRoot, plan) : worktreeContext;
     if (!priorWorktree?.id) {
         assertRecoveryWorktreeIsManaged(plan.planName, priorWorktree);
         session.clearActiveExecutionWorkflow();
-        const updatedAttrs = await recordPlanEvent({
-            cwd: projectRoot,
-            planName: plan.planName,
-            event: "review_reopened",
-            currentStatus,
-            details: { triageMeta: plan.attrs },
-        });
+        const updatedAttrs = await applyObservedPlanEvent(projectRoot, observed, "review_reopened");
         plan.attrs = { ...plan.attrs, ...updatedAttrs };
         return;
     }
     const priorWorktreeId = priorWorktree.id;
     const { documentRoot } = await resolveWorkflowPlanLocation(projectRoot, plan.planName);
-    await reopenPlanReview(documentRoot, plan.planName, priorWorktreeId, currentStatus, plan.revision);
+    await reopenPlanReview(documentRoot, plan.planName, priorWorktreeId, currentStatus, observed.revision);
     session.clearActiveExecutionWorkflow();
     const refreshed = await planDocumentsForCheckout(documentRoot).load(plan.planName);
     if (refreshed) Object.assign(plan, refreshed);

@@ -56,6 +56,52 @@ test("Plan boundary permits public operations, pure formatting and explicit priv
     );
 });
 
+test("direct lifecycle writes cannot be reexported through the Plan store", () => {
+    const surface = "src/plan-store/index.ts";
+    equal(inspectPlanStoreImports(surface, 'export { archivePlan as archive } from "./queries.ts";').length, 1);
+    equal(inspectPlanStoreImports(surface, 'export * from "./queries.ts";').length, 1);
+    equal(inspectPlanStoreImports(surface, 'export { recordPlanEvent } from "./events.ts";').length, 1);
+    equal(
+        inspectPlanStoreImports(surface, 'export { serializePlanReviewVersion } from "./lifecycle-review.ts";').length,
+        1,
+    );
+    equal(
+        inspectPlanStoreImports(surface, 'export { applyAttachedPlanReview } from "./project-lifecycle.ts";').length,
+        1,
+    );
+    equal(inspectPlanStoreImports(surface, 'export { listPlanDocuments } from "./queries.ts";').length, 0);
+    equal(
+        inspectPlanStoreImports(surface, 'export { openProjectPlanLifecycle } from "./project-lifecycle.ts";').length,
+        0,
+    );
+});
+
+test("the Plan facade rejects aliased or private owner exports", () => {
+    const facade = "src/plan-store/index.ts";
+    const forbidden = [
+        'import { recordPlanEvent as event } from "./events.ts"; export { event as write };',
+        'export { applyWorkflowPlanEvent as event } from "./project-lifecycle.ts";',
+        'export { archiveSavedPlan as archive } from "./archiving.ts";',
+        'export { archivePlanPackage } from "@runwield/plans/package-storage";',
+        'export { restorePlanPackage } from "@runwield/plans/package-storage";',
+        'export { archivePlanPackage as archive } from "@runwield/plans/package-storage";',
+        'export { restorePlanPackage as restore } from "../../packages/plans/package-storage.ts";',
+        'export { RetainedPlanReviewVersions as Retained } from "@runwield/plans/live-review";',
+        'export type { SerializedPlanReviewVersion as Token } from "@runwield/plans/live-review";',
+        'import type { SerializedPlanReviewVersion as Token } from "@runwield/plans/live-review"; export type { Token };',
+        'export * as review from "@runwield/plans/live-review";',
+        'export const driver = await import("@runwield/plans/live-review");',
+    ];
+    for (const source of forbidden) equal(inspectPlanStoreImports(facade, source).length > 0, true, source);
+    equal(
+        inspectPlanStoreImports(
+            "src/cmd/load-plan/plan-hold.ts",
+            'import { applyWorkflowPlanEvent as apply } from "../../plan-store/project-lifecycle.ts";',
+        ).length,
+        1,
+    );
+});
+
 test("only the Plan store can use its filesystem drivers and retained evidence", () => {
     for (const entry of [
         "file-snapshots",
@@ -407,6 +453,8 @@ test("the public Plan store omits historical checkout query exports", async () =
         "listPlanResources",
         "resolvePlan",
         "findPlansByParent",
+        "archivePlan",
+        "recordPlanEvent",
         "listArchivedPlans",
         "loadArchivedPlan",
         "restoreArchivedPlan",

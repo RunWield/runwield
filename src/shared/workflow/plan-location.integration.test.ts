@@ -1,4 +1,4 @@
-import { holdPlanFixtureCatalogLock, holdPlanFixtureLock } from "../testing/plan-state-fixture.ts";
+import { recordPlanEvent, holdPlanFixtureCatalogLock, holdPlanFixtureLock } from "../testing/plan-state-fixture.ts";
 import {
     seedPlanState,
     seedPlan,
@@ -36,10 +36,13 @@ import { HostedSession } from "@runwield/session-runtime/host";
 import { findById, getWorktreeRegistryPath, pruneEntry } from "../worktree-registry.ts";
 import { addEntry } from "../worktree-registry.ts";
 import { createExecutionStartPorts, startActiveExecutionWorkflow } from "./execution-start.ts";
-import { recordPlanEvent } from "../../plan-store/index.ts";
+
 import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";
-import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
-import { applySharedPlanReviewDecision } from "../../plan-store/index.ts";
+import {
+    openPlanLifecycleForCheckout,
+    preparePlanReviewVersion,
+    resolveWorkflowPlanLocation,
+} from "../../plan-store/index.ts";
 import { executePlanAction, loadPlanActionEvidence } from "./plan-actions.ts";
 
 const fixture = defineCommittedGitFixture({ ".gitignore": ".wld/\n", "app.ts": "// application\n" });
@@ -274,20 +277,19 @@ for (const surface of ["primary", "execution"]) {
                     "Implement demo.",
                     "The revised approved definition.",
                 );
-                const review = await applySharedPlanReviewDecision({
-                    cwd: surface === "primary" ? root : started.executionCwd,
-                    planName: "demo",
-                    planPath: execution.path,
-                    planWithFrontMatter: reviewedMarkdown,
-                    planRevision: execution.revision,
-                    originalAttrs: execution.attrs,
-                    trustedClassification: "PLANNED_CHANGE",
-                    decision: {
-                        approved: true,
-                        approvalAction: "run",
-                        executionAgent: "engineer",
-                        collaborationRecommendation: "autonomous",
-                    },
+                const reviewCwd = surface === "primary" ? root : started.executionCwd;
+                const { displayedVersion } = await preparePlanReviewVersion(reviewCwd, "demo", execution.path, {
+                    expectedRevision: execution.revision,
+                });
+                const lifecycle = openPlanLifecycleForCheckout(reviewCwd);
+                assert(lifecycle);
+                const review = await lifecycle.applyEvent(displayedVersion.planId, {
+                    event: "review_approved",
+                    displayedVersion,
+                    plan: reviewedMarkdown,
+                    approvalAction: "run",
+                    executionAgent: "engineer",
+                    collaborationRecommendation: "autonomous",
                 });
                 assertEquals(review.approved, true, review.feedback);
                 assertEquals((await findById(root, started.worktreeId))?.status, "active");

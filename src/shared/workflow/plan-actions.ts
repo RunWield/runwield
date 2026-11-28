@@ -3,13 +3,20 @@ import { withProjectRuntimeReadScope } from "@runwield/project-runtime/layout";
 /** Shared Plan action evidence and lifecycle executor. */
 
 import { type PlanFrontMatter } from "@runwield/plans";
+import { StalePlanWriteError } from "@runwield/plans/store";
 import { getPlanRevisionForText } from "@runwield/plans/format";
 import { planDocumentsForCheckout } from "../../plan-store/index.ts";
 import { prepareWorktreeRegistry, readPlanActionWorktreeEvidence } from "../worktree-registry.ts";
 import { WorktreeRegistryAmbiguityError } from "@runwield/project-runtime/registry-inspection";
 import { RegisteredPlanDocumentUnavailableError } from "../../plan-store/index.ts";
-import { getPlanLifecycleActionMetadata, type PlanEvent, type PlanStatus } from "@runwield/plans/lifecycle";
-import { recordPlanEvent } from "../../plan-store/index.ts";
+import {
+    getPlanLifecycleActionMetadata,
+    type BasicPlanEvent,
+    type PlanEventDetails,
+    type PlanStatus,
+    type PlanWorktreeExpectation,
+} from "@runwield/plans/lifecycle";
+import { applyObservedPlanEvent } from "../../plan-store/index.ts";
 import { PlanningNotStartedError } from "../../plan-store/index.ts";
 
 export type PlanActionName =
@@ -19,19 +26,6 @@ export type PlanActionName =
     | "put_on_hold"
     | "resume_from_hold"
     | "reset_to_draft";
-
-export type PlanWorktreeExpectation =
-    | { kind: "none" }
-    | {
-          kind: "attempt";
-          id: string;
-          planId: string;
-          status: string;
-          branch: string;
-          baseBranch: string;
-          baseRef: string;
-          baseCommit: string;
-      };
 
 export type PlanActionRequest = {
     planId: string;
@@ -238,19 +232,19 @@ function eventForRequest(
     request: PlanActionRequest,
     attrs: PlanFrontMatter,
 ):
-    | { event: PlanEvent; details: Record<string, string | PlanFrontMatter | undefined>; message: string }
+    | { event: BasicPlanEvent; details: PlanEventDetails; message: string }
     | {
           error: string;
       } {
     const status = currentStatus(attrs);
     const metadata = getPlanLifecycleActionMetadata(status, attrs);
-    const details: Record<string, string | PlanFrontMatter | undefined> = { triageMeta: attrs };
+    const details: PlanEventDetails = { triageMeta: attrs };
     if (request.action === "move_status") {
         const targetStatus = String(request.targetStatus || "");
         if (!metadata.allowedManualTargetStatuses.includes(targetStatus as PlanStatus)) {
             return { error: metadata.blockedReasons.move_status || `Manual move to ${targetStatus} is blocked.` };
         }
-        details.manualTargetStatus = targetStatus;
+        details.manualTargetStatus = targetStatus as PlanStatus;
         return { event: "manual_status_change", details, message: `Plan moved to ${targetStatus}.` };
     }
     if (request.action === "user_verify") {
@@ -415,17 +409,15 @@ export async function executePlanAction(projectRoot: string, request: PlanAction
     const dispatch = eventForRequest(request, plan.attrs);
     if ("error" in dispatch) return { kind: "invalid_action", message: dispatch.error };
     try {
-        await recordPlanEvent({
-            cwd: plan.cwd,
-            planName: plan.planName,
-            event: dispatch.event,
-            currentStatus: status,
-            details: dispatch.details,
-            expectedRevision: revision,
-        });
+        await applyObservedPlanEvent(
+            plan.cwd,
+            { planId: plan.planId, planName: plan.planName, status, revision },
+            dispatch.event,
+            dispatch.details,
+        );
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        if (message.includes("changed on disk")) {
+        if (error instanceof StalePlanWriteError || message.includes("changed on disk")) {
             return {
                 kind: "refresh_required",
                 message: "Plan changed before the lifecycle mutation committed. Refresh the Plan and retry.",
