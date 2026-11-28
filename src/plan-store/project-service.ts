@@ -1,13 +1,15 @@
 import type {
     ExecutionRecoveryAction,
     LegacyManagedPlanAuthoring,
+    ManagedPlanCreation,
+    ManagedPlanRevision,
     ProjectStoreBinding,
 } from "@runwield/plans/project-store-wire";
 import { ProjectStorePreconditionError } from "@runwield/plans/project-store-wire";
 import { adoptManagedExecutionReplacement, withManagedExecutionRecovery } from "@runwield/plans/managed-store-host";
 import { assertSharedPlanWriteAllowed } from "@runwield/plans/collaboration-lock";
 import { openShareAttemptJournal } from "@runwield/plans/share-attempt-journal";
-import { PlanNotFoundError, StalePlanWriteError } from "@runwield/plans/store";
+import { StalePlanWriteError } from "@runwield/plans/store";
 import type { ExecutionPublicationPolicy, PackagePublicationReference } from "@runwield/plans/publication-copies";
 import { projects, type HomeProjectOwner } from "@runwield/projects";
 import { plans, type PlanId } from "@runwield/plans";
@@ -15,23 +17,23 @@ import { isEpicArtifactName } from "@runwield/plans/format";
 import { openPlanStoreForCheckout } from "./project-plans.ts";
 import { HISTORY_PAGE_CHARS } from "../shared/remote/project-store-protocol.ts";
 import { listPlanPackages } from "@runwield/plans/package-storage";
+import { projectPlanAuthoring } from "@runwield/plans/project-plan-authoring";
 import { projectPlanFiles } from "@runwield/plans/project-plan-files";
 import type { RetainedFamilyRequest, RetainedFamilyCheckpoint } from "./retained-family.ts";
 import { readPlanRecordingContext, type PlanRecordingContext } from "./recording.ts";
 import type {
-    CreateProjectPlan,
     CreateProjectWorkRecord,
     PackagePublicationManifest,
     PackageWorkflowInput,
+    PlanAuthoringInput,
     ProjectWorkRecord,
-    ReviseProjectPlan,
 } from "@runwield/plans/store";
 import type { GeneratedWorkRecordSections } from "@runwield/plans/work-records";
 import type { PublishedDeliverySources } from "./published-source.ts";
 import type { ManagedProjectStoreLaunch } from "../shared/remote/project-store-launch.ts";
 import { confirmManagedPublication } from "./retained-proof.ts";
 import { loadPlan, listPlans } from "../plan-store.ts";
-import { authorLocalPlan, authorPackagePlan, type PlanAuthoringInput } from "./access.ts";
+import { authorLocalPlan } from "./access.ts";
 import {
     getGlobalSecretStoreLocation,
     getProjectSecretStoreLocation,
@@ -84,7 +86,6 @@ import {
 import {
     readPlanPackageInput,
     readPlanPackagePublication,
-    readPlanPackage,
     withPlanPackageCatalogDiscovery,
     type PlanImportCommitted,
 } from "@runwield/plans/package-storage";
@@ -100,7 +101,6 @@ import {
     operationHash,
     planOperationReceiptDirectory,
     runReceiptedOperation,
-    runReceiptedPlanAuthoring,
     type OperationOutcome,
 } from "@runwield/plans/operation-receipts";
 
@@ -139,15 +139,6 @@ export interface ProjectStoreExecution {
 }
 export interface ProjectStoreExecutionDocuments {
     documents: FrozenPlanExecutionDocuments;
-}
-export interface ProjectStoreCreatePlan {
-    kind: "create-plan";
-    operationId: string;
-    input: CreateProjectPlan;
-}
-export interface ProjectStoreRevisePlan extends PlanMutation {
-    kind: "revise-plan";
-    input: Omit<ReviseProjectPlan, "expectedRevision">;
 }
 export interface ProjectStoreResolve {
     kind: "resolve-plan";
@@ -613,8 +604,8 @@ export type ProjectStoreCommand =
     | ProjectStoreExecutionRead
     | ProjectStoreExecutionDocumentsRead
     | LegacyManagedPlanAuthoring
-    | ProjectStoreCreatePlan
-    | ProjectStoreRevisePlan
+    | ManagedPlanCreation
+    | ManagedPlanRevision
     | ProjectStoreResolve
     | ProjectStoreList
     | ProjectStoreCollaborationRead
@@ -1047,35 +1038,13 @@ export class PreparedProjectStore {
                     command.kind === "revise-plan" ||
                     command.kind === "author-plan"
                 ) {
-                    return await withPlanPackageCatalogDiscovery(owner, () =>
-                        runReceiptedPlanAuthoring(
-                            directory,
-                            command.operationId,
-                            operationDigest(JSON.stringify({ binding: this.binding, command })),
-                            command.kind === "create-plan" ? undefined : command.planId,
-                            async (planId) => {
-                                let input: PlanAuthoringInput;
-                                if (command.kind === "revise-plan") {
-                                    const target = await readPlanPackage(owner, { planId });
-                                    if (target.kind === "missing") throw new PlanNotFoundError(planId);
-                                    if (target.kind !== "loaded") throw new Error(target.message);
-                                    if (target.metadata.archive && !target.metadata.archive.restoredAt)
-                                        throw new PlanNotFoundError(planId);
-                                    input = {
-                                        ...command.input,
-                                        planName: target.metadata.name,
-                                        expectedRevision: command.expectedRevision,
-                                    };
-                                } else if (command.kind === "create-plan") {
-                                    input = { ...command.input, expectedRevision: undefined };
-                                } else {
-                                    input = command.input;
-                                }
-                                await authorPackagePlan(this.cwd, input, planId);
-                                return (await readPlanDocuments(planId)).revision;
-                            },
-                        ),
-                    );
+                    const authoring = projectPlanAuthoring.forOwner(owner, this.cwd);
+                    if (command.kind === "create-plan") return await authoring.createPlan(command);
+                    if (command.kind === "revise-plan") return await authoring.revisePlan(command);
+                    // Keep the historical command intact so its request digest and Plan ID still match.
+                    return command.input.expectedRevision === undefined
+                        ? await authoring.createPlan(command)
+                        : await authoring.revisePlan(command);
                 }
                 if (command.kind === "read-sequence-result")
                     return {

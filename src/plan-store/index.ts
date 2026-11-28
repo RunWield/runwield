@@ -11,7 +11,7 @@ export {
     type PlanFileCommand,
     type PlanFileResult,
 } from "./agent-files.ts";
-export { authorLocalPlan, type PlanAuthoringInput } from "./access.ts";
+export { authorLocalPlan } from "./access.ts";
 export { readPlanDocuments, savePlanDocument, readPlanDocumentLink, saveReviewedPlanDocument } from "./documents.ts";
 export { importPlans, importedPlanCopyChoice } from "./imports.ts";
 export {

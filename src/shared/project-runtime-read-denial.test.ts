@@ -7,7 +7,7 @@ import process from "node:process";
 import { tmpdir } from "node:os";
 import { defineCommittedGitFixture } from "./git-test-fixture.ts";
 import { captureForegroundProcess, spawnNativeProcess } from "@runwield/resources/process";
-import { enterProjectRuntime } from "./project-runtime-layout.ts";
+import { enterProjectRuntime } from "@runwield/project-runtime/layout";
 import { getRunWieldRuntimeDir } from "@runwield/project-runtime/legacy-paths";
 
 const fixture = defineCommittedGitFixture({

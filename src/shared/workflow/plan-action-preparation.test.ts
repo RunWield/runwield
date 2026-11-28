@@ -8,8 +8,7 @@ import { getPlanRevisionForText } from "@runwield/plans/format";
 import { loadPlan } from "../testing/plan-query-fixture.ts";
 import { resolvePlanWithPrimaryRecovery } from "../../plan-store/index.ts";
 import { defineCommittedGitFixture } from "../git-test-fixture.ts";
-import { enterProjectRuntime } from "../project-runtime-layout.ts";
-import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
+import { enterProjectRuntime, resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import { executePlanAction, loadPlanActionEvidence } from "./plan-actions.ts";
 
 const planId = "83468a46-d34e-4e3d-af27-c4924dc4ab88";

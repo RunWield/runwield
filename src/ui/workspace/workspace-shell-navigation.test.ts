@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { defineGitFixture, git } from "../../shared/git-test-fixture.ts";
-import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
+import { enterProjectRuntime } from "@runwield/project-runtime/layout";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { createOwnerWorkspaceApp } from "./server.ts";
 import { devOwnerSidebar } from "./server/dev-owner-fixtures.ts";

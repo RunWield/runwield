@@ -10,8 +10,11 @@ import { defineCommittedGitFixture, git } from "./git-test-fixture.ts";
 import { runtimeSourceArgs } from "../testing/runtime-source-args.ts";
 import { getHomeDir } from "../constants.ts";
 import { getRunWieldRuntimeDir } from "@runwield/project-runtime/legacy-paths";
-import { enterProjectRuntime } from "./project-runtime-layout.ts";
-import { resolveProjectRuntimeLayout, inspectProjectRuntimeReadAccess } from "@runwield/project-runtime/layout";
+import {
+    enterProjectRuntime,
+    resolveProjectRuntimeLayout,
+    inspectProjectRuntimeReadAccess,
+} from "@runwield/project-runtime/layout";
 
 const fixture = defineCommittedGitFixture();
 const driver = fileURLToPath(new URL("./testing/project-runtime-home-process-driver.ts", import.meta.url));

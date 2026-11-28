@@ -9,6 +9,7 @@ import type {
     ProjectPlanDocument,
     ProjectPlanStore,
     ProjectPlanStoreOptions,
+    PlanAuthoringInput,
     ReviseProjectPlan,
 } from "@runwield/plans/store";
 import type { ProjectId } from "@runwield/projects";
@@ -24,13 +25,7 @@ import {
 } from "@runwield/plans/project-plan-files";
 import type { PlanResource } from "../plan-store.ts";
 import { currentPackageProject } from "./workflows.ts";
-import {
-    createSavedPlan,
-    reviseSavedPlan,
-    withLocalProjectAction,
-    withLocalPlanWorkflow,
-    type PlanAuthoringInput,
-} from "./access.ts";
+import { createSavedPlan, reviseSavedPlan, withLocalProjectAction, withLocalPlanWorkflow } from "./access.ts";
 import { archiveSavedPlan, restoreSavedPlan } from "./archiving.ts";
 import { canonicalizeStoredPlanName, planArtifactReference } from "@runwield/plans/format";
 import { recordPlanEvent } from "./events.ts";

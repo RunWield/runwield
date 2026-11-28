@@ -36,8 +36,7 @@ import {
 import { recordPlanEvent } from "../../plan-store/index.ts";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
-import { enterProjectRuntime } from "../project-runtime-layout.ts";
-import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
+import { enterProjectRuntime, resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 
 import type { JournaledEffect } from "../../plan-store/transitions.ts";
 import type { TransitionResult } from "../../plan-store/index.ts";

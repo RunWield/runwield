@@ -1,6 +1,6 @@
 import { managedPlanStoreActive, selectManagedPlan } from "./managed.ts";
 import { selectLocalPlanWorkflow, inspectLocalHomeStore, withLocalPlanWorkflow } from "./access.ts";
-import { enterProjectRuntime } from "../shared/project-runtime-layout.ts";
+import { enterProjectRuntime } from "@runwield/project-runtime/layout";
 import { healSettledTransitionRecords } from "../shared/workflow/transition-recovery.ts";
 import {
     LegacyPackageContinuation,

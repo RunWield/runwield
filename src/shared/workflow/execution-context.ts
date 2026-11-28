@@ -22,8 +22,7 @@ import {
     updateEntry as updateWorktreeRegistryEntry,
 } from "../worktree-registry.ts";
 import { prepareExecutionPlanFile } from "../../plan-store/index.ts";
-import { enterProjectRuntime } from "../project-runtime-layout.ts";
-import { withProjectRuntimeReadScope } from "@runwield/project-runtime/layout";
+import { enterProjectRuntime, withProjectRuntimeReadScope } from "@runwield/project-runtime/layout";
 import { resolveTargetBranchName } from "../worktree.ts";
 import { getWorkflowDiff } from "./git-snapshot.ts";
 import { recordWorkflowOutcome } from "./outcome-observations.ts";

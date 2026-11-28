@@ -1,5 +1,5 @@
 import { seedPlan } from "../testing/plan-state-fixture.ts";
-import { enterProjectRuntime } from "../project-runtime-layout.ts";
+import { enterProjectRuntime } from "@runwield/project-runtime/layout";
 import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 import { assertEquals } from "../../testing/assertions.ts";
 import { mkdir as fsMkdir, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";

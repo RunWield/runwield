@@ -23,8 +23,8 @@ import { listPlans, loadPlan } from "./testing/plan-query-fixture.ts";
 
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 import { defineCommittedGitFixture, git } from "./git-test-fixture.ts";
-import { enterProjectRuntime } from "./project-runtime-layout.ts";
 import {
+    enterProjectRuntime,
     checkedProjectRuntimeLayout,
     inspectProjectRuntimeReadAccess,
     ProjectRuntimeEntryRefusedError,

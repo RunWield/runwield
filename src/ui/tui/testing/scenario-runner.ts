@@ -582,8 +582,7 @@ import {
     WORKTREE_REGISTRY_FILE,
 } from "@runwield/project-runtime/legacy-paths";
 import { getWorktreeRegistryPath } from "../../../shared/worktree-registry.ts";
-import { enterProjectRuntime } from "../../../shared/project-runtime-layout.ts";
-import { withProjectRuntimeReadScope } from "@runwield/project-runtime/layout";
+import { enterProjectRuntime, withProjectRuntimeReadScope } from "@runwield/project-runtime/layout";
 import { isCurrentProjectRuntimePath } from "@runwield/project-runtime/owned-paths";
 import { PLAN_STATUSES, type PlanStatus } from "@runwield/plans/lifecycle";
 import { readScenarioRegistryForPoll } from "./scenario-registry-poll.ts";

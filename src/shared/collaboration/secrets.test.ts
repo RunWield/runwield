@@ -17,8 +17,7 @@ import { join } from "node:path";
 import { captureForegroundProcess } from "@runwield/resources/process";
 import { PROJECT_SECRET_STORE_RELATIVE_PATH } from "@runwield/project-runtime/legacy-paths";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
-import { enterProjectRuntime } from "../project-runtime-layout.ts";
-import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
+import { enterProjectRuntime, resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import type { LocalSecretRecord } from "@runwield/plans/plan-server";
 import {

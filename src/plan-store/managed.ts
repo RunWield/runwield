@@ -14,6 +14,7 @@ import type {
     PackageWorkflowInput,
     ProjectPlanDocument,
     ProjectWorkRecord,
+    PlanAuthoringInput,
     ReviseProjectPlan,
 } from "@runwield/plans/store";
 import {
@@ -42,10 +43,9 @@ import {
     parseMilestoneDocuments,
     validateProjectStoreRequest,
 } from "../shared/remote/project-store-protocol.ts";
-import { enterProjectRuntime } from "../shared/project-runtime-layout.ts";
+import { enterProjectRuntime } from "@runwield/project-runtime/layout";
 import { operationHash } from "@runwield/plans/operation-receipts";
 import type { ProjectStoreCommand, ProjectStoreReply } from "./project-service.ts";
-import type { PlanAuthoringInput } from "./access.ts";
 import type { ManagedExecutionRecreationContext } from "./recovery.ts";
 import type { PlanExecutionReservation } from "./workflows.ts";
 import { plans, type PlanFrontMatter, type PlanId } from "@runwield/plans";

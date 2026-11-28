@@ -18,8 +18,7 @@ import {
     normalizeLocalSecretRecord,
 } from "@runwield/plans/plan-server";
 import { getHomeDir } from "../../constants.ts";
-import { enterProjectRuntime } from "../project-runtime-layout.ts";
-import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
+import { enterProjectRuntime, resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import { ensureRunWieldOwnedGitignoreBlock } from "@runwield/project-runtime/owned-paths";
 import { collaborationSecretStoreLockPath } from "@runwield/project-runtime";
 import { openNativeFileLock } from "@runwield/resources/fs";

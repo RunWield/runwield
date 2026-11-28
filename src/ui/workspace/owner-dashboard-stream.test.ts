@@ -12,7 +12,7 @@ import { getHomeDir } from "../../constants.ts";
 import { getWorktreeRegistryPath, withWorktreeRegistryLock } from "../../shared/worktree-registry.ts";
 import { makeManagedSessionFixture, readTranscriptEvidence } from "../../testing/managed-session-fixture.ts";
 import { defineCommittedGitFixture } from "../../shared/git-test-fixture.ts";
-import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
+import { enterProjectRuntime } from "@runwield/project-runtime/layout";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { createOwnerWorkspaceApp } from "./server.ts";
@@ -413,7 +413,11 @@ test("standalone Sessions linked to one on-hold Plan remain distinct", async () 
     const store = openOwnerCoordinationStore({ dbPath: `${dir}/owner.sqlite3` });
     try {
         const project = store.projects.register({ root, displayName: "Test" });
-        await seedPlan(root, "held", "# Held\n", { planId: "held-plan", classification: "PLANNED_CHANGE", status: "on_hold" });
+        await seedPlan(root, "held", "# Held\n", {
+            planId: "held-plan",
+            classification: "PLANNED_CHANGE",
+            status: "on_hold",
+        });
         const operation = (sessionId: string) => ({
             projectId: project.projectId,
             runwieldSessionId: sessionId,

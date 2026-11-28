@@ -1,6 +1,6 @@
 import { StalePlanWriteError } from "@runwield/plans/store";
 import { withRetainedPlanFixture } from "./shared/testing/retained-plan-fixture.ts";
-import { enterProjectRuntime } from "./shared/project-runtime-layout.ts";
+import { enterProjectRuntime } from "@runwield/project-runtime/layout";
 import { defineCommittedGitFixture, git } from "./shared/git-test-fixture.ts";
 import { makeTempDirectory } from "./testing/temp-file.ts";
 import { hostname } from "node:os";

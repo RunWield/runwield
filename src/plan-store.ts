@@ -437,8 +437,8 @@ import { requestWorkspaceSearchRefresh } from "@runwield/resources/workspace-sea
 
 import { effectivePlanLifecycleAttrs, pickControllerState, stripRuntimeFields } from "@runwield/plans/controller-state";
 
-import { enterProjectRuntime } from "./shared/project-runtime-layout.ts";
 import {
+    enterProjectRuntime,
     inspectProjectRuntimeReadAccess,
     ProjectRuntimeReadPendingError,
     WORKFLOW_DETAILS_PENDING,
@@ -1446,7 +1446,12 @@ export async function savePlan(
     fmOverrides: PlanFrontMatterInput = {},
     options: PlanWriteOptions = {},
 ): Promise<string> {
-    const localPath = await saveLocalHomePlan(cwd, planName, content, fmOverrides, options);
+    const localPath = await saveLocalHomePlan(cwd, {
+        name: planName,
+        markdown: content,
+        overrides: fmOverrides,
+        options,
+    });
     if (localPath !== null) return localPath;
     assertNotReservedEpicArtifactPlanName(planName);
     await prepareWorktreeRegistry(cwd);

@@ -1,6 +1,6 @@
 import { isProjectId, type ProjectId } from "@runwield/projects";
 import { isNonterminalWorktreeStatus, type WorktreeRegistryEntry } from "@runwield/project-runtime/registry-inspection";
-import type { CreateProjectPlan } from "./store.ts";
+import type { CreateProjectPlan, PlanAuthoringInput, ReviseProjectPlan } from "./store.ts";
 
 export type ExecutionRecoveryAction =
     "stop" | "clear" | "detach" | "clear-recovery" | "refresh" | "recreate" | "user-verified";
@@ -107,8 +107,20 @@ export interface ProjectStoreBinding {
     ownerId: string;
 }
 
-interface LegacyManagedPlanAuthoringInput extends CreateProjectPlan {
-    expectedRevision?: string;
+/** Fresh managed creation reserves its Plan ID on the personal host. */
+export interface ManagedPlanCreation {
+    kind: "create-plan";
+    operationId: string;
+    input: CreateProjectPlan;
+}
+
+/** Managed revision addresses an existing Plan and carries its observed revision. */
+export interface ManagedPlanRevision {
+    kind: "revise-plan";
+    operationId: string;
+    planId: string;
+    expectedRevision: string;
+    input: Omit<ReviseProjectPlan, "expectedRevision">;
 }
 
 /** The original authoring command remains available for exact replay of retained requests. */
@@ -116,7 +128,7 @@ export interface LegacyManagedPlanAuthoring {
     kind: "author-plan";
     operationId: string;
     planId: string;
-    input: LegacyManagedPlanAuthoringInput;
+    input: PlanAuthoringInput;
 }
 
 /** The authenticated Plan store routes and the serialized body of a validated operation. */

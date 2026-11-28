@@ -253,10 +253,14 @@ the switch between them. Desktop, TUI, ACP and worker callers continue to use `s
 The same driver lists active Plans and looks up archived Plans by ID. The public catalog returns logical Plan
 references and diagnostics. The CLI computes checkout-relative paths when it displays archived resources.
 
-The SSH adapter sends distinct create and revise commands. A create carries the content and operation ID. The
-Plan store reserves its Plan ID with that operation. A revise carries the existing Plan ID and expected revision.
-An older saved authoring request replays with its original identity and payload. The public store and
-`plan_written` continue to use the same create and revise methods.
+The SSH host opens the Plans authoring filesystem driver for the admitted Project. It calls `createPlan(request)`
+or `revisePlan(request)` after authenticating and validating the wire command. A fresh create carries the content
+and operation ID. The driver reserves its Plan ID with that operation. A revise carries the existing Plan ID and
+expected revision. The driver hashes the original command with its bound Project identity and writes the Plan
+and its durable receipt under the existing locks. A retained `author-plan` request keeps both recorded IDs and
+its original payload. A completed retry returns the saved result even after a later edit.
+The public store and `plan_written` keep their create and revise methods. Local authoring and the legacy local
+save path use the same canonical write. [Authoring filesystem driver](../../packages/plans/project-plan-authoring.ts)
 
 Plans owns the canonical operation receipt files and validates the retained operation identity before completion. The application owns typed command result files, including `sequence-review-results/<operationId>.json`. It reads the retained Sequence decision and passes its operation identity, digest, Plan ID, and revision to Plans to settle the canonical receipt.
 The host coordinates milestone capture with the lifecycle event that makes the version visible.

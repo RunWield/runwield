@@ -6,8 +6,11 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { getRunWieldRuntimeDir } from "@runwield/project-runtime/legacy-paths";
 import { defineCommittedGitFixture } from "./git-test-fixture.ts";
-import { enterProjectRuntime } from "./project-runtime-layout.ts";
-import { migrateLegacyProjectRuntimeState, resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
+import {
+    enterProjectRuntime,
+    migrateLegacyProjectRuntimeState,
+    resolveProjectRuntimeLayout,
+} from "@runwield/project-runtime/layout";
 
 import { StaleControllerWriteError } from "../plan-store/index.ts";
 

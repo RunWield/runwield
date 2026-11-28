@@ -12,8 +12,7 @@ import {
 } from "node:fs/promises";
 import { parse as parseJsonc } from "@runwield/parsing/jsonc";
 import { basename, dirname, join } from "node:path";
-import { enterProjectRuntime } from "./project-runtime-layout.ts";
-import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
+import { enterProjectRuntime, resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import { ensureRunWieldOwnedGitignoreBlock, RUNWIELD_GITIGNORE_BLOCK } from "@runwield/project-runtime/owned-paths";
 
 /** Versionable setup artifacts; these are not disposable .wld/internal runtime state. */

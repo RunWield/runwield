@@ -23,8 +23,7 @@ import { dirname, join } from "node:path";
 import { listPlans } from "./testing/plan-query-fixture.ts";
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 import { defineCommittedGitFixture, git } from "./git-test-fixture.ts";
-import { enterProjectRuntime } from "./project-runtime-layout.ts";
-import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
+import { enterProjectRuntime, resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
 import {
     addEntry,
     findById,

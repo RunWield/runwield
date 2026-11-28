@@ -32,8 +32,11 @@ import {
     type WorkflowControllerState,
     WORKTREE_CONTEXT_FIELDS,
 } from "@runwield/plans/controller-state";
-import { enterProjectRuntime } from "../shared/project-runtime-layout.ts";
-import { inspectProjectRuntimeReadAccess, resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
+import {
+    enterProjectRuntime,
+    inspectProjectRuntimeReadAccess,
+    resolveProjectRuntimeLayout,
+} from "@runwield/project-runtime/layout";
 import {
     controllerStatesEqual,
     restoreOwnControllerWrite,

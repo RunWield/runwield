@@ -1,7 +1,7 @@
 import { seedPlanState, seedPlan as savePlanDocument } from "../testing/plan-state-fixture.ts";
 import { pickControllerState } from "@runwield/plans/controller-state";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
-import { enterProjectRuntime } from "../project-runtime-layout.ts";
+import { enterProjectRuntime } from "@runwield/project-runtime/layout";
 import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 import { makeTempDirectory } from "../../testing/temp-file.ts";
 import { testWithFsPermissions } from "../../testing/file-test.ts";

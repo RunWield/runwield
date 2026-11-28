@@ -36,8 +36,8 @@ import {
     getLockHostname,
     isPidAlive,
 } from "@runwield/resources/locks";
-import { enterProjectRuntime } from "./project-runtime-layout.ts";
 import {
+    enterProjectRuntime,
     checkedProjectRuntimeLayout,
     resolveProjectRuntimeLayout,
     withProjectRuntimeReadScope,
