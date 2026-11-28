@@ -8,12 +8,24 @@ practices under `packages/agents/definitions/shared-practice/`. This repo adds:
   explains a choice.
 - Replace jargon and vague abstractions with concrete meaning: who does what,
   what changes, and why it matters.
+- Avoid nonce terms, and avoid cataphors with unclear precedents or referents.
+- Don't say "it", "that", and similar words unless the referent is obvious. Prefer precision.
 - Avoid rhetorical contrasts such as “X, not Y.” Keep a contrast when it explains
   a real trade-off, constraint, or likely mistake.
 - Cut words, not detail. Preserve facts, conditions, warnings, and exact names,
   numbers, commands, paths, URLs, identifiers, and error messages. When editing
   prose, leave code unchanged.
 - Keep the original language when editing unless asked to translate.
+
+### Orwell's rules for writing
+
+1. Never use a metaphor, simile, or other figure of speech that you are used to seeing in print.
+2. Never use a long word where a short one will do.
+3. If it is possible to cut a word out, always cut it out.
+4. Use active voice.
+5. Skip jargon and foreign terms. Never use a foreign phrase, a scientific word, or a jargon word if you can think of an everyday English equivalent. Instead use concrete meaning: who does what,
+   what changes, and why it matters.
+6. Prioritize clarity over rigid rules. Break any of these rules sooner than say anything outright barbarous.
 
 ## Local Type Style
 
