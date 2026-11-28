@@ -32,6 +32,7 @@
     "packages/plans/index.test.ts",
     "packages/plans/publication-files.test.ts",
     "packages/plans/retained-checkout.test.ts",
+    "packages/plans/share-attempt-journal.test.ts",
     "packages/plans/work-records.test.ts",
     "packages/projects/checkout.test.ts",
     "packages/projects/directory.test.ts",

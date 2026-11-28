@@ -75,8 +75,8 @@ export async function executeOwnedPlanShare(
     expectedPlanId?: PlanId,
 ): Promise<SharedPlanReviewLink> {
     const { planId, target, ...preferences } = intent;
-    const projectId = checkoutPlanIdentity(cwd)?.projectId;
-    if (!projectId) throw new Error("Plan sharing requires an admitted Project.");
+    const project = checkoutPlanIdentity(cwd);
+    if (!project) throw new Error("Plan sharing requires an admitted Project.");
     if (planId !== undefined && (!plans.identity.isValid(planId) || target !== undefined))
         throw new Error("Plan sharing requires a durable Plan ID.");
     if (planId !== undefined && expectedPlanId !== undefined && planId !== expectedPlanId)
@@ -89,7 +89,7 @@ export async function executeOwnedPlanShare(
     if (boundId !== undefined && resource.planId !== boundId) throw new PlanNotFoundError(boundId);
     return await sharePreparedPlan(
         cwd,
-        projectId,
+        project,
         resource,
         planId === undefined
             ? preferences

@@ -1,5 +1,7 @@
+import { plans } from "@runwield/plans";
 import { COLLABORATION_STATE_REMOTE_CANONICAL, hashPlanBody, normalizePlanServerUrl } from "@runwield/plans/format";
-import type { ProjectId } from "@runwield/projects";
+import { openShareAttemptJournal, type ShareAttempt } from "@runwield/plans/share-attempt-journal";
+import type { ProjectStoreIdentity } from "@runwield/projects";
 import { updatePlanCollaborationMetadata, type PlanResource } from "../../plan-store.ts";
 import {
     MAINTAINER_SCOPE,
@@ -15,6 +17,8 @@ import { COLLABORATION_LOCK_BYPASS } from "../../shared/collaboration/lock.ts";
 import {
     deleteSecretRecord,
     ensureProjectSecretStoreIgnored,
+    getGlobalSecretStoreLocation,
+    getProjectSecretStoreLocation,
     getSecretRecord,
     putSharedPlanSecretRecord,
     secretRecordKey,
@@ -28,7 +32,6 @@ import {
     retainGoneShareOperationResult,
 } from "../operation-results.ts";
 import { loadPlan } from "../queries.ts";
-import { withShareAttempt, type ShareAttempt } from "./share-attempt.ts";
 
 /** Sharing preferences used by the active Plan owner. */
 export interface PlanSharePreferences {
@@ -130,38 +133,39 @@ function shareLinks(resource: PlanResource, space: ReviewSpace, secrets: ReviewS
 /** Publish the active Plan or resume its pending share to the original server. */
 export async function sharePreparedPlan(
     cwd: string,
-    projectId: ProjectId,
+    project: ProjectStoreIdentity,
     selected: PlanResource,
     args: PlanSharePreferences,
 ): Promise<SharedPlanReviewLink> {
-    return await withShareAttempt(
-        cwd,
-        projectId,
+    if (!plans.identity.isValid(selected.planId)) throw new Error("Plan sharing requires a durable Plan ID.");
+    return await openShareAttemptJournal(project).withAttempt(
         selected.planId,
-        async ({ current, globalStore, projectStore, save, finish }) => {
+        async ({ current: pendingAttempt, save, finish }) => {
             const latest = await loadPlan(cwd, selected.name);
             if (!latest || latest.attrs.planId !== selected.planId)
                 throw new Error("Plan changed before it could be shared.");
             const resource = { ...selected, attrs: latest.attrs, body: latest.body };
             const alreadyShared = resource.attrs.collaborationState === COLLABORATION_STATE_REMOTE_CANONICAL;
             if (alreadyShared) {
-                if (!current) {
+                if (!pendingAttempt) {
+                    const globalStore = getGlobalSecretStoreLocation();
+                    const projectStore = await getProjectSecretStoreLocation(cwd);
                     const preferred = args.projectSecrets ? projectStore : globalStore;
                     const fallback = args.projectSecrets ? globalStore : projectStore;
                     return await reuseSharedPlan(resource, args, preferred, fallback);
                 }
                 if (
-                    resource.attrs.collaborationServerUrl !== current.serverUrl ||
-                    resource.attrs.collaborationSpaceId !== current.created?.spaceId
+                    resource.attrs.collaborationServerUrl !== pendingAttempt.serverUrl ||
+                    resource.attrs.collaborationSpaceId !== pendingAttempt.created?.spaceId
                 ) {
                     throw new Error("The pending share belongs to a different Shared Space than this Plan.");
                 }
             }
 
-            const serverUrl = current?.serverUrl ?? resolvePlanServerUrl(args);
-            const projectSecrets = current?.projectSecrets ?? Boolean(args.projectSecrets);
+            const serverUrl = pendingAttempt?.serverUrl ?? resolvePlanServerUrl(args);
+            const projectSecrets = pendingAttempt?.projectSecrets ?? Boolean(args.projectSecrets);
             if (projectSecrets) await ensureProjectSecretStoreIgnored(cwd);
-            const attempt: ShareAttempt = current ?? {
+            const attempt: ShareAttempt = pendingAttempt ?? {
                 requestId: crypto.randomUUID(),
                 serverUrl,
                 projectSecrets,
@@ -176,7 +180,7 @@ export async function sharePreparedPlan(
                 mayHaveCreated: false,
             };
             const { contentKey, reviewerCapability, maintainerCapability, createPayload } = attempt.prepared;
-            const store = projectSecrets ? projectStore : globalStore;
+            const store = projectSecrets ? await getProjectSecretStoreLocation(cwd) : getGlobalSecretStoreLocation();
             try {
                 let created = alreadyShared ? attempt.created : undefined;
                 if (!created) {

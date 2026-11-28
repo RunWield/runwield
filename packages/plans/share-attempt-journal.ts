@@ -1,23 +1,20 @@
 import { createHash } from "node:crypto";
 import { readFileSync, unlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { plans } from "@runwield/plans";
-import { normalizePlanServerUrl } from "@runwield/plans/format";
-import type { ProjectId } from "@runwield/projects";
+import { enter } from "@runwield/project-runtime";
+import { projects, type ProjectId, type ProjectStoreIdentity } from "@runwield/projects";
 import { ensurePrivateDir, openNativeFileLock, syncParentDirectory, writeJsonAtomically } from "@runwield/resources/fs";
-import type { PreparedSharedSpace } from "@runwield/plans/plan-server";
+import { getHomeDir } from "@runwield/resources/home";
+import { isPlanId, type PlanId } from "@runwield/plan-storage-format";
+import { normalizePlanServerUrl } from "./format.ts";
 import {
     assertNonEmptyString,
     assertRecord,
     normalizeCreateSharedSpacePayload,
     normalizeSharedSpaceMetadata,
+    type PreparedSharedSpace,
     type SharedSpaceMetadata,
-} from "@runwield/plans/plan-server";
-import {
-    getGlobalSecretStoreLocation,
-    getProjectSecretStoreLocation,
-    type SecretStoreLocation,
-} from "../../shared/collaboration/secrets.ts";
+} from "./plan-server.ts";
 
 /** Credentials and the exact encrypted request for a pending Plan share. */
 export interface ShareAttempt {
@@ -32,18 +29,33 @@ export interface ShareAttempt {
     created?: SharedSpaceMetadata;
 }
 
-interface ShareAttemptJournal {
-    current: ShareAttempt | undefined;
-    globalStore: SecretStoreLocation;
-    projectStore: SecretStoreLocation;
+/** A Plan's pending share and the writes available until the journal callback returns. */
+export interface LockedShareAttempt {
+    readonly current: ShareAttempt | undefined;
+    /** Persist the exact replay request or its confirmed Shared Space. */
     save(attempt: ShareAttempt): void;
+    /** Remove the pending attempt after the host retains its result. */
     finish(): void;
+}
+
+/** Match a gone request by ID or a successful share by server and Shared Space. */
+export type ShareAttemptReceipt = { requestId: string } | { serverUrl: string; spaceId: string };
+
+/** Host-only journal for an admitted owner, with one pending share per Plan. */
+export interface ShareAttemptJournal {
+    /** Read or update the attempt while holding the same lock across both secret-store locations. */
+    withAttempt<Result>(
+        planId: PlanId,
+        run: (attempt: LockedShareAttempt) => Result | Promise<Result>,
+    ): Promise<Result>;
+    /** Clear the attempt only when it matches the host's retained receipt. */
+    settle(planId: PlanId, receipt: ShareAttemptReceipt): Promise<void>;
 }
 
 function readAttempt(
     path: string,
     projectId: ProjectId,
-    planId: string,
+    planId: PlanId,
     projectSecrets: boolean,
 ): ShareAttempt | undefined {
     let contents: string;
@@ -85,23 +97,35 @@ function readAttempt(
     };
 }
 
-/** One pending attempt per owner and Plan, even if the requested secret store changes. */
-export async function withShareAttempt<Result>(
-    cwd: string,
-    projectId: ProjectId,
-    planId: string,
-    run: (journal: ShareAttemptJournal) => Result | Promise<Result>,
+async function projectAttemptDirectory(project: ProjectStoreIdentity): Promise<string> {
+    if (projects.home.isOwner(project)) {
+        projects.home.assertStoreIdentity(project);
+        return join(projects.home.storeLocation(project), "internal", "plan-share-attempts");
+    }
+    const layout = await enter(project);
+    return join(dirname(layout.primary.projectSecretStorePath), "plan-share-attempts");
+}
+
+async function withAttempt<Result>(
+    project: ProjectStoreIdentity,
+    planId: PlanId,
+    run: (attempt: LockedShareAttempt) => Result | Promise<Result>,
 ): Promise<Result> {
-    if (!plans.identity.isValid(planId)) throw new Error("Plan sharing requires a durable Plan ID.");
-    const globalStore = getGlobalSecretStoreLocation();
-    const projectStore = await getProjectSecretStoreLocation(cwd);
+    if (!isPlanId(planId)) throw new Error("Plan sharing requires a durable Plan ID.");
+    const { projectId } = project;
+    const globalDirectory = join(getHomeDir(), ".wld", "plan-share-attempts");
+    const projectDirectory = await projectAttemptDirectory(project);
     const key = createHash("sha256")
         .update(JSON.stringify([projectId, planId]))
         .digest("hex");
-    const globalPath = join(dirname(globalStore.path), "plan-share-attempts", `${key}.json`);
-    const projectPath = join(dirname(projectStore.path), "plan-share-attempts", `${key}.json`);
-    ensurePrivateDir(dirname(globalPath));
+    const globalPath = join(globalDirectory, `${key}.json`);
+    const projectPath = join(projectDirectory, `${key}.json`);
+    ensurePrivateDir(globalDirectory);
     const lock = openNativeFileLock(`${globalPath}.lock`);
+    let active = false;
+    const assertActive = () => {
+        if (!active) throw new Error("The Plan sharing attempt lock is no longer held.");
+    };
     try {
         await lock.lock(true);
         const globalAttempt = readAttempt(globalPath, projectId, planId, false);
@@ -109,42 +133,44 @@ export async function withShareAttempt<Result>(
         if (globalAttempt && projectAttempt) throw new Error("Conflicting pending Plan sharing attempts.");
         const current = globalAttempt ?? projectAttempt;
         let activePath = current ? (current.projectSecrets ? projectPath : globalPath) : undefined;
+        active = true;
         return await run({
             current,
-            globalStore,
-            projectStore,
             save(attempt) {
+                assertActive();
                 const path = attempt.projectSecrets ? projectPath : globalPath;
                 if (activePath && path !== activePath) throw new Error("Pending Plan sharing secret store changed.");
                 writeJsonAtomically(path, { version: 2, projectId, identity: "anonymous", ...attempt });
                 activePath = path;
             },
             finish() {
+                assertActive();
                 if (!activePath) return;
                 unlinkSync(activePath);
                 syncParentDirectory(activePath);
             },
         });
     } finally {
+        active = false;
         lock.close();
     }
 }
 
-type RetainedShareIdentity = { requestId: string } | { serverUrl: string; spaceId: string };
-
-/** Clear a pending journal only when it matches the owner's settled receipt. */
-export async function settleRetainedShareAttempt(
-    cwd: string,
-    projectId: ProjectId,
-    planId: string,
-    identity: RetainedShareIdentity,
-): Promise<void> {
-    await withShareAttempt(cwd, projectId, planId, ({ current, finish }) => {
-        if (!current) return;
-        const matches =
-            "requestId" in identity
-                ? current.requestId === identity.requestId
-                : current.serverUrl === identity.serverUrl && current.created?.spaceId === identity.spaceId;
-        if (matches) finish();
-    });
+/** Bind the filesystem journal to the Project admitted by the personal host. */
+export function openShareAttemptJournal(project: ProjectStoreIdentity): ShareAttemptJournal {
+    return {
+        withAttempt(planId, run) {
+            return withAttempt(project, planId, run);
+        },
+        async settle(planId, receipt) {
+            await withAttempt(project, planId, ({ current, finish }) => {
+                if (!current) return;
+                const matches =
+                    "requestId" in receipt
+                        ? current.requestId === receipt.requestId
+                        : current.serverUrl === receipt.serverUrl && current.created?.spaceId === receipt.spaceId;
+                if (matches) finish();
+            });
+        },
+    };
 }
