@@ -9,6 +9,7 @@ import {
 test("Plan boundary catches static imports, reexports, type queries and constructed dynamic imports", () => {
     const cases = [
         'import { readPlanPackage as hidden } from "@runwield/plans/package-storage";',
+        'import { openShareAttemptJournal } from "@runwield/plans/share-attempt-journal";',
         'export * from "../plan-store/workflows.ts";',
         'type Hidden = import("@runwield/plans/package-storage").LoadedPlanPackage;',
         'await import("@runwield/plans/package-storage");',

@@ -5,6 +5,7 @@ import type {
 } from "@runwield/plans/project-store-wire";
 import { ProjectStorePreconditionError } from "@runwield/plans/project-store-wire";
 import { adoptManagedExecutionReplacement, withManagedExecutionRecovery } from "@runwield/plans/managed-store-host";
+import { openShareAttemptJournal } from "@runwield/plans/share-attempt-journal";
 import { PlanNotFoundError, StalePlanWriteError } from "@runwield/plans/store";
 import type { ExecutionPublicationPolicy, PackagePublicationReference } from "@runwield/plans/publication-copies";
 import { projects, type HomeProjectOwner } from "@runwield/projects";
@@ -990,18 +991,17 @@ export class PreparedProjectStore {
                                     );
                                     if (retained) {
                                         if (retained.action === "share" || retained.action === "share-gone") {
-                                            const { settleRetainedShareAttempt } =
-                                                await import("./collaboration/share-attempt.ts");
-                                            const identity =
+                                            const { planId } = retained.value;
+                                            if (!plans.identity.isValid(planId))
+                                                throw new Error("Plan sharing requires a durable Plan ID.");
+                                            const receipt =
                                                 retained.action === "share-gone"
                                                     ? { requestId: retained.requestId }
-                                                    : retained.value;
-                                            await settleRetainedShareAttempt(
-                                                this.cwd,
-                                                owner.projectId,
-                                                retained.value.planId,
-                                                identity,
-                                            );
+                                                    : {
+                                                          serverUrl: retained.value.serverUrl,
+                                                          spaceId: retained.value.spaceId,
+                                                      };
+                                            await openShareAttemptJournal(owner).settle(planId, receipt);
                                         }
                                         return { revision: operationDigest(JSON.stringify(retained)) };
                                     }

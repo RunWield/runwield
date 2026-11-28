@@ -22,6 +22,10 @@ export const PLAN_STORE_QUALIFICATIONS: Readonly<Record<string, { reason: string
         reason: "Verify retained checkout identity and async scope independently of the application.",
         modules: ["packages/plans/retained-checkout.ts"],
     },
+    "packages/plans/share-attempt-journal.test.ts": {
+        reason: "Verify legacy share attempt recovery, receipt matching, and the locked callback lifetime.",
+        modules: ["packages/plans/share-attempt-journal.ts"],
+    },
     "src/cmd/load-plan/missing-directory-recovery.integration.test.ts": {
         reason: "Compare exact imported package bytes before/after public missing-checkout recovery, including deliberately replaced registry identity.",
         modules: ["packages/plans/package-storage.ts"],

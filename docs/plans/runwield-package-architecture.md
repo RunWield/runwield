@@ -273,6 +273,11 @@ in the host alongside the Plan store opener. Plans owns the portable connection,
 The Plan store records the remote space and revision and enforces the shared Plan’s write lock.
 [Sharing contract](../../packages/plans/sharing.ts) · [Plan Server connection](../../packages/plans/plan-server/connection.ts) · [Host opener](../../src/plan-store/collaboration/sharing.ts) · [Sharing decision](../adr/008-remote-canonical-collaborative-shared-spaces.md)
 
+Plans owns the filesystem journal for pending shares. The personal host binds it to an admitted Project, then uses
+`withAttempt(planId, run)` to retain or replay a share under one lock across both credential locations. Managed SSH
+recovery uses `settle(planId, receipt)` to clear only the matching attempt. The host still chooses where to store
+credentials and retains the share result. [Host journal contract](../../packages/plans/share-attempt-journal.ts)
+
 ### Work Records
 
 Opening the Plan Store binds its `workRecords` collection to the same Project ID and personal owner. Each operation rechecks the binding. Callers supply no checkout path.

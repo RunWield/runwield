@@ -23,6 +23,7 @@ const privateMembers = new Set([
     "packages/plans/package-files.ts",
     "packages/plans/package-storage.ts",
     "packages/plans/operation-receipts.ts",
+    "packages/plans/share-attempt-journal.ts",
     "packages/plans/project-store-binding.ts",
     "packages/plans/managed-project-binding.ts",
     "packages/plans/managed-project-connection.ts",
