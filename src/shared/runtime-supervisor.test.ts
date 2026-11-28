@@ -94,7 +94,8 @@ test(
             });
             assert.equal(await child.exited, 1, output);
             assert.match(output, /Fatal error: Error: Usage: wld plans import/);
-            assert.doesNotMatch(output, /\x1b|runtime stopped unexpectedly|wld --continue/i);
+            assert.ok(!output.includes("\x1b"), output);
+            assert.doesNotMatch(output, /runtime stopped unexpectedly|wld --continue/i);
             assert.equal(terminal.localFlags, before);
         } finally {
             terminal.close();
