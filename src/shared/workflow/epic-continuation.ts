@@ -15,7 +15,7 @@ import {
 
 import { type LoadedPlan, planDocumentsForCheckout } from "../../plan-store/index.ts";
 import { AGENTS } from "../session/agent-registry.ts";
-import { recordPlanEvent } from "../../plan-store/index.ts";
+import { applyWorkflowPlanEvent } from "../../plan-store/project-lifecycle.ts";
 import { executePlan, runPlanningAgent } from "./workflow.ts";
 import { decidePostExecution, decidePostPlanning } from "@runwield/workflow/decisions";
 import { buildTriageReport } from "./workflow-prompts.ts";
@@ -315,7 +315,7 @@ export async function runEpicChildContinuation({
     }
 
     if (resolution.kind === "readiness_execute") {
-        await recordPlanEvent({
+        await applyWorkflowPlanEvent({
             cwd: planRoot,
             planName,
             event: "readiness_passed",

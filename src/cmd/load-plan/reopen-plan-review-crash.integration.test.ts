@@ -1,6 +1,6 @@
 import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
-import { capturePlanReviewInput } from "../../plan-store/index.ts";
-import { applySharedPlanReviewDecision } from "../../plan-store/index.ts";
+import { capturePlanReviewInput } from "../../shared/testing/plan-query-fixture.ts";
+import { applySharedPlanReviewDecision } from "../../shared/testing/plan-query-fixture.ts";
 import { collectProcessOutput } from "../../testing/subprocess-output.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { spawnNativeProcess } from "@runwield/resources/process";

@@ -3,7 +3,7 @@ import { projectPlanDocuments } from "./checkout-documents.ts";
 import { projectPlanArtifacts } from "./artifacts.ts";
 
 import { currentRetainedCheckoutSource, hasRetainedCheckoutSource } from "@runwield/plans/retained-checkout";
-import { plans, type PlanEventDetails, type PlanId } from "@runwield/plans";
+import { plans, type PlanId } from "@runwield/plans";
 import type {
     ProjectPlanCatalog,
     ProjectPlanDocument,
@@ -26,9 +26,7 @@ import {
 import type { PlanResource } from "../plan-store.ts";
 import { currentPackageProject } from "./workflows.ts";
 import { createSavedPlan, reviseSavedPlan, withLocalProjectAction, withLocalPlanWorkflow } from "./access.ts";
-import { archiveSavedPlan, restoreSavedPlan } from "./archiving.ts";
 import { canonicalizeStoredPlanName, planArtifactReference } from "@runwield/plans/format";
-import { recordPlanEvent } from "./events.ts";
 import {
     listLocalPlanHistory,
     readLocalPlanMilestone,
@@ -59,16 +57,16 @@ import {
     savePlanBodyById,
 } from "./queries.ts";
 
-function requirePlanId(planId: string): PlanId {
+export function requirePlanId(planId: string): PlanId {
     if (!plans.identity.isValid(planId)) throw new Error("Plan access requires a durable Plan ID.");
     return planId;
 }
 
-function requireRevision(revision: string): void {
+export function requireRevision(revision: string): void {
     if (!revision) throw new Error("Plan mutation requires an expected revision.");
 }
 
-function checkRevision(expected: string, actual: string): void {
+export function checkRevision(expected: string, actual: string): void {
     if (expected !== actual) throw new StalePlanWriteError(expected, actual);
 }
 
@@ -83,24 +81,19 @@ function document(resource: PlanResource, planId: PlanId): ProjectPlanDocument {
     return { ...projectPlanDocumentFields(resource), planId };
 }
 
-async function readActive(cwd: string, planId: PlanId): Promise<ProjectPlanDocument> {
+export async function readActiveProjectPlan(cwd: string, planId: PlanId): Promise<ProjectPlanDocument> {
     if (managedPlanStoreActive()) return await readManagedActivePlanDocument(cwd, planId);
     const identity = currentPackageProject();
     if (identity) return await projectPlanFiles.forOwner(identity).read(planId);
     return document(await findPlanById(cwd, planId), planId);
 }
 
-async function readArchived(cwd: string, planId: PlanId): Promise<ProjectPlanDocument> {
+export async function readArchivedProjectPlan(cwd: string, planId: PlanId): Promise<ProjectPlanDocument> {
     const identity = currentPackageProject();
     if (identity && !managedPlanStoreActive()) return await projectPlanFiles.forOwner(identity).readArchived(planId);
     const resource = await loadArchivedPlan(cwd, planId, true);
     if (!resource || resource.attrs.planId !== planId) throw new PlanNotFoundError(planId);
     return { ...projectPlanDocumentFields({ ...resource, relativePath: planArtifactReference(planId) }), planId };
-}
-
-function eventDetails(details: PlanEventDetails = {}): PlanEventDetails {
-    const { triageMeta: _metadata, now: _clock, ...input } = details;
-    return input;
 }
 
 /** Internal review entry point for workflows that still use operational Plan evidence. */
@@ -201,13 +194,13 @@ function projectPlanStore(projectId: ProjectId, run: ReturnType<typeof bindProje
             read: (id) => run((cwd) => projectWorkRecordReads(cwd).read(id), "read"),
         },
         list: () => run(readProjectPlanDisplayCatalog, "read"),
-        read: (planId) => run((cwd) => readActive(cwd, requirePlanId(planId)), "read"),
-        readArchived: (planId) => run((cwd) => readArchived(cwd, requirePlanId(planId)), "read"),
+        read: (planId) => run((cwd) => readActiveProjectPlan(cwd, requirePlanId(planId)), "read"),
+        readArchived: (planId) => run((cwd) => readArchivedProjectPlan(cwd, requirePlanId(planId)), "read"),
         create: (input) =>
             run(async (cwd) => {
                 if (managedPlanStoreActive()) return await createManagedPlanDocument(cwd, input);
                 const planId = requirePlanId(await createSavedPlan(cwd, input));
-                return await readActive(cwd, planId);
+                return await readActiveProjectPlan(cwd, planId);
             }),
         revise: (id, input: ReviseProjectPlan) =>
             run(async (cwd) => {
@@ -215,63 +208,24 @@ function projectPlanStore(projectId: ProjectId, run: ReturnType<typeof bindProje
                 requireRevision(input.expectedRevision);
                 if (managedPlanStoreActive()) {
                     await reviseManagedPlan(cwd, planId, input);
-                    return await readActive(cwd, planId);
+                    return await readActiveProjectPlan(cwd, planId);
                 }
-                const current = await readActive(cwd, planId);
+                const current = await readActiveProjectPlan(cwd, planId);
                 checkRevision(input.expectedRevision, current.revision);
                 await reviseSavedPlan(cwd, planId, { ...input, planName: current.name });
-                return await readActive(cwd, planId);
+                return await readActiveProjectPlan(cwd, planId);
             }),
         editBody: (id, { body, expectedRevision }) =>
             run(async (cwd) => {
                 const planId = requirePlanId(id);
                 requireRevision(expectedRevision);
-                await readActive(cwd, planId);
+                await readActiveProjectPlan(cwd, planId);
                 const current = await loadPlanBodyById(cwd, planId);
                 checkRevision(expectedRevision, current.revision);
                 const saved = await savePlanBodyById(cwd, planId, body, current.bodyHash, {
                     expectedRevision,
                 });
                 return document(saved, planId);
-            }),
-        applyEvent: (id, request) =>
-            run(async (cwd) => {
-                const planId = requirePlanId(id);
-                requireRevision(request.expectedRevision);
-                const current = await readActive(cwd, planId);
-                checkRevision(request.expectedRevision, current.revision);
-                await recordPlanEvent({
-                    cwd,
-                    planName: current.name,
-                    expectedPlanId: planId,
-                    event: request.event,
-                    expectedRevision: request.expectedRevision,
-                    details: eventDetails(request.details),
-                });
-                return await readActive(cwd, planId);
-            }),
-        archive: (id, archive) =>
-            run(async (cwd) => {
-                const planId = requirePlanId(id);
-                requireRevision(archive.expectedRevision);
-                const current = await readActive(cwd, planId);
-                checkRevision(archive.expectedRevision, current.revision);
-                await archiveSavedPlan(cwd, current.name, {
-                    expectedRevision: archive.expectedRevision,
-                    expectedPlanId: planId,
-                    reason: archive.reason,
-                    force: archive.force,
-                });
-                return await readArchived(cwd, planId);
-            }),
-        restore: (id, expectedRevision) =>
-            run(async (cwd) => {
-                const planId = requirePlanId(id);
-                requireRevision(expectedRevision);
-                const current = await readArchived(cwd, planId);
-                checkRevision(expectedRevision, current.revision);
-                await restoreSavedPlan(cwd, planId, undefined, expectedRevision);
-                return await readActive(cwd, planId);
             }),
     };
 }
@@ -297,7 +251,7 @@ export function openPlanStoreForCheckout(cwd: string): CoreProjectPlanStore | un
         withWorkflow: (id, name, operation) =>
             run(async (cwd) => {
                 const planId = requirePlanId(id);
-                const current = await readActive(cwd, planId);
+                const current = await readActiveProjectPlan(cwd, planId);
                 if (current.name !== name) throw new Error("The bound Plan identity changed.");
                 return await withLocalPlanWorkflow(cwd, name, () => operation(cwd), planId);
             }),

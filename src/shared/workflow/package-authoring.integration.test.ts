@@ -4,7 +4,7 @@ import { equal, deepEqual, rejects } from "node:assert/strict";
 import fs from "node:fs/promises";
 import { join } from "node:path";
 import { saveChildFeaturePlans, type ChildFeaturePlanDescriptor } from "../../plan-store/index.ts";
-import { loadPlan, listPlans } from "../testing/plan-query-fixture.ts";
+import { archivePlan, loadPlan, listPlans, restoreArchivedPlan } from "../testing/plan-query-fixture.ts";
 
 import { packageFixture } from "../testing/plan-package-fixture.ts";
 import { authorPackageChildren } from "../../plan-store/index.ts";
@@ -98,8 +98,7 @@ test("a new Sequence can author draft children with forward relations without fi
     }
 });
 
-import { archivePlan, authorLocalPlan } from "../../plan-store/index.ts";
-import { restoreArchivedPlan } from "../testing/plan-query-fixture.ts";
+import { authorLocalPlan } from "../../plan-store/index.ts";
 
 test("restored Epics and draft children remain active for decomposition, regeneration and dependencies", async () => {
     const fixture = await packageFixture();

@@ -1,4 +1,4 @@
-import { archiveEpicPlanFamily } from "../../plan-store/index.ts";
+import { archiveEpicPlanFamily, observeCheckoutPlan } from "../../plan-store/index.ts";
 /**
  * @module cmd/load-plan/plan-epic-archive
  * Archive a terminal Epic with its child Plans.
@@ -18,6 +18,7 @@ import type { UiAPI } from "../../ui/tui/api.ts";
 
 export interface ArchiveEpicPlanRef {
     planName: string;
+    revision?: string;
     attrs: PlanFrontMatter;
 }
 
@@ -52,6 +53,14 @@ export async function archiveEpicWithChildren({ projectRoot, plan, uiAPI }: Arch
         uiAPI.appendSystemMessage(`Epic not found: ${plan.planName}`, true, "RunWield");
         return false;
     }
+    if (
+        (plan.revision && loadedEpic.revision !== plan.revision) ||
+        (plan.attrs.planId && loadedEpic.attrs.planId !== plan.attrs.planId) ||
+        loadedEpic.attrs.status !== plan.attrs.status
+    ) {
+        uiAPI.appendSystemMessage("The selected Epic changed. Reload it before archiving.", true, "RunWield");
+        return false;
+    }
     const epicEntry: ListedPlanForArchive = { name: plan.planName, path: loadedEpic.path, attrs: loadedEpic.attrs };
     const children = (await planDocumentsForCheckout(projectRoot).children(plan.planName)).sort(
         compareChildPlansByOrder,
@@ -69,6 +78,10 @@ export async function archiveEpicWithChildren({ projectRoot, plan, uiAPI }: Arch
     }
 
     const unfinishedChildren = children.filter((child) => !isTerminalArchivableStatus(child.attrs.status)).length;
+    const observedEpic = await observeCheckoutPlan(projectRoot, { ...loadedEpic, planName: plan.planName });
+    const observedChildren = await Promise.all(
+        children.map(({ name, attrs }) => observeCheckoutPlan(projectRoot, { planName: name, attrs })),
+    );
     const confirmationMessage = [
         ...(children.length > 0 ? [formatEpicProgressSummary(children)] : []),
         `Archive Epic will archive ${children.length} child Plan(s) with the Epic. ${unfinishedChildren} child Plan(s) are not at a terminal archivable status.`,
@@ -91,8 +104,8 @@ export async function archiveEpicWithChildren({ projectRoot, plan, uiAPI }: Arch
         archive: async () => {
             const { archived, cleanupMessage } = await archiveEpicPlanFamily(
                 projectRoot,
-                plan.planName,
-                children.map((child) => child.name),
+                observedEpic,
+                observedChildren,
             );
             if (cleanupMessage) uiAPI.appendSystemMessage(cleanupMessage, false, "RunWield");
 

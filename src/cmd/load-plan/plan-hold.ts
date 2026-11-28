@@ -10,7 +10,7 @@ import { projects } from "@runwield/projects";
 import { CLI_BIN } from "../../constants.ts";
 import { planDocumentsForCheckout } from "../../plan-store/index.ts";
 import { isProjectPlan } from "@runwield/plans/format";
-import { recordPlanEvent } from "../../plan-store/index.ts";
+import { applyObservedPlanEvent, observeCheckoutPlan } from "../../plan-store/index.ts";
 import { listCommitsTouchingPathsSince } from "../../shared/workflow/git-snapshot.ts";
 import { runPlanRecoveryEffects } from "../../plan-store/index.ts";
 import { resolveWorkRecordSupersessionProposalsWithUi } from "../../shared/workflow/validation-helpers.ts";
@@ -41,6 +41,7 @@ import type { PlanSessionSurface } from "./plan-session-types.ts";
 /** A Plan the hold flow reads Front Matter from. */
 export interface HoldablePlan {
     planName: string;
+    revision?: string;
     attrs: PlanFrontMatter;
 }
 
@@ -167,6 +168,7 @@ export async function putPlanOnHold({ projectRoot, plan, uiAPI }: PutPlanOnHoldO
         return false;
     }
 
+    const observed = await observeCheckoutPlan(projectRoot, plan);
     if (isProjectPlan(plan.attrs)) {
         const children = await planDocumentsForCheckout(projectRoot).children(plan.planName);
         const childSummary = children.length > 0 ? `\n\n${formatEpicProgressSummary(children)}` : "";
@@ -188,16 +190,9 @@ export async function putPlanOnHold({ projectRoot, plan, uiAPI }: PutPlanOnHoldO
         holdReason = String((await uiAPI.promptText("Optional hold reason:")) || "").trim();
     }
 
-    const updatedAttrs = await recordPlanEvent({
-        cwd: projectRoot,
-        planName: plan.planName,
-        event: "plan_held",
-        currentStatus: plan.attrs.status,
-        details: {
-            triageMeta: plan.attrs,
-            holdReason: holdReason || undefined,
-            holdStalenessBaseline: getHoldStalenessBaseline(plan.attrs),
-        },
+    const updatedAttrs = await applyObservedPlanEvent(projectRoot, observed, "plan_held", {
+        holdReason: holdReason || undefined,
+        holdStalenessBaseline: getHoldStalenessBaseline(plan.attrs),
     });
     plan.attrs = { ...plan.attrs, ...updatedAttrs };
     const refreshed = await planDocumentsForCheckout(projectRoot).load(plan.planName);
@@ -232,6 +227,7 @@ export async function markPlanUserVerified({
         );
         return false;
     }
+    const observed = await observeCheckoutPlan(projectRoot, plan);
     uiAPI.appendSystemMessage(
         "User Verification records your attestation. RunWield Workflow Validation, verifiedAt, and Delivery Evidence will not be claimed.",
         false,
@@ -254,12 +250,8 @@ export async function markPlanUserVerified({
             uiAPI.appendSystemMessage("A User Verification note is required.", true, "RunWield");
         }
     }
-    const updatedAttrs = await recordPlanEvent({
-        cwd: projectRoot,
-        planName: plan.planName,
-        event: "manual_user_verified",
-        currentStatus: plan.attrs.status,
-        details: { triageMeta: plan.attrs, userVerificationNote: note },
+    const updatedAttrs = await applyObservedPlanEvent(projectRoot, observed, "manual_user_verified", {
+        userVerificationNote: note,
     });
     plan.attrs = { ...plan.attrs, ...updatedAttrs };
     const { plan: refreshed } = await resolveWorkflowPlanLocation(projectRoot, plan.planName, { readOnly: true });
@@ -404,6 +396,7 @@ export async function runResumeCheck({
  * @returns {Promise<boolean>}
  */
 export async function resetHeldPlanToDraft({ projectRoot, plan, uiAPI }: ResetHeldPlanOptions): Promise<boolean> {
+    const observed = await observeCheckoutPlan(projectRoot, plan);
     const worktreeContext = await resolveRecoveryWorktree(projectRoot, plan);
     let action = "reset_keep";
     if (hasWorktreeContext(worktreeContext)) {
@@ -445,7 +438,7 @@ export async function resetHeldPlanToDraft({ projectRoot, plan, uiAPI }: ResetHe
         planName: plan.planName,
         planId: plan.attrs.planId,
         worktreeId: worktreeContext?.id,
-        expectedRevision: (plan as { revision?: string }).revision,
+        expectedRevision: observed.revision,
         action: action === "reset_delete" ? "abandon" : "reset",
         recover: async ({ beforePlan, markEffect }) => {
             let retained = action === "reset_keep" && hasWorktreeContext(worktreeContext);
@@ -466,13 +459,11 @@ export async function resetHeldPlanToDraft({ projectRoot, plan, uiAPI }: ResetHe
             );
             await markEffect("recovery_discard_registry_settled", { worktreeId: worktreeContext?.id, retained });
             await detachPlanExecution(projectRoot, plan.planName, plan.attrs.planId, beforePlan?.controllerRevision);
-            return await recordPlanEvent({
-                cwd: projectRoot,
-                planName: plan.planName,
-                event: "hold_reset_to_draft",
-                currentStatus: "on_hold",
-                details: { triageMeta: plan.attrs },
-            });
+            return await applyObservedPlanEvent(
+                projectRoot,
+                await observeCheckoutPlan(projectRoot, { ...plan, revision: undefined }),
+                "hold_reset_to_draft",
+            );
         },
     });
     if (transition.status !== "committed") {
@@ -553,6 +544,7 @@ export async function handleOnHoldPlan({
                 continue;
             }
             const resumed = await runAction(async () => {
+                const observed = await observeCheckoutPlan(projectRoot, plan);
                 const check = await runResumeCheck({
                     projectRoot,
                     plan,
@@ -581,12 +573,8 @@ export async function handleOnHoldPlan({
                     );
                     if (proceed !== "proceed") return false;
                 }
-                const updatedAttrs = await recordPlanEvent({
-                    cwd: projectRoot,
-                    planName: plan.planName,
-                    event: "hold_resumed",
-                    currentStatus: "on_hold",
-                    details: { triageMeta: plan.attrs, heldFromStatus: restoredStatus },
+                const updatedAttrs = await applyObservedPlanEvent(projectRoot, observed, "hold_resumed", {
+                    heldFromStatus: restoredStatus,
                 });
                 plan.attrs = { ...plan.attrs, ...updatedAttrs };
                 const refreshed = await planDocumentsForCheckout(projectRoot).load(plan.planName);

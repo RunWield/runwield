@@ -9,7 +9,7 @@ import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { RuntimeInteractionTypes } from "@runwield/session-runtime/interactions";
-import type { SequenceReviewDocument } from "../../plan-store/index.ts";
+import type { SequenceReviewPresentation as SequenceReviewDocument } from "@runwield/plans/lifecycle";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 
 test("reopened Sequence combines container and child feedback for its planning Agent", async () => {

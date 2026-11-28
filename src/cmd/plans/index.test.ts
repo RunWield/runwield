@@ -10,8 +10,13 @@ import {
 } from "node:fs/promises";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { archivePlan } from "../../plan-store/index.ts";
-import { listFixturePlanHistory, loadArchivedPlan, loadPlan } from "../../shared/testing/plan-query-fixture.ts";
+
+import {
+    archivePlan,
+    listFixturePlanHistory,
+    loadArchivedPlan,
+    loadPlan,
+} from "../../shared/testing/plan-query-fixture.ts";
 
 import { runPlansCommand } from "./index.ts";
 import { addEntry } from "../../shared/worktree-registry.ts";
@@ -378,7 +383,8 @@ plansTest("Plans list and read preserve unimported sources without live discover
 });
 
 plansTest("plans history lists and shows the approved documents and restores their prose", async ({ projectRoot }) => {
-    const { authorLocalPlan, recordPlanEvent, savePlanProse } = await import("../../plan-store/index.ts");
+    const { authorLocalPlan, savePlanProse } = await import("../../plan-store/index.ts");
+    const { recordPlanEvent } = await import("../../shared/testing/plan-state-fixture.ts");
     await authorLocalPlan(projectRoot, {
         planName: "proposal",
         contextMarkdown: "# Approved\n",

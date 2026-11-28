@@ -682,12 +682,12 @@ try {
         importPlans,
         savePlanProse,
         withLocalPlanWorkflow,
-        recordPlanEvent,
         stageValidationPassedInExecutionWorktree,
         settlePackagePublication,
         workRecordsForCheckout,
         readPublishedDeliverySources,
     } = await import("../../plan-store/index.ts");
+    const { recordPlanEvent } = await import("../testing/plan-state-fixture.ts");
     const { listPlans, loadPlan } = await import("../testing/plan-query-fixture.ts");
     if (command === "managed-share") {
         const { runPlansShareCommand } = await import("../../cmd/plans/share.ts");
@@ -702,6 +702,19 @@ try {
         ok(checkout.kind === "existing" && planId && input.planServer);
         const sharing = openPlanSharing({ projectId: checkout.identity.projectId, serverUrl: input.planServer });
         console.log(JSON.stringify(await sharing.share(planId)));
+    } else if (command === "managed-live-review") {
+        const { openPlanLifecycleForCheckout, preparePlanReviewVersion } = await import("../../plan-store/index.ts");
+        const plan = await loadPlan(input.cwd, "repeatable");
+        const lifecycle = openPlanLifecycleForCheckout(input.cwd);
+        ok(plan && lifecycle);
+        const { displayedVersion } = await preparePlanReviewVersion(input.cwd, "repeatable", plan.path);
+        const reviewed = await lifecycle.applyEvent(displayedVersion.planId, {
+            event: "review_approved",
+            displayedVersion,
+            approvalAction: "later",
+        });
+        const { approved, cancellationReason } = reviewed;
+        console.log(JSON.stringify({ approved, cancellationReason }));
     } else if (command.startsWith("managed-author")) {
         const { openPlanStoreForCheckout, renamePlan, withPlanSubmission } = await import("../../plan-store/index.ts");
         if (command === "managed-author") {

@@ -2,7 +2,8 @@ import { RunWieldButton } from "../../design-system/components/react/RunWieldPri
 import { useEffect, useId, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import type { Block } from "@plannotator/ui/types.ts";
-import type { PlanQuestionAnswer, PlanQuestionBlock } from "../../../shared/plan-questions.ts";
+import type { PlanQuestionBlock } from "../../../shared/plan-questions.ts";
+import type { PlanQuestionAnswer } from "@runwield/plans/lifecycle";
 
 interface PlanQuestionBlocksProps {
     containerRef: RefObject<HTMLElement | null>;

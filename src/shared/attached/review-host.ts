@@ -3,7 +3,6 @@ import { capturePlanAccess } from "../../plan-store/index.ts";
 import { applyAttachedCodeReviewDecision } from "./code-review-decision.ts";
 /** Process-local browser hosting; the coordinator owns every durable review decision. */
 import { type BrowserPort, SYSTEM_BROWSER_PORT } from "../browser-port.ts";
-import { preparePlanReviewPayload } from "../../ui/review/plan-review.ts";
 import { type ReviewSurface, startCodeReviewSurface, startPlanReviewSurface } from "../../ui/review/review-launcher.ts";
 import type { ReviewConversation, ReviewConversationEvent } from "@runwield/session-runtime/interactions";
 import type { ReviewDecision } from "../../ui/workspace/routes/api/review-handlers.ts";
@@ -213,15 +212,11 @@ async function ensureReviewHostedInScope(
             return null;
         }
         const basis = opened.basis;
-        const payload = await preparePlanReviewPayload(basis.planPath, basis.triageMeta ?? undefined);
-        if (payload.planRevision !== basis.review.planRevision) {
-            throw new Error("The Plan changed while opening. Retry status.");
-        }
         const conversation = await conversationFor(projectRoot, workflow, "plan", browser, hostId);
         const surface = await startPlanReviewSurface<ReviewDecision>({
             reviewConversation: conversation,
             cwd: basis.documentRoot,
-            plan: payload.planWithFm,
+            plan: basis.displayedMarkdown,
             planPath: basis.planPath,
             agentLabel: host.agentLabel,
             surfaceId: workflow.workflowId,

@@ -1,4 +1,4 @@
-import { seedPlanState, seedPlan } from "../testing/plan-state-fixture.ts";
+import { recordPlanEvent, seedPlanState, seedPlan } from "../testing/plan-state-fixture.ts";
 import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 import { assertEquals } from "../../testing/assertions.ts";
 import { mkdtemp as fsMkdtemp, realpath as fsRealpath, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
@@ -13,7 +13,7 @@ import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { createGitPort } from "../git-port.ts";
 import { HostedSession } from "@runwield/session-runtime/host";
 import { addEntry } from "../worktree-registry.ts";
-import { recordPlanEvent } from "../../plan-store/index.ts";
+
 import { continueWorkflowValidation } from "./validation.ts";
 import { attachRecorder, makeUi } from "./validation-test-helpers.ts";
 

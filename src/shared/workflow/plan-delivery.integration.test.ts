@@ -11,8 +11,7 @@ import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 
-import { archivePlan } from "../../plan-store/index.ts";
-import { loadPlan } from "../testing/plan-query-fixture.ts";
+import { archivePlan, loadPlan } from "../testing/plan-query-fixture.ts";
 
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { HostedSession } from "@runwield/session-runtime/host";

@@ -1,14 +1,17 @@
-import { preparePlanReviewDocument, renderPlanReviewMarkdown } from "../../plan-store/index.ts";
-import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
-
-import { preparePlanWorkflow } from "../../plan-store/index.ts";
 import {
-    type LoadedReviewImage,
-    loadReviewFeedbackImages,
-    type ReviewAnnotationInput,
-    type ReviewImageInput,
-} from "../../shared/workflow/review-feedback-images.ts";
-import type { SequenceReviewDecision, SequenceReviewDocument } from "../../plan-store/index.ts";
+    applyPlanReviewConversation,
+    hasCanonicalPlanAccess,
+    openPlanLifecycleForCheckout,
+    preparePlanReviewVersion,
+    preparePlanWorkflow,
+    prepareSequenceReviewVersion,
+    validatePlanReviewSequence,
+    withLocalPlanWorkflow,
+} from "../../plan-store/index.ts";
+import type { PlanReviewVersion, SequenceReviewPresentation } from "@runwield/plans/lifecycle";
+import { type LoadedReviewImage, loadReviewFeedbackImages } from "../../shared/workflow/review-feedback-images.ts";
+import type { ReviewAnnotationInput, ReviewImageInput } from "@runwield/plans/lifecycle";
+import type { SequenceReviewDecision } from "../../plan-store/index.ts";
 /**
  * @module ui/review/plan-review
  * Browser plan-review consumer used by the terminal runtime adapter.
@@ -17,13 +20,11 @@ import type { SequenceReviewDecision, SequenceReviewDocument } from "../../plan-
  * The browser surface is isolated here so core only requests a review.
  */
 
-import { assertSharedPlanWriteAllowed } from "@runwield/plans/collaboration-lock";
 import { isAnsweredPlanReview } from "../../shared/workflow/plan-review-recovery.ts";
-import { applySharedPlanReviewDecision } from "../../plan-store/index.ts";
 import { startPlanReviewSurface } from "./review-launcher.ts";
 import type { PlanFrontMatter } from "@runwield/plans";
 import type { ReviewConversation, ReviewServerOutput } from "@runwield/session-runtime/interactions";
-import type { PlanApprovalAction } from "../../shared/workflow/plan-approval.ts";
+import type { PlanApprovalAction } from "@runwield/plans/lifecycle";
 import type { BrowserPort } from "../../shared/browser-port.ts";
 
 interface PlanReviewDecision extends SequenceReviewDecision {
@@ -46,7 +47,6 @@ interface PlanReviewDecision extends SequenceReviewDecision {
 
 interface PlanReviewRecoveryRequired {
     message: string;
-    entryIds: string[];
 }
 
 export interface PlanReviewResult {
@@ -79,7 +79,8 @@ interface ReviewSurfaceReady {
 }
 
 interface SubmitPlanForReviewOptions {
-    sequenceDocuments?: SequenceReviewDocument[];
+    sequenceDocuments?: SequenceReviewPresentation[];
+    displayedVersion?: PlanReviewVersion;
     cwd: string;
     planName: string;
     planPath: string;
@@ -94,45 +95,6 @@ interface SubmitPlanForReviewOptions {
     browser: BrowserPort;
 }
 
-/** Compose the same document-only payload for Core and Attached review hosts. */
-export async function preparePlanReviewPayload(planPath: string, triageMeta?: Partial<PlanFrontMatter>) {
-    const snapshot = await preparePlanReviewDocument(planPath);
-    const plan = snapshot.document;
-    const { attrs, body, revision: planRevision } = plan;
-
-    assertSharedPlanWriteAllowed(attrs);
-    const fmOverrides: Partial<PlanFrontMatter> = {
-        ...attrs,
-        updatedAt: new Date().toISOString(),
-    };
-
-    if (triageMeta) {
-        if (triageMeta.classification) {
-            fmOverrides.classification = triageMeta.classification;
-        }
-        if (triageMeta.workKind) fmOverrides.workKind = triageMeta.workKind;
-        if (triageMeta.complexity) fmOverrides.complexity = triageMeta.complexity;
-        if (triageMeta.summary) fmOverrides.summary = triageMeta.summary;
-        if (triageMeta.affectedPaths) {
-            fmOverrides.affectedPaths = triageMeta.affectedPaths;
-        }
-    }
-
-    const trustedClassification = fmOverrides.classification;
-    const trustedWorkKind = fmOverrides.workKind;
-    const planWithFm = renderPlanReviewMarkdown(body, fmOverrides);
-
-    return {
-        attrs,
-        planRevision,
-        planWithFm,
-        trustedClassification,
-        trustedWorkKind,
-        packageInput: snapshot.packageInput,
-        packageSelection: snapshot.access,
-    };
-}
-
 // ─── Main Function ────────────────────────────────────────────────────
 
 /**
@@ -144,6 +106,7 @@ export async function submitPlanForReview(options: SubmitPlanForReviewOptions): 
 async function submitPlanForReviewInScope({
     cwd,
     sequenceDocuments,
+    displayedVersion,
     planName,
     planPath,
     previousPlan,
@@ -157,13 +120,15 @@ async function submitPlanForReviewInScope({
     browser,
 }: SubmitPlanForReviewOptions): Promise<PlanReviewResult> {
     await preparePlanWorkflow(cwd, planName);
-    let { attrs, planRevision, planWithFm, trustedClassification, trustedWorkKind, packageInput, packageSelection } =
-        await preparePlanReviewPayload(planPath, triageMeta);
-
-    // 4. Start the real review surface; only browser opening crosses the port.
+    const prepare = () =>
+        preparePlanReviewVersion(cwd, planName, planPath, { triage: triageMeta, renderMarkdown: true });
+    let individual = sequenceDocuments ? undefined : await prepare();
+    const sequenceVersion = sequenceDocuments
+        ? (displayedVersion ?? (await prepareSequenceReviewVersion(cwd, planName, sequenceDocuments)))
+        : undefined;
     const server = await startPlanReviewSurface<PlanReviewDecision>({
         cwd,
-        plan: planWithFm,
+        plan: individual?.markdown ?? sequenceDocuments![0].plan,
         sequenceDocuments,
         planPath,
         previousPlan,
@@ -173,19 +138,17 @@ async function submitPlanForReviewInScope({
         browser,
         onOutput,
         onSurfaceReady,
-        onReviewOpen: packageSelection
-            ? async () => {
-                  ({
-                      attrs,
-                      planRevision,
-                      planWithFm,
-                      trustedClassification,
-                      trustedWorkKind,
-                      packageInput,
-                      packageSelection,
-                  } = await preparePlanReviewPayload(planPath, triageMeta));
+        onDecision: sequenceVersion
+            ? async (decision) => {
+                  if (!decision.exit) await validatePlanReviewSequence(cwd, sequenceVersion, decision);
               }
             : undefined,
+        onReviewOpen:
+            individual && hasCanonicalPlanAccess()
+                ? async () => {
+                      individual = await prepare();
+                  }
+                : undefined,
     });
 
     let keepSurfaceOpen = false;
@@ -238,23 +201,21 @@ async function submitPlanForReviewInScope({
                 ...(decision.conversationTurn === true && { conversationTurn: true }),
             };
         }
-        const actionResult = await applySharedPlanReviewDecision({
-            packageSelection,
-            packageInput,
-            cwd,
-            planName,
-            planPath,
-            planWithFrontMatter: planWithFm,
-            planRevision,
-            originalAttrs: attrs,
-            trustedClassification,
-            trustedWorkKind,
-            decision,
-        });
+        const version = individual!.displayedVersion;
+        const lifecycle = openPlanLifecycleForCheckout(cwd);
+        if (!lifecycle) throw new Error("The review Project is no longer available.");
+        const actionResult = decision.conversationTurn
+            ? await applyPlanReviewConversation(cwd, version, decision)
+            : await lifecycle.applyEvent(version.planId, {
+                  ...decision,
+                  event: decision.approved === true ? "review_approved" : "review_feedback",
+                  displayedVersion: version,
+              });
 
+        const { sequence: _sequence, ...result } = actionResult;
         const images = await loadReviewFeedbackImages(decision, cwd);
         return {
-            ...actionResult,
+            ...result,
             ...(decision.conversationTurn === true && { conversationTurn: true }),
             ...(decision.savedPath && { savedPath: decision.savedPath }),
             ...(images.length > 0 && { images }),

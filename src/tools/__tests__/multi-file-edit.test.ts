@@ -129,7 +129,7 @@ test("multi_file_edit uses canonical Plan operations and rolls back an earlier e
     try {
         await authorLocalPlan(fixture.root, { planName: "first", contextMarkdown: "# First\n\noriginal\n" });
         await authorLocalPlan(fixture.root, { planName: "second", contextMarkdown: "# Second\n\noriginal\n" });
-        const { recordPlanEvent } = await import("../../plan-store/index.ts");
+        const { recordPlanEvent } = await import("../../shared/testing/plan-state-fixture.ts");
         await recordPlanEvent({
             cwd: fixture.root,
             planName: "first",

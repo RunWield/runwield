@@ -15,7 +15,7 @@ import {
     updateEntry as updateWorktreeRegistryEntry,
 } from "../../src/shared/worktree-registry.ts";
 import { isInValidation } from "@runwield/plans/lifecycle";
-import { recordPlanEvent } from "../../src/plan-store/index.ts";
+import { applyWorkflowPlanEvent } from "../../src/plan-store/project-lifecycle.ts";
 import { restoreExecutionPlanFromBaseline } from "../../src/plan-store/index.ts";
 import { recordWorkflowOutcome, type OutcomeSession } from "../../src/shared/workflow/outcome-observations.ts";
 import { listTransitionRecoveryRecords, runImplementationCheckpointTransition } from "../../src/plan-store/index.ts";
@@ -213,7 +213,7 @@ async function finalizeLockedImplementation({
                 throw new Error(`Cannot complete ${planName}: execution mode is missing or unknown.`);
             }
             if (planStatus === "ready_for_work") {
-                await recordPlanEvent({
+                await applyWorkflowPlanEvent({
                     cwd: planCwd,
                     planName,
                     event: "execution_started",
@@ -232,7 +232,7 @@ async function finalizeLockedImplementation({
                 });
             }
             if (planStatus !== "implemented") {
-                await recordPlanEvent({
+                await applyWorkflowPlanEvent({
                     cwd: planCwd,
                     planName,
                     event: "implementation_finished",

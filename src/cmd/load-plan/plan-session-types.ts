@@ -1,3 +1,4 @@
+import type { PlanReviewVersion, SequenceReviewPresentation } from "@runwield/plans/lifecycle";
 /**
  * @module cmd/load-plan/plan-session-types
  * Shapes shared across the load-plan modules.
@@ -8,9 +9,9 @@
 
 import type { PlanFrontMatter } from "@runwield/plans";
 import type { ActiveExecutionWorkflow } from "@runwield/workflow/state";
-import type { PlanApprovalAction } from "../../shared/workflow/plan-approval.ts";
+import type { PlanApprovalAction } from "@runwield/plans/lifecycle";
 import type { PlanActionRequest, PlanActionResult } from "../../shared/workflow/plan-actions.ts";
-import type { SequenceReviewDecision, SequenceReviewDocument } from "../../plan-store/index.ts";
+import type { SequenceReviewDecision } from "../../plan-store/index.ts";
 import type { EpicIntegrationGateResult } from "../../shared/workflow/epic-integration.ts";
 
 /** An image attached to a review decision. */
@@ -47,7 +48,8 @@ export interface PlanReviewRequest {
     planPath: string;
     triageMeta: Record<string, unknown>;
     documentRoot?: string;
-    sequenceDocuments?: SequenceReviewDocument[];
+    sequenceDocuments?: SequenceReviewPresentation[];
+    displayedVersion?: PlanReviewVersion;
 }
 
 /** Options accepted when switching the active agent. */
@@ -63,6 +65,7 @@ export interface SwitchAgentOptions {
  * No core session object or persistence manager crosses this boundary.
  */
 export interface PlanSessionSurface {
+    managedRunwieldSessionId?: string;
     id: string;
     cwd: string;
     getActiveAgentName: () => string | null;

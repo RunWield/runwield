@@ -1,6 +1,6 @@
-import { seedPlan } from "../testing/plan-state-fixture.ts";
+import { recordPlanEvent, seedPlan } from "../testing/plan-state-fixture.ts";
 import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
-import { recordPlanEvent } from "../../plan-store/index.ts";
+
 import { existsSync } from "node:fs";
 import { readFile, realpath, rm } from "node:fs/promises";
 import { join } from "node:path";

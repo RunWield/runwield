@@ -1,12 +1,11 @@
-import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
-import { assertPlanFixtureInput } from "../testing/plan-state-fixture.ts";
+import { recordPlanEvent } from "../testing/plan-state-fixture.ts";
 import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { archivePlan } from "../../plan-store/index.ts";
-import { loadPlan } from "../testing/plan-query-fixture.ts";
-import { recordPlanEvent } from "../../plan-store/index.ts";
+
+import { archivePlan, loadPlan } from "../testing/plan-query-fixture.ts";
+
 import { openAttachedReviewRound } from "./coordinator.ts";
 import { readRecordBytes, runOperation, spawnAttachedCli, submitReview, withProject } from "./attached-test-fixture.ts";
 import { loadAttachedWorkflowRecord, locateAttachedWorkflows } from "./record-store.ts";
@@ -36,15 +35,13 @@ test("opening and restoring a round pin the current Plan document without changi
         const bytes = await readRecordBytes(projectRoot, submitted.workflowId);
         const reopened = await openAttachedReviewRound(projectRoot, submitted.workflowId);
         assert(reopened.kind === "opened");
-        const { packageInput: restoredInput, ...restoredBasis } = restored.basis;
-        const { packageInput: reopenedInput, ...reopenedBasis } = reopened.basis;
-        assertEquals(reopenedBasis, restoredBasis);
-        assert(restoredInput && reopenedInput);
-        assertEquals(reopenedInput.definitionHash, restoredInput.definitionHash);
-        await withLocalPlanWorkflow(projectRoot, "dark-mode-toggle", async () => {
-            await assertPlanFixtureInput("dark-mode-toggle", restoredInput);
-            await assertPlanFixtureInput("dark-mode-toggle", reopenedInput);
+        assertEquals(reopened.basis.review, restored.basis.review);
+        assertEquals(reopened.basis.displayedVersion, restored.basis.displayedVersion);
+        assertEquals(restored.basis.displayedVersion, {
+            planId: actual.attrs.planId,
+            revision: actual.revision,
         });
+        assertStringIncludes(reopened.basis.displayedMarkdown, "Add a theme selector.");
         assertEquals(await readRecordBytes(projectRoot, submitted.workflowId), bytes);
     });
 });

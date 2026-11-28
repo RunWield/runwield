@@ -1,15 +1,18 @@
+import { projectPlanFiles } from "@runwield/plans/project-plan-files";
 import { withManagedProjectConnection } from "@runwield/plans/managed-project-connection";
 import { samePackagePublicationReference } from "@runwield/plans/publication-copies";
 import { projects } from "@runwield/projects";
 import {
     managedPlanStoreActive,
     mutateManagedPlan,
+    managedCommittedPlanDocument,
     readManagedActivePlanById,
     readManagedPlan,
     readManagedExecution,
 } from "./managed.ts";
 import { packageWorkflowLocks } from "./workflows.ts";
-import { plans, type PlanFrontMatter } from "@runwield/plans";
+import { plans, type PlanFrontMatter, type PlanId } from "@runwield/plans";
+import type { ProjectPlanDocument } from "@runwield/plans/store";
 import {
     buildStalePlanStatusMessage,
     type PlanEvent,
@@ -20,8 +23,7 @@ import { selectPlanAccess, withPlanAccess, type PlanAccess } from "./handles.ts"
 import { withLocalPlanWorkflow } from "./access.ts";
 import {
     selectedPackage,
-    capturePackageWorkflowInput,
-    assertPackageWorkflowInput,
+    currentPackageProject,
     updatePackageWorkflowMetadata,
     currentPackageSelection,
 } from "./workflows.ts";
@@ -55,8 +57,11 @@ export interface RecordPlanEventRequest {
 interface ParentCompletion extends Omit<RecordPlanEventRequest, "currentStatus"> {
     updatedAttrs: PlanFrontMatter;
 }
-interface AppliedEvent {
+interface PlanEventCommit {
     attrs: PlanFrontMatter;
+    document?: ProjectPlanDocument;
+}
+interface AppliedEvent extends PlanEventCommit {
     details: PlanEventDetails;
 }
 interface CompletionChild {
@@ -162,38 +167,10 @@ async function advanceParentEpicWhenAllChildrenVerified({
     });
 }
 
-/**
- * Record a Plan Event and persist the resulting Plan Front Matter.
- *
- * @param {Object} opts
- * @param {string} opts.cwd
- * @param {string} opts.planName
- * @param {PlanEvent} opts.event
- * @param {PlanStatus} opts.currentStatus
- * @param {PlanEventDetails} [opts.details]
- * @param {string} [opts.expectedRevision]
- * @param {import("./workflows.ts").PackageWorkflowSelection} [opts.packageSelection]
- * @returns {Promise<import('@runwield/plans').PlanFrontMatter>}
- */
 async function packageEventWorkflow(planName: string, event: PlanEvent) {
-    const selected = await selectedPackage(planName);
-    const workflow = { ...selected.metadata.workflow };
-    if (event === "readiness_passed" || event === "execution_started") {
-        const input = event === "readiness_passed" ? workflow.review : workflow.readiness;
-        if (!input) throw new Error("Current package review/readiness evidence is required.");
-        await assertPackageWorkflowInput(planName, input);
-    }
-    if (event === "hold_reset_to_draft") {
-        workflow.review = undefined;
-        workflow.readiness = undefined;
-    }
-    if (event === "implementation_finished" && workflow.attempt)
-        await assertPackageWorkflowInput(planName, workflow.readiness || workflow.attempt.input);
-    if (event === "epic_integration_passed") workflow.integration = await capturePackageWorkflowInput(planName);
-    if (event === "epic_integration_stale" || event === "epic_integration_failed") workflow.integration = undefined;
-    if (event === "review_approved") workflow.review = await capturePackageWorkflowInput(planName);
-    if (event === "readiness_passed") workflow.readiness = await capturePackageWorkflowInput(planName);
-    return workflow;
+    const owner = currentPackageProject();
+    if (!owner) throw new Error("Package lifecycle requires an admitted Plan owner.");
+    return await projectPlanFiles.forOwner(owner).prepareLifecycleEvidence(planName, currentPackageSelection(), event);
 }
 
 export const MANAGED_LIFECYCLE_DECISIONS = [
@@ -308,12 +285,17 @@ export async function recordManagedExecutionCheckpoint(
             throw new Error("Managed in-place completion requires its reserved non-Git attempt.");
         const before = await loadPlan(cwd, planName);
         if (!before || before.revision !== expectedRevision) throw new Error("Plan revision changed.");
-        if (checkpoint.event === "validation_checkpoint_saved")
-            return await updatePackageWorkflowMetadata(
+        const planId = plans.identity.parse(selected.metadata.planId);
+        if (!planId) throw new Error("Execution checkpoint requires a durable Plan ID.");
+        const files = projectPlanFiles.forOwner(projects.home.current()!);
+        if (checkpoint.event === "validation_checkpoint_saved") {
+            await updatePackageWorkflowMetadata(
                 planName,
                 { validationCheckpoint: checkpoint.details.validationCheckpoint },
                 expectedRevision,
             );
+            return await files.read(planId);
+        }
         const workflow = await packageEventWorkflow(planName, checkpoint.event);
         const updates = plans.lifecycle.changesFor(checkpoint.event, before.attrs.status, {
             ...checkpoint.details,
@@ -329,20 +311,42 @@ export async function recordManagedExecutionCheckpoint(
                 : {}),
             triageMeta: before.attrs,
         });
-        return await updatePackageWorkflowMetadata(planName, updates, expectedRevision, workflow);
+        await updatePackageWorkflowMetadata(planName, updates, expectedRevision, workflow);
+        return await files.read(planId);
     });
 }
 
-export async function recordPlanEvent({
-    cwd,
-    planName,
-    event,
-    currentStatus,
-    details = {},
-    expectedRevision,
-    expectedPlanId,
-    packageSelection,
-}: RecordPlanEventRequest): Promise<PlanFrontMatter> {
+export async function recordPlanEvent(request: RecordPlanEventRequest): Promise<PlanFrontMatter> {
+    return (await recordPlanEventCommit(request)).attrs;
+}
+
+export async function recordProjectPlanEvent(
+    request: RecordPlanEventRequest & { expectedPlanId: PlanId },
+): Promise<ProjectPlanDocument> {
+    const { document } = await recordPlanEventCommit(request, request.expectedPlanId);
+    if (!document) throw new Error("Lifecycle event did not return its committed Project Plan.");
+    return document;
+}
+
+async function recordPlanEventCommit(
+    {
+        cwd,
+        planName,
+        event,
+        currentStatus,
+        details = {},
+        expectedRevision,
+        expectedPlanId,
+        packageSelection,
+    }: RecordPlanEventRequest,
+    documentPlanId?: PlanId,
+): Promise<PlanEventCommit> {
+    const commit = async (attrs: PlanFrontMatter): Promise<PlanEventCommit> => {
+        if (documentPlanId === undefined) return { attrs };
+        const owner = currentPackageProject();
+        if (!owner) throw new Error("Lifecycle event requires the canonical Project owner.");
+        return { attrs, document: await projectPlanFiles.forOwner(owner).read(documentPlanId) };
+    };
     if (managedPlanStoreActive()) {
         return await withManagedProjectConnection(async () => {
             const readBefore = () =>
@@ -377,7 +381,7 @@ export async function recordPlanEvent({
                     humanReviewDecision,
                     humanReviewedAt,
                 } = details;
-                await mutateManagedPlan(cwd, {
+                const mutation = await mutateManagedPlan(cwd, {
                     kind: "execution-checkpoint",
                     operationId: crypto.randomUUID(),
                     planId: before.attrs.planId,
@@ -399,24 +403,32 @@ export async function recordPlanEvent({
                         },
                     },
                 });
+                if (documentPlanId) {
+                    const document = await managedCommittedPlanDocument(cwd, documentPlanId, mutation);
+                    return { attrs: document.attrs, document };
+                }
                 const after = await readManagedActivePlanById(cwd, before.attrs.planId);
                 if (!after) throw new Error("Managed Plan is unavailable after its checkpoint.");
-                return after.attrs;
+                return { attrs: after.attrs };
             }
             if (isManagedLifecycleDecision(event)) {
                 const before = await readBefore();
                 if (!before?.attrs.planId || (currentStatus && currentStatus !== before.attrs.status))
                     throw new Error("Plan status changed.");
-                await mutateManagedPlan(cwd, {
+                const mutation = await mutateManagedPlan(cwd, {
                     kind: "lifecycle-decision",
                     operationId: crypto.randomUUID(),
                     planId: before.attrs.planId,
                     expectedRevision: expectedRevision || before.revision,
                     decision: { event, details: managedLifecycleDetails(details) },
                 });
+                if (documentPlanId) {
+                    const document = await managedCommittedPlanDocument(cwd, documentPlanId, mutation);
+                    return { attrs: document.attrs, document };
+                }
                 const after = await readManagedActivePlanById(cwd, before.attrs.planId);
                 if (!after) throw new Error("Lifecycle decision Plan is unavailable.");
-                return after.attrs;
+                return { attrs: after.attrs };
             }
             if (
                 event !== "review_approved" &&
@@ -429,16 +441,20 @@ export async function recordPlanEvent({
             const before = await readBefore();
             if (!before?.attrs.planId) throw new Error("Managed Plan is unavailable.");
             if (currentStatus && currentStatus !== before.attrs.status) throw new Error("Plan status changed.");
-            await mutateManagedPlan(cwd, {
+            const mutation = await mutateManagedPlan(cwd, {
                 kind: "record-event",
                 event,
                 operationId: crypto.randomUUID(),
                 planId: before.attrs.planId,
                 expectedRevision: expectedRevision || before.revision,
             });
+            if (documentPlanId) {
+                const document = await managedCommittedPlanDocument(cwd, documentPlanId, mutation);
+                return { attrs: document.attrs, document };
+            }
             const after = await readManagedActivePlanById(cwd, before.attrs.planId);
             if (!after) throw new Error("Managed Plan is unavailable after its event.");
-            return after.attrs;
+            return { attrs: after.attrs };
         });
     }
     const retained = hasRetainedCheckoutSource(cwd);
@@ -447,15 +463,18 @@ export async function recordPlanEvent({
             cwd,
             planName,
             () =>
-                recordPlanEvent({
-                    cwd,
-                    planName,
-                    event,
-                    currentStatus,
-                    details,
-                    expectedRevision,
-                    expectedPlanId,
-                }),
+                recordPlanEventCommit(
+                    {
+                        cwd,
+                        planName,
+                        event,
+                        currentStatus,
+                        details,
+                        expectedRevision,
+                        expectedPlanId,
+                    },
+                    documentPlanId,
+                ),
             expectedPlanId,
         );
     if (!packageSelection && !currentPackageSelection()) packageSelection = await selectPlanAccess(cwd, planName);
@@ -463,7 +482,11 @@ export async function recordPlanEvent({
         return await withPlanAccess(
             cwd,
             packageSelection,
-            () => recordPlanEvent({ cwd, planName, event, currentStatus, details, expectedRevision, expectedPlanId }),
+            () =>
+                recordPlanEventCommit(
+                    { cwd, planName, event, currentStatus, details, expectedRevision, expectedPlanId },
+                    documentPlanId,
+                ),
             planName,
         );
     if (expectedPlanId !== undefined && !retained && currentPackageSelection()?.planId !== expectedPlanId)
@@ -490,13 +513,14 @@ export async function recordPlanEvent({
                 triageMeta: before.attrs,
             });
             const workflow = await packageEventWorkflow(planName, event);
-            return await updatePackageWorkflowMetadata(
+            const attrs = await updatePackageWorkflowMetadata(
                 planName,
                 updates,
                 before.revision,
                 workflow,
                 event === "review_approved" ? "approved" : undefined,
             );
+            return await commit(attrs);
         });
     }
     if (currentPackageSelection() && event === "validation_passed") {
@@ -559,13 +583,13 @@ export async function recordPlanEvent({
                 workflow,
                 event === "review_approved" ? "approved" : integrated ? { delivered: integrated } : undefined,
             );
-            return { attrs, details: canonicalDetails };
+            return { ...(await commit(attrs)), details: canonicalDetails };
         }
         const attrs = await updatePlanFrontMatter(cwd, planName, updates, canonicalDetails.triageMeta, {
             expectedRevision: beforePlan.revision,
             expectedPlanId,
         });
-        return { attrs, details: canonicalDetails };
+        return { ...(await commit(attrs)), details: canonicalDetails };
     };
     const run = async () => {
         const transition = await runPlanLifecycleEventTransition({
@@ -591,7 +615,7 @@ export async function recordPlanEvent({
             updatedAttrs: value.attrs,
             details: value.details,
         });
-        return value.attrs;
+        return value;
     };
     try {
         if (event === "validation_passed" || event === "manual_user_verified") {
@@ -737,7 +761,7 @@ export async function recordPlanEvent({
                         void childAttrs;
                         throw error;
                     }
-                    return { attrs: childAttrs, details: canonicalDetails };
+                    return { ...(await commit(childAttrs)), details: canonicalDetails };
                 },
             });
             if (transition.status !== "committed") {
@@ -746,9 +770,7 @@ export async function recordPlanEvent({
                     transition.message || `Plan Lifecycle transition ${event} did not commit for ${planName}.`,
                 );
             }
-            return /** @type {{ attrs: import('@runwield/plans').PlanFrontMatter }} */ (
-                transition.value as AppliedEvent
-            ).attrs;
+            return transition.value as AppliedEvent;
         }
         return await run();
     } catch (error) {

@@ -20,7 +20,8 @@ import {
     planDocumentsForCheckout,
     hasCanonicalPlanAccess,
     listSelectablePlanDocuments,
-    recordPlanEvent,
+    applyObservedPlanEvent,
+    observeCheckoutPlan,
 } from "../../plan-store/index.ts";
 import { isInValidation } from "@runwield/plans/lifecycle";
 import { resolveWorkRecordSupersessionProposalsWithUi } from "../../shared/workflow/validation-helpers.ts";
@@ -58,6 +59,7 @@ import type { PlanSessionSurface } from "./plan-session-types.ts";
 /** The Epic being acted on, loaded with its body for the detail view. */
 export interface EpicPlanWithBody {
     planName: string;
+    revision?: string;
     body: string;
     markdown: string;
     attrs: PlanFrontMatter;
@@ -106,7 +108,9 @@ export async function handleEpicPlan({
     const familyChildren =
         savedChildren ??
         (canonical
-            ? (await listSelectablePlanDocuments(projectRoot)).filter((child) => child.attrs.parentPlan === plan.planName)
+            ? (await listSelectablePlanDocuments(projectRoot)).filter(
+                  (child) => child.attrs.parentPlan === plan.planName,
+              )
             : legacyBranch
               ? await findTargetBranchPlansByParent(projectRoot, legacyBranch, plan.planName).catch((error) => {
                     if (!(error instanceof TargetBranchSnapshotUnavailableError)) throw error;
@@ -176,14 +180,14 @@ export async function handleEpicPlan({
     async function ensureEpicReadinessPassed() {
         if (plan.attrs.status !== "approved" || epicReadinessRecorded) return true;
         if (!validatePlanExecutionPolicyForReadiness(plan, uiAPI)) return false;
-        const updatedAttrs = await recordPlanEvent({
-            cwd: projectRoot,
-            planName: plan.planName,
-            event: "epic_readiness_passed",
-            currentStatus: "approved",
-            details: { triageMeta: plan.attrs },
-        });
+        const updatedAttrs = await applyObservedPlanEvent(
+            projectRoot,
+            await observeCheckoutPlan(projectRoot, plan),
+            "epic_readiness_passed",
+        );
         plan.attrs = { ...plan.attrs, ...updatedAttrs };
+        const refreshed = await planDocumentsForCheckout(projectRoot).load(plan.planName);
+        if (refreshed) Object.assign(plan, refreshed);
         epicReadinessRecorded = true;
         uiAPI.appendSystemMessage(
             `PROJECT Epic ready for decomposition or child plan selection: ${plan.planName}`,
@@ -375,6 +379,7 @@ export async function handleEpicPlan({
         }
 
         if (answer === "done_enough") {
+            const observed = await observeCheckoutPlan(projectRoot, plan);
             const summary = buildEpicDoneEnoughSummary(children);
             uiAPI.appendSystemMessage(
                 [
@@ -394,16 +399,7 @@ export async function handleEpicPlan({
                 continue;
             }
             const updatedAttrs = await runAction(() =>
-                recordPlanEvent({
-                    cwd: projectRoot,
-                    planName: plan.planName,
-                    event: "epic_done_enough",
-                    currentStatus: plan.attrs.status,
-                    details: {
-                        triageMeta: plan.attrs,
-                        epicDoneEnoughSummary: summary,
-                    },
-                }),
+                applyObservedPlanEvent(projectRoot, observed, "epic_done_enough", { epicDoneEnoughSummary: summary }),
             );
             plan.attrs = { ...plan.attrs, ...updatedAttrs };
             uiAPI.appendSystemMessage(

@@ -7,7 +7,7 @@ import process from "node:process";
  * Hosts human Plan, code, and artifact review surfaces in Workspace.
  */
 
-import type { SequenceReviewDocument } from "../../plan-store/index.ts";
+import type { SequenceReviewPresentation } from "@runwield/plans/lifecycle";
 import { startReviewWorkspaceServer } from "../../review-workspace-server.ts";
 import { parsePlanFrontMatter, resolvePlanExecutionPolicy, type PlanExecutionPolicy } from "@runwield/plans/format";
 import type { PlanFrontMatter } from "@runwield/plans";
@@ -40,7 +40,7 @@ interface ReviewSurfaceServer<TDecision> {
 }
 
 interface PlanReviewPayload {
-    sequenceDocuments?: SequenceReviewDocument[];
+    sequenceDocuments?: Omit<SequenceReviewPresentation, "body">[];
     plan: string;
     planPath?: string;
     previousPlan?: string;
@@ -64,7 +64,7 @@ interface PlanReviewSurfaceOptions {
     surfaceId?: string;
     onReviewOpen?(): Promise<void | Response>;
     onDecision?: ReviewDecisionSink;
-    sequenceDocuments?: SequenceReviewDocument[];
+    sequenceDocuments?: SequenceReviewPresentation[];
     cwd: string;
     plan: string;
     planPath?: string;
@@ -344,7 +344,7 @@ export async function startPlanReviewSurface<TDecision = ReviewDecisionValue>({
     const executionPolicy = policy.ok ? policy.policy : undefined;
     const resolvedAgentLabel = agentLabel || reviewConversation?.agentLabel || "Planner";
     const reviewPayload = {
-        sequenceDocuments,
+        sequenceDocuments: sequenceDocuments?.map(({ body: _body, ...document }) => document),
         plan,
         planPath,
         ...(previousPlan && { previousPlan }),

@@ -1,8 +1,5 @@
-import {
-    parsePlanQuestions,
-    formatPlanQuestionAnswers,
-    type PlanQuestionAnswer,
-} from "../../../shared/plan-questions.ts";
+import { parsePlanQuestions, formatPlanQuestionAnswers } from "../../../shared/plan-questions.ts";
+import type { PlanQuestionAnswer } from "@runwield/plans/lifecycle";
 import type { Annotation, Block, CodeAnnotation, ImageAttachment } from "@plannotator/ui/types.ts";
 import { exportAnnotations, exportCodeFileAnnotations } from "@plannotator/ui/utils/parser.ts";
 import { composeRunWieldPlanFeedback } from "./plan-review-direct-edits.ts";

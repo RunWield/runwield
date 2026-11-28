@@ -1,4 +1,4 @@
-import { seedPlan } from "../testing/plan-state-fixture.ts";
+import { recordPlanEvent, seedPlan } from "../testing/plan-state-fixture.ts";
 import { withRetainedPlanFixture } from "../testing/retained-plan-fixture.ts";
 import {
     mkdir as fsMkdir,
@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { retryWorkRecordForPlan } from "../work-records/auto-generation.ts";
 import { listWorkRecords } from "../work-records/index.ts";
-import { recordPlanEvent, stageValidationPassedInExecutionWorktree } from "../../plan-store/index.ts";
+import { stageValidationPassedInExecutionWorktree } from "../../plan-store/index.ts";
 import { autoGenerateWorkRecordForCompletedPlan } from "../work-records/auto-generation.ts";
 import { publishExecutionWorktreeIsolated } from "../isolated-publication.ts";
 import type { PublicationAttempt } from "@runwield/workflow/publication";

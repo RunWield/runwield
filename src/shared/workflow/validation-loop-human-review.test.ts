@@ -405,7 +405,7 @@ const conversationFixture = defineGitFixture(async (root) => {
 
 async function makeReviewedGitConversation() {
     const { withLocalPlanWorkflow } = await import("../../plan-store/index.ts");
-    const { recordPlanEvent } = await import("../../plan-store/index.ts");
+    const { recordPlanEvent } = await import("../testing/plan-state-fixture.ts");
     const { startActiveExecutionWorkflow, createExecutionStartPorts } = await import("./execution-start.ts");
     const root = await conversationFixture.checkout();
     await seedPlan(root, "p", "# p\n\nKeep the exported label.", {

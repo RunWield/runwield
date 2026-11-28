@@ -147,6 +147,7 @@ export function validateProjectStoreRequest(request: ProjectStoreRequest): void 
             "sourceStatus",
             "sourceMarkdown",
             "controllerRevision",
+            "sourceWorktree",
         ],
         "create-project-work-record": ["kind", "operationId", "input"],
         "record-catalog": ["kind"],
@@ -300,6 +301,24 @@ export function validateProjectStoreRequest(request: ProjectStoreRequest): void 
             Array.isArray(command.decision))
     )
         throw new Error("Invalid review decision.");
+    if (command.kind === "review-decision" && command.sourceWorktree !== undefined) {
+        const worktree = command.sourceWorktree;
+        if (
+            !worktree ||
+            (worktree.kind !== "none" &&
+                (worktree.kind !== "attempt" ||
+                    worktree.planId !== command.planId ||
+                    ![
+                        worktree.id,
+                        worktree.status,
+                        worktree.branch,
+                        worktree.baseBranch,
+                        worktree.baseRef,
+                        worktree.baseCommit,
+                    ].every((field) => typeof field === "string" && field.length > 0)))
+        )
+            throw new Error("Invalid reviewed worktree evidence.");
+    }
     if (command.kind === "create-project-work-record") validateWorkRecordCreation(command.input);
     if (command.kind === "record-query" && !["current", "all"].includes(command.accessMode))
         throw new Error("Invalid record access mode.");
@@ -527,6 +546,7 @@ export function validateProjectStoreReply(reply: ProjectStoreReply, request: Pro
                                       "status",
                                       "revision",
                                       "qaStatus",
+                                      "document",
                                       "snapshotId",
                                       "snapshotDigest",
                                       "attemptId",
@@ -553,6 +573,11 @@ export function validateProjectStoreReply(reply: ProjectStoreReply, request: Pro
     if ("planResource" in result) allowed = ["planResource"];
     if ("presentation" in result) allowed = ["presentation"];
     if ("reviewInput" in result) allowed = ["reviewInput"];
+    if ("reviewResult" in result && request.command.kind === "review-decision" && "operationId" in result) {
+        allowed.push("reviewResult");
+        if (typeof result.reviewResult?.approved !== "boolean" || result.reviewResult.revision !== result.revision)
+            throw new Error("Invalid committed review result.");
+    }
     if ("createdRecord" in result) allowed = ["operationId", "createdRecord"];
     if ("recordResources" in result) allowed = ["recordResources"];
     if ("recordSearch" in result) allowed = ["recordSearch"];
@@ -809,6 +834,22 @@ export function validateProjectStoreReply(reply: ProjectStoreReply, request: Pro
         !("status" in result) ||
         result.operationId !== request.command.operationId ||
         !["completed", "unstarted", "pending", "unavailable"].includes(result.status) ||
+        (result.document !== undefined &&
+            (result.status !== "completed" ||
+                ![
+                    "archive-plan",
+                    "restore-plan",
+                    "lifecycle-decision",
+                    "record-event",
+                    "execution-checkpoint",
+                ].includes(request.command.kind) ||
+                !("planId" in request.command) ||
+                result.document?.planId !== request.command.planId ||
+                result.document.attrs?.planId !== request.command.planId ||
+                result.document.revision !== result.revision ||
+                typeof result.document.name !== "string" ||
+                typeof result.document.relativePath !== "string" ||
+                typeof result.document.body !== "string")) ||
         (result.qaStatus !== undefined &&
             (result.status !== "completed" ||
                 !["append-epic-qa", "reconcile"].includes(request.command.kind) ||

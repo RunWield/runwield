@@ -5,6 +5,7 @@ import { projects, type ProjectStoreIdentity } from "@runwield/projects";
  * This module is an explicit test-only member of the Plan persistence boundary, never a production API.
  */
 import { savePlan, updatePlanFrontMatter } from "../../plan-store.ts";
+export { recordPlanEvent } from "../../plan-store/events.ts";
 import { readControllerRecord, writeControllerState } from "../../plan-store/controllers.ts";
 
 export async function seedPlan(...args: Parameters<typeof savePlan>) {

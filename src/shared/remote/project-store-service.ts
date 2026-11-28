@@ -59,6 +59,8 @@ export class LaptopProjectStoreService {
                 if (error instanceof PlanServerUpgradeRequiredError) return new Response(null, { status: 426 });
                 if (error instanceof ProjectStorePreconditionError) return new Response(null, { status: 412 });
             }
+            if (input.command.kind === "review-decision" && error instanceof ProjectStorePreconditionError)
+                return new Response(null, { status: 412 });
             if (input.command.kind === "revise-plan") {
                 if (error instanceof PlanNotFoundError)
                     return new Response(null, {

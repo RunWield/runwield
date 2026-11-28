@@ -29,7 +29,8 @@ import { parseArgs } from "../../shared/cli-args.ts";
 import { AGENTS } from "../../shared/session/agent-registry.ts";
 import { CLI_BIN, getCwd } from "../../constants.ts";
 import {
-    archivePlan,
+    archiveObservedPlan,
+    observeCheckoutPlan,
     ensurePlanIdentity,
     listSelectablePlanDocuments,
     readPlanMenuDocument,
@@ -843,12 +844,13 @@ export async function runLoadPlanCommand(
                         projectRoot = primaryRoot;
                     }
                     const archiveRoot = projectRoot;
+                    const observed = await observeCheckoutPlan(archiveRoot, plan);
                     startBackgroundArchive({
                         projectRoot: archiveRoot,
                         planName: plan.planName,
                         uiAPI,
                         archive: async () => {
-                            const archived = await archivePlan(archiveRoot, plan.planName, {
+                            const archived = await archiveObservedPlan(archiveRoot, observed, {
                                 abandonedWorktree: plan.attrs.worktreeStatus === "abandoned",
                             });
                             return `Archived ${plan.planName} to ${archived.relativePath}`;

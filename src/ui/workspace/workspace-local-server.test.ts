@@ -15,8 +15,7 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { archivePlan } from "../../plan-store/index.ts";
-import { loadPlanBodyById, loadPlan } from "../../shared/testing/plan-query-fixture.ts";
+import { archivePlan, loadPlanBodyById, loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
 import { PLAN_UI_TOKEN_HEADER } from "../../constants.ts";
 import { loadBoard, loadWorkspaceDetail, workspaceMetadata as _workspaceMetadata } from "./server/plan-adapter.ts";

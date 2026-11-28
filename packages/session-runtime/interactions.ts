@@ -4,12 +4,11 @@
  */
 
 import type { PlanFrontMatter } from "@runwield/plans";
-import type { PackageWorkflowInput } from "@runwield/plans/store";
-import type { SequenceReviewDecision, SequenceReviewDocument } from "../../src/plan-store/index.ts";
+import type { SequenceReviewDecision } from "../../src/plan-store/index.ts";
+import type { PlanReviewVersion, SequenceReviewPresentation } from "@runwield/plans/lifecycle";
 import type { SessionArtifactKind } from "../../src/shared/session/file-session-store-types.ts";
 import type { GuidedReviewPolicy } from "../../src/shared/workflow/guided-review.ts";
-import type { PlanWorktreeExpectation } from "../../src/shared/workflow/plan-actions.ts";
-import type { PlanApprovalAction } from "../../src/shared/workflow/plan-approval.ts";
+import type { PlanApprovalAction } from "@runwield/plans/lifecycle";
 import type { ImageAttachment, RuntimeAssistantTextDeltaEvent } from "./events.ts";
 
 /** Interaction kinds hosts can route to an adapter. */
@@ -55,15 +54,6 @@ export interface RuntimeInteractionOptionMetadata {
 export interface RuntimeInteractionSurface {
     url: string;
     opened?: boolean;
-}
-
-/** Plan source revision captured before opening a review. */
-export interface RuntimeInteractionReviewedSource {
-    planName?: string;
-    path: string;
-    markdown: string;
-    revision: string;
-    attrs: PlanFrontMatter;
 }
 
 /** A review decision value carried between the host and its review surface. */
@@ -140,16 +130,14 @@ export interface RuntimeInteractionRequestMetadata {
     planningAgentName?: string;
     reviewContainerPlanId?: string;
     reviewContainerPlanName?: string;
-    sequenceDocuments?: SequenceReviewDocument[];
+    sequenceDocuments?: SequenceReviewPresentation[];
     classification?: string;
     expectedRevision?: string;
     expectedStatus?: string;
-    expectedWorktree?: PlanWorktreeExpectation;
     previousPlan?: string;
     planVersions?: { plan: string; timestamp: string }[];
     triageMeta?: Partial<PlanFrontMatter>;
-    packageInput?: PackageWorkflowInput;
-    reviewedSource?: RuntimeInteractionReviewedSource;
+    displayedVersion?: PlanReviewVersion;
     reviewConversation?: ReviewConversation;
     agentLabel?: string;
     planTitle?: string;
@@ -186,7 +174,6 @@ interface RuntimeInteractionImageReference {
 
 interface RuntimeInteractionReviewRecovery {
     message: string;
-    entryIds: string[];
 }
 
 /** Review decisions and feedback returned by an interaction adapter. */

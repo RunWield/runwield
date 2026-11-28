@@ -1,3 +1,4 @@
+import { recordPlanEvent } from "../testing/plan-state-fixture.ts";
 import { openWorkflow } from "@runwield/workflow";
 import { test } from "node:test";
 import { deepEqual, equal, ok, rejects } from "node:assert/strict";
@@ -6,16 +7,13 @@ import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { captureForegroundProcess } from "@runwield/resources/process";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
-import {
-    authorLocalPlan,
-    recordPlanEvent,
+import { authorLocalPlan,
     withLocalPlanWorkflow,
     savePlanProse,
     readPlanPublicationReference,
     readRecordingPublication,
     listOwnedWorkRecords,
-    searchOwnedWorkRecords,
-} from "../../plan-store/index.ts";
+    searchOwnedWorkRecords, } from "../../plan-store/index.ts";
 import { loadPlan } from "../testing/plan-query-fixture.ts";
 import { startActiveExecutionWorkflow, createExecutionStartPorts } from "./execution-start.ts";
 import type { HostTurnValidationResult, ValidationHostResume } from "@runwield/workflow/host-contract";

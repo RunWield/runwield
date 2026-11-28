@@ -17,6 +17,12 @@ import type { RuntimeInteractionRequest, RuntimeInteractionResponse } from "@run
 import type { SessionRuntime, SteerSessionResult } from "@runwield/session-runtime";
 import type { InteractiveSessionRuntime } from "@runwield/session-runtime/services";
 import type { HostedSession } from "@runwield/session-runtime/host";
+import type { LegacyPlanReviewMetadata, SerializedPlanReviewVersion } from "@runwield/plans/live-review";
+import {
+    restoreLegacyPlanReviewVersion,
+    restorePlanReviewVersion,
+    serializePlanReviewVersion,
+} from "../../plan-store/lifecycle-review.ts";
 
 type LiveSessionCommand = {
     action: "answer" | "cancel" | "steer";
@@ -68,6 +74,34 @@ type LiveSessionSnapshot = {
     queuedMessages: RuntimeQueuedMessage[];
     sessionInfo?: LiveSessionInfo | null;
 };
+
+type LiveSessionWireSnapshot = LiveSessionSnapshot & {
+    reviewVersion?: SerializedPlanReviewVersion;
+    interaction: (RuntimeInteractionRequest & { _meta?: LegacyPlanReviewMetadata }) | null;
+};
+
+function snapshotInteraction(request: RuntimeInteractionRequest | undefined) {
+    if (request?.type !== "plan_review" || !request._meta) return { interaction: request || null };
+    const { displayedVersion, ...meta } = request._meta;
+    return {
+        interaction: { ...request, _meta: meta },
+        ...(displayedVersion && { reviewVersion: serializePlanReviewVersion(displayedVersion) }),
+    };
+}
+
+function projectPreviousReviewEvents(event: SessionRuntimeEvent): SessionRuntimeEvent {
+    if (event.type !== "interaction_requested" || !event.review) return event;
+    const detail: Omit<typeof event.review, "sequenceDocuments"> &
+        Pick<LegacyPlanReviewMetadata, "sequenceDocuments" | "expectedWorktree"> = event.review;
+    const { sequenceDocuments, expectedWorktree: _worktree, ...review } = detail;
+    return {
+        ...event,
+        review: {
+            ...review,
+            sequenceDocuments: sequenceDocuments?.map(({ packageInput: _input, ...document }) => document),
+        },
+    };
+}
 
 function socketPath(sessionId: string, operationId: string) {
     const key = createHash("sha256").update(`${getHomeDir()}:${sessionId}:${operationId}`).digest("hex").slice(0, 40);
@@ -128,7 +162,7 @@ export async function openLiveSessionConnection(
                         events,
                         queuedMessages: runtime.getQueuedMessages(session.id),
                         sessionInfo: projectLiveSessionInfo(snapshot),
-                        interaction: [...session.getActiveInteractions().values()][0]?.request || null,
+                        ...snapshotInteraction([...session.getActiveInteractions().values()][0]?.request),
                     }),
                 );
                 return;
@@ -239,10 +273,40 @@ export function readLiveSessionConnection(
                 response.on("error", reject);
                 response.on("end", () => {
                     try {
-                        const value = JSON.parse(body);
                         if (response.statusCode !== 200) {
-                            reject(new Error(value.error || "The turn is no longer available."));
-                        } else resolve(value);
+                            const { error }: LiveSessionCommandResult = JSON.parse(body);
+                            reject(new Error(error || "The turn is no longer available."));
+                            return;
+                        }
+                        if (command) {
+                            const value: LiveSessionCommandResult = JSON.parse(body);
+                            resolve(value);
+                            return;
+                        }
+                        const { reviewVersion, ...snapshot }: LiveSessionWireSnapshot = JSON.parse(body);
+                        if (snapshot.operationId !== operationId) throw new Error("The live operation changed.");
+                        snapshot.events = snapshot.events.map(projectPreviousReviewEvents);
+                        if (snapshot.interaction?.type === "plan_review" && snapshot.interaction._meta) {
+                            const {
+                                reviewedSource: _source,
+                                packageInput: _input,
+                                expectedWorktree: _worktree,
+                                ...meta
+                            } = snapshot.interaction._meta;
+                            const restored = reviewVersion
+                                ? { displayedVersion: restorePlanReviewVersion(reviewVersion, sessionId) }
+                                : restoreLegacyPlanReviewVersion(
+                                      snapshot.interaction._meta,
+                                      sessionId,
+                                      snapshot.interaction.id,
+                                  );
+                            snapshot.interaction._meta = {
+                                ...meta,
+                                ...(!reviewVersion && { sequenceDocuments: undefined }),
+                                ...restored,
+                            };
+                        }
+                        resolve(snapshot);
                     } catch (error) {
                         reject(error);
                     }

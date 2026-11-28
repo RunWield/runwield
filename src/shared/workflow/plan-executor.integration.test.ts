@@ -17,13 +17,21 @@ import { setCustomSetting } from "../settings.ts";
 import type { RuntimeInteractionRequest, RuntimeInteractionResponse } from "@runwield/session-runtime/interactions";
 import { listEntries as listWorktreeRegistryEntries } from "../worktree-registry.ts";
 import { executePlan } from "./plan-executor.ts";
+import {
+    openPlanLifecycleForCheckout,
+    openPlanStoreForCheckout,
+    preparePlanReviewVersion,
+    renamePlan,
+} from "../../plan-store/index.ts";
 
 interface PlanExecutorSessionFixture {
     hostedSession: HostedSession;
     sessionManager: SessionManager;
 }
 
-type InteractionHandler = (request: RuntimeInteractionRequest) => RuntimeInteractionResponse;
+type InteractionHandler = (
+    request: RuntimeInteractionRequest,
+) => RuntimeInteractionResponse | Promise<RuntimeInteractionResponse>;
 
 function createSessionFixture(projectRoot: string, interaction?: InteractionHandler): PlanExecutorSessionFixture {
     const sessionManager = SessionManager.inMemory(projectRoot);
@@ -129,6 +137,162 @@ test("executePlan recovers a genuinely missing Plan through the HostedSession in
         }
     });
 });
+
+test("executePlan records readiness for a recovered approval that supplies only the committed revision", async () => {
+    await withRuntimeCommandFixture("plan-executor-recovered-", async ({ projectRoot }) => {
+        await initializeGitProject(projectRoot);
+        const requests: RuntimeInteractionRequest[] = [];
+        const planName = "recovered";
+        const planId = crypto.randomUUID();
+        const fixture = createSessionFixture(projectRoot, async (request) => {
+            requests.push(request);
+            if (request.type === "approval" && requests.length === 1) {
+                await saveExecutablePlan(projectRoot, planName, { planId, status: "draft" });
+                return { outcome: "accepted", value: true };
+            }
+            if (request.type === "plan_review") {
+                const lifecycle = openPlanLifecycleForCheckout(projectRoot);
+                const displayedVersion = request._meta?.displayedVersion;
+                assert(lifecycle && displayedVersion);
+                const approved = await lifecycle.applyEvent(displayedVersion.planId, {
+                    event: "review_approved",
+                    displayedVersion,
+                    approvalAction: "later",
+                });
+                assert(approved.approved && approved.revision);
+                return {
+                    outcome: "accepted",
+                    _meta: { approved: true, approvalAction: approved.approvalAction, revision: approved.revision },
+                };
+            }
+            return { outcome: "canceled" };
+        });
+
+        try {
+            const result = await executePlan({
+                planName,
+                triageMeta: { classification: "PLANNED_CHANGE" },
+                sessionManager: fixture.sessionManager,
+                hostedSession: fixture.hostedSession,
+            });
+
+            assertEquals(
+                requests.map((request) => request.type),
+                ["approval", "plan_review"],
+            );
+            assertEquals(result.intentionalCompleteReason, "saved_for_later");
+            const ready = await loadPlan(projectRoot, planName);
+            assertEquals(ready?.attrs.planId, planId);
+            assertEquals(ready?.attrs.status, "ready_for_work");
+        } finally {
+            fixture.hostedSession.dispose();
+        }
+    });
+});
+
+for (const { change, expectedStatus, replacePlan } of [
+    { change: "a same-name approved replacement", expectedStatus: "approved", replacePlan: true },
+    { change: "a same-name ready replacement", expectedStatus: "ready_for_work", replacePlan: true },
+    { change: "a newer approved revision of the same Plan", expectedStatus: "approved", replacePlan: false },
+] as const) {
+    test(`executePlan rejects ${change} after recovered approval`, async () => {
+        await withRuntimeCommandFixture("plan-executor-replacement-", async ({ projectRoot }) => {
+            await initializeGitProject(projectRoot);
+            const planName = "recovered";
+            const originalId = crypto.randomUUID();
+            const requests: RuntimeInteractionRequest[] = [];
+            const pendingReview = Promise.withResolvers<RuntimeInteractionRequest>();
+            const pendingDecision = Promise.withResolvers<RuntimeInteractionResponse>();
+            const fixture = createSessionFixture(projectRoot, async (request) => {
+                requests.push(request);
+                if (request.type === "approval" && requests.length === 1) {
+                    await saveExecutablePlan(projectRoot, planName, { planId: originalId, status: "draft" });
+                    return { outcome: "accepted", value: true };
+                }
+                if (request.type !== "plan_review") return { outcome: "canceled" };
+                pendingReview.resolve(request);
+                return await pendingDecision.promise;
+            });
+
+            const execution = executePlan({
+                planName,
+                triageMeta: { planId: originalId, classification: "PLANNED_CHANGE" },
+                sessionManager: fixture.sessionManager,
+                hostedSession: fixture.hostedSession,
+            });
+            try {
+                const request = await Promise.race([pendingReview.promise, execution.then(() => null)]);
+                const lifecycle = openPlanLifecycleForCheckout(projectRoot);
+                const store = openPlanStoreForCheckout(projectRoot);
+                const displayedVersion = request?._meta?.displayedVersion;
+                assert(lifecycle && store && displayedVersion);
+                const approved = await lifecycle.applyEvent(displayedVersion.planId, {
+                    event: "review_approved",
+                    displayedVersion,
+                    approvalAction: "later",
+                });
+                assert(approved.approved && approved.revision);
+                assertEquals(displayedVersion.planId, originalId);
+                let changed;
+                if (replacePlan) {
+                    await renamePlan(projectRoot, planName, "original", approved.revision);
+                    changed = await store.create({
+                        planName,
+                        contextMarkdown: "# Replacement Plan\n",
+                        definition: { classification: "PLANNED_CHANGE" },
+                    });
+                } else {
+                    changed = await store.editBody(displayedVersion.planId, {
+                        expectedRevision: approved.revision,
+                        body: "# Revised Plan\n\nNew content requiring approval.\n",
+                    });
+                    assertEquals(changed.planId, displayedVersion.planId);
+                }
+                const current = await loadPlan(projectRoot, planName);
+                assertEquals(current?.attrs.planId, changed.planId);
+                assert(current);
+                const { displayedVersion: changedVersion } = await preparePlanReviewVersion(
+                    projectRoot,
+                    planName,
+                    current.path,
+                );
+                const newerApproval = await lifecycle.applyEvent(changedVersion.planId, {
+                    event: "review_approved",
+                    displayedVersion: changedVersion,
+                    approvalAction: "later",
+                });
+                assert(newerApproval.approved && newerApproval.revision);
+                assert(newerApproval.revision !== approved.revision);
+                const newerRevision =
+                    expectedStatus === "approved"
+                        ? newerApproval.revision
+                        : (
+                              await lifecycle.applyEvent(changedVersion.planId, {
+                                  event: "readiness_passed",
+                                  expectedRevision: newerApproval.revision,
+                              })
+                          ).revision;
+                const { sequence: _sequence, ...reviewResult } = approved;
+                pendingDecision.resolve({ outcome: "accepted", _meta: reviewResult });
+                const result = await execution;
+
+                assertEquals(result.executionComplete, false);
+                assertEquals(result.intentionalCompleteReason, "stale_plan_review");
+                assertEquals(
+                    requests.map((request) => request.type),
+                    ["approval", "plan_review", "approval"],
+                );
+                const saved = await store.read(changed.planId);
+                assertEquals(saved.attrs.status, expectedStatus);
+                assertEquals(saved.revision, newerRevision);
+                assertEquals((await store.read(displayedVersion.planId)).attrs.status, "approved");
+            } finally {
+                pendingDecision.resolve({ outcome: "canceled" });
+                fixture.hostedSession.dispose();
+            }
+        });
+    });
+}
 
 test("executePlan runs preparation, Engineer, checkpoint, lifecycle, and registry machinery together", async () => {
     await withRuntimeCommandFixture("plan-executor-complete-", async ({ projectRoot, setModelMessages }) => {

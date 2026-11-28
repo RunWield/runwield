@@ -9,7 +9,7 @@ import { parsePlanFrontMatter, planDocumentMarkdown } from "@runwield/plans/form
 import { ensurePlanIdentity } from "../../plan-store/index.ts";
 import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
-import type { SequenceReviewDocument } from "../../plan-store/index.ts";
+import type { SequenceReviewPresentation as SequenceReviewDocument } from "@runwield/plans/lifecycle";
 import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwield/session-runtime/services";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
 import { requestLocalReviewInteraction } from "../../shared/session/local-review-interactions.ts";

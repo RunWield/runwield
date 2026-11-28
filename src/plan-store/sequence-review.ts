@@ -1,4 +1,4 @@
-import type { PackageWorkflowInput } from "@runwield/plans/store";
+import type { SequenceReviewDocument } from "@runwield/plans/live-review";
 import type { ReviewDocumentEquivalence } from "@runwield/plans/project-plan-files";
 import {
     managedPlanStoreActive,
@@ -7,6 +7,7 @@ import {
     applyManagedSequenceDecision,
 } from "./managed.ts";
 import { retainSequenceOperationResult } from "./operation-results.ts";
+import { captureBatchOperation } from "@runwield/plans/operation-receipts";
 import { requiresPlanWorkflow } from "./index.ts";
 
 import { withLocalPlanWorkflow } from "./index.ts";
@@ -20,8 +21,8 @@ import {
 import { currentPackageSelection } from "./workflows.ts";
 import { saveReviewedPlanDocument } from "./index.ts";
 import { withProjectRuntimeReadScope } from "@runwield/project-runtime/layout";
-import { resolvePlanQuestions, type PlanQuestionAnswer } from "../shared/plan-questions.ts";
-import { loadReviewFeedbackImages, type ReviewImageDecision } from "../shared/workflow/review-feedback-images.ts";
+import { resolvePlanQuestions } from "../shared/plan-questions.ts";
+import { loadReviewFeedbackImages } from "../shared/workflow/review-feedback-images.ts";
 /** A Sequence review is one decision over an ordinary PROJECT and its complete child set. */
 import { join, relative } from "node:path";
 import { writePlanMarkdownWithRevision } from "../plan-store.ts";
@@ -46,7 +47,7 @@ import { runSequenceReviewTransition } from "./transitions.ts";
 import { reviewSourceStillMatches } from "@runwield/plans/review-markdown";
 import { workflowEvents } from "@runwield/workflow/events";
 import type { HostedSession } from "@runwield/session-runtime/host";
-import type { PlanApprovalAction } from "../shared/workflow/plan-approval.ts";
+import type { PlanApprovalAction, PlanSequenceDocumentDecision } from "@runwield/plans/lifecycle";
 import type { PlanWrittenEventPayload } from "@runwield/workflow/events";
 
 export interface SequenceChildInput {
@@ -55,27 +56,7 @@ export interface SequenceChildInput {
     collaborationRecommendation?: "autonomous" | "pair";
 }
 
-export interface SequenceReviewDocument {
-    packageInput?: PackageWorkflowInput;
-    planId: string;
-    planName: string;
-    planPath: string;
-    plan: string;
-    revision: string;
-    frontmatter: PlanFrontMatter;
-    executionAgent?: "engineer" | "frontend-engineer";
-    collaborationRecommendation?: "autonomous" | "pair";
-    planVersions?: Array<{ plan: string; timestamp: string }>;
-}
-
-export interface SequenceDocumentDecision extends ReviewImageDecision {
-    planId: string;
-    plan: string;
-    feedback?: string;
-    questionAnswers?: PlanQuestionAnswer[];
-    executionAgent?: "engineer" | "frontend-engineer";
-    collaborationRecommendation?: "autonomous" | "pair";
-}
+export type SequenceDocumentDecision = PlanSequenceDocumentDecision;
 
 export interface SequenceReviewDecision {
     conversationTurn?: boolean;
@@ -92,7 +73,7 @@ export interface SequenceReviewResult {
     revision?: string;
     planAttrs?: PlanFrontMatter;
     approvalAction?: PlanApprovalAction;
-    cancellationReason?: string;
+    cancellationReason?: "stale_plan_review" | "sequence_handoff_failed";
     recoveryRequired?: { message: string; entryIds: string[] };
     workflowOutcome?: PlanWrittenEventPayload;
 }
@@ -320,6 +301,7 @@ export interface ApplySequenceReviewOptions {
     decision: SequenceReviewDecision;
     hostedSession?: HostedSession;
     toolCallId?: string;
+    operationId?: string;
 }
 
 /** Commit the complete human decision. Tool callers publish a workflow event; direct review continues it inline. */
@@ -329,12 +311,13 @@ export async function applySequenceReviewDecision({
     decision,
     hostedSession,
     toolCallId,
+    operationId,
 }: ApplySequenceReviewOptions): Promise<SequenceReviewResult> {
     if (managedPlanStoreActive())
-        return await applyManagedSequenceDecision({ cwd, documents, decision, hostedSession, toolCallId });
+        return await applyManagedSequenceDecision({ cwd, documents, decision, hostedSession, toolCallId, operationId });
     if (documents[0] && requiresPlanWorkflow(cwd))
         return await withLocalPlanWorkflow(cwd, documents[0].planName, () =>
-            applySequenceReviewDecision({ cwd, documents, decision, hostedSession, toolCallId }),
+            applySequenceReviewDecision({ cwd, documents, decision, hostedSession, toolCallId, operationId }),
         );
     if (decision.conversationTurn && decision.approved) decision = { ...decision, approved: false };
     const parent = documents[0];
@@ -610,7 +593,10 @@ export async function applySequenceReviewDecision({
                 workflowOutcome: outcome,
             };
             retainSequenceOperationResult(result);
-            await markEffect("sequence_review_accepted", { planIds: documents.map((doc) => doc.planId), toolCallId });
+            await markEffect("sequence_review_accepted", {
+                planIds: documents.map((doc) => doc.planId),
+                toolCallId: captureBatchOperation()?.operationId ?? toolCallId,
+            });
             return { planNames: documents.map((doc) => doc.planName) };
         },
     });

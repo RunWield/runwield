@@ -2462,7 +2462,7 @@ test("SessionRuntime keeps executePlan workflow operations busy while preparatio
             planId: "execute-busy-plan-id",
         });
         const { withLocalPlanWorkflow } = await import("../../plan-store/index.ts");
-        const { recordPlanEvent } = await import("../../plan-store/index.ts");
+        const { recordPlanEvent } = await import("../testing/plan-state-fixture.ts");
         await withLocalPlanWorkflow(cwd, planName, async () => {
             await recordPlanEvent({ cwd, planName, event: "review_approved", currentStatus: "draft" });
             await recordPlanEvent({ cwd, planName, event: "readiness_passed", currentStatus: "approved" });

@@ -765,6 +765,10 @@ checkout. RunWield asks before it removes the execution worktree; declining keep
 Unmerged branch commits stay recoverable. A User Verified Plan can be archived when no recoverable work would be lost.
 User Verified and RunWield Verified Plans share one terminal menu: Archive, Re-open for review, View, and Cancel.
 
+**Requirement: Preserve Plan identity during catalog archive and restore.** Project-bound archive and restore
+check the Plan ID and observed revision. Restoring a Plan returns its current saved content to the active catalog
+under the same ID. Restoring a historical version is a separate document edit.
+
 **Requirement: Archive without blocking the conversation.** After required confirmations, Load Plan runs Plan and
 Epic archive writes and retention checks in the background. It reopens the Load Plan menu with pending archives
 excluded, so the user can select another Plan without waiting. If no Plans remain, it returns to chat. It reports
@@ -778,6 +782,8 @@ verification.
 
 **Acceptance scenarios:**
 
+- Given a Plan changed since it was opened, a stale catalog archive or restore leaves its current catalog entry
+  intact. A restore against the current archived revision returns the original ID to the active catalog.
 - Given a saved `feedback` or `in_review` Plan, the board and load-plan show and handle it as draft without changing
   its bytes on read. A later write saves draft.
 - Given five reply-only review turns, the Plan file and status are unchanged.

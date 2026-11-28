@@ -1,4 +1,4 @@
-import { seedPlan } from "../testing/plan-state-fixture.ts";
+import { recordPlanEvent, seedPlan } from "../testing/plan-state-fixture.ts";
 import { test } from "node:test";
 import { mkdir, writeFile as fsWriteFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -22,7 +22,7 @@ import {
 } from "./attached-test-fixture.ts";
 import { loadPlan } from "../testing/plan-query-fixture.ts";
 
-import { recordPlanEvent } from "../../plan-store/index.ts";
+
 
 test("Codex browser review and restored chat identify the coordinating host", async () => {
     await withProject(async (root) => {

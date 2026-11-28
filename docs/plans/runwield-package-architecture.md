@@ -218,64 +218,38 @@ authoring. Workspace uses the lifecycle rules to show the actions available for 
 | `plans.lifecycle.actionsFor(status, fields)`         | Returns available manual actions and reasons for blocked actions.                                                                                          |
 | `plans.lifecycle.changesFor(event, status, details)` | Checks the given event and status and returns the metadata changes in memory.                              |
 
-### Project-bound Plan lifecycle (proposed)
+### Project-bound Plan lifecycle
 
-Today `store.applyEvent(planId, request)` checks the observed revision and calls `recordPlanEvent` under `src/`.
-It accepts `review_approved` and `review_feedback` as basic events. Live review uses `applySharedPlanReviewDecision`
-under `src/plan-store` to check the reviewed source and save the review content and event together on canonical Plans.
-The managed path sends a `review-decision` command to the owner and uses the same decision logic there.
-[Basic events](../../src/plan-store/project-plans.ts) · [Live review](../../src/plan-store/review.ts) ·
-[Managed review](../../src/plan-store/managed.ts) · [Owner dispatch](../../src/plan-store/project-service.ts)
+Apps bind the lifecycle and the store to the same Project. Use `openProjectPlanLifecycle(projectId)` for Plan
+transitions and `openProjectPlanStore(projectId)` for ordinary reads and content edits. Workflow owns its execution
+attempts and publication receipts. It asks Plans to change a Plan. [Lifecycle contract](../../packages/plans/lifecycle.ts) · [Project binding](../../src/plan-store/project-lifecycle.ts)
 
-Apps bind the lifecycle and store to the same admitted Project and Plan owner.
+| Lifecycle method | Caller input | Result |
+| --- | --- | --- |
+| `applyEvent` | Plan ID, event, observed revision and applicable evidence | The updated Plan. |
+| `applyEvent` for approval or feedback | Plan ID, event, displayed review version, user decision fields and edits | The review outcome and committed revision when applicable. |
+| `archive` | Plan ID, observed revision and archive options | The archived Plan. |
+| `restore` | Plan ID and observed revision | The active Plan with the same ID. |
 
-```text
-Plan transitions    Apps or Workflow → Plan lifecycle → Plan store → Storage driver
-Ordinary Plan I/O   Apps or Workflow → Plan store → Storage driver
-```
+Plans binds each displayed version to its original reviewed source. For a Sequence that source includes every member.
+The private live Session connection can carry the source between same-account host processes. A browser submits its
+decision through its existing interaction. The lifecycle checks the reviewed source and records the decision. Existing
+owner receipts handle managed retries. History, storage paths, and commit coordination belong to the owner.
+[Review version](../../packages/plans/live-review.ts) · [Live review adapter](../../src/plan-store/lifecycle-review.ts)
 
-The Plan lifecycle owns the complete transition. It reads saved state, checks the event and its evidence, and asks the
-Plan store to persist the resulting state and content. Plans coordinates any milestone history, Plan-side commits,
-locks, journals, receipts, and recovery required by the existing operation. Apps submit the user's intent and use the
-result. Workflow owns its execution attempt and publication transitions and calls the Plan lifecycle when those
-operations change a Plan. Ordinary reads and edits use the store, including its existing review invalidation on a
-meaningful edit. [Core Plan lifecycle](../prd/runwield-core-prd.md#plan-lifecycle)
+The package owns the state rules, the catalog archive and restore policy, and the review version. The host still
+binds checkout or SSH access and runs the existing storage and recovery operations for decisions. Moving the remaining
+implementation of review writes, Sequence transactions and their recovery out of `src/plan-store` remains part of the independence pass.
+[Catalog transitions](../../packages/plans/catalog-lifecycle.ts) · [Individual decisions](../../src/plan-store/review.ts) ·
+[Sequence decisions](../../src/plan-store/sequence-review.ts) · [Recovery](../../src/plan-store/transitions.ts)
 
-For public interface review, expose `lifecycle.applyEvent(planId, request)` to apply one event against the observed
-Plan revision. The basic branch reuses `ApplyProjectPlanEvent` with `event` narrowed to
-`Exclude<PlanEvent, "review_approved" | "review_feedback">`. Both review branches require the displayed version and
-accept the applicable fields of the existing decision, such as the approval action, feedback, submitted Markdown,
-and question answers. The event identifies approval or feedback. Return the committed revision and the existing
-caller-visible outcome, including when a stale review needs refreshing or recovery is required. Confirm the Project
-binding and how the displayed version refers to the source retained by Plans before moving code.
-[Existing event request](../../packages/plans/store.ts) · [Decision and result](../../src/plan-store/review.ts)
+Review work still open in this pass:
 
-The lifecycle uses the existing review context to choose individual or grouped Sequence review. It checks the
-retained source for the displayed version and, for a Sequence, every reviewed member. Reject a missing or stale
-source before writing anything, including a review event submitted using the basic request shape. Preserve the existing tolerance for formatting-only
-changes where supported. Plans resolves trusted classification, work kind, package input, controller revision,
-status, and worktree evidence from their existing owners. Plans keeps review evidence and recovery bookkeeping
-behind the lifecycle and store. [Review preparation](../../src/plan-store/review-snapshots.ts) ·
-[Grouped review](../../src/plan-store/sequence-review.ts)
-
-Keep basic review event writes private to existing paths. Retained-checkout review uses them after validating and
-writing the reviewed content. The authenticated managed `record-event` command also accepts these events today,
-and existing managed fixtures exercise that path. Keep any required compatibility in the private write path. Managed
-app review goes through the lifecycle to the bound owner using `review-decision` or `sequence-decision`. [Retained checkout review](../../src/plan-store/review.ts) ·
-[Managed protocol](../../src/shared/remote/project-store-protocol.ts) · [Owner dispatch](../../src/plan-store/project-service.ts)
-
-Archive and catalog restore are lifecycle operations. Expose `lifecycle.archive(planId, options)` with the existing
-`ArchiveProjectPlan` options and `lifecycle.restore(planId, expectedRevision)` to return the same Plan ID to the active
-catalog. Both call the store and driver. `store.history.restore(planId, version, expectedRevision)` restores the
-contents of a historical version and follows the existing review invalidation rules. [Store signatures](../../packages/plans/store.ts)
-
-Preserve the existing review outcomes across local and managed stores, including retained checkouts. Approval saves
-the reviewed content with Plan Questions resolved, retains approved input, and captures the approval milestone where
-required. Feedback saves the submitted content and leaves questions open. A conversation turn remains a chat or
-ordinary edit, with the existing rules for reopening review after a meaningful edit. Cancellation leaves the Plan
-unchanged. Preserve existing readiness and approval follow-up for each caller. Replaying a retained operation after
-interruption or a lost response must keep the same reviewed content and avoid repeating the decision or milestone. [Core Plan review](../prd/runwield-core-prd.md#plan-review) ·
-[Readiness follow-up](../../src/plan-store/review.ts) · [Sequence review](../../src/plan-store/sequence-review.ts)
+- Managed individual review requires a refresh after any controller revision change. Accepting timestamp-only updates requires the owner to compare captured controller evidence while ignoring the update timestamp.
+- A managed host can replay a committed review when it receives the same decision. After both the reply and the live Session are lost, the SSH recovery call exposes the write status and revision. Returning the accepted decision to the Session needs a private owner lookup bound to the original request.
+- A retained checkout can finish an interrupted review write when the original review is replayed. If the Session loses that review before the write finishes, the Workspace can retrieve only a settled decision.
+- Attached approval and execution readiness have separate committed generations. Recovery between them still depends on the Attached workflow. A Sequence answer forwarded to a Session that dies before committing the decision requires reopening the review.
+- An individual Workspace review page currently reads the latest text on refresh. Its decision uses the original reviewed source. The display behavior after a concurrent edit is under review.
 
 ## Project-bound Plan Store
 
@@ -293,8 +267,6 @@ Import the `ProjectPlanStore` contract, `StalePlanWriteError`, and the retained 
 | `read`, `readArchived` | The Plan ID                                                                                | The saved Plan in the requested collection.                                                       |
 | `editBody`             | Plan ID, new body, observed revision                                                       | Updated prose and revision.                                                                       |
 | `revise`               | Plan ID, observed revision, authored prose, validation instructions, and definition fields | An authored revision of the same Plan. The store checks identity, revision, and review locks.     |
-| `applyEvent`           | Plan ID, named lifecycle event, observed revision, and any required event evidence         | The persisted lifecycle result. This is today's basic event write.                                 |
-| `archive`, `restore`   | Plan ID and observed revision, plus optional archive reason and `force`                    | An archived or restored Plan with its original ID. The proposed lifecycle calls these operations. |
 
 Plans owns the opener options, Project and personal-owner checks, and the retained checkout scope for explicit import and original execution. The Plans filesystem driver owns canonical package reads and writes, catalog and Plan locks, revision checks, immutable workflow inputs and controller evidence, and recovery of package writes and operation receipts. Today the application opens the configured local or managed store and coordinates workflow operations. For explicit import, the application observes and revalidates the checkout or SSH source while the Plans driver holds the existing locks and commits the resulting import evidence.
 

@@ -51,6 +51,10 @@ export class ProjectStoreClient {
                     throw new ProjectStorePreconditionError("Epic family changed or has no reserved child attempt.");
                 case "restore-history":
                     throw new ProjectStorePreconditionError("Plan revision changed before restore.");
+                case "review-decision":
+                    throw new ProjectStorePreconditionError(
+                        "Plan review evidence changed before approval or feedback.",
+                    );
             }
         }
         if (!response.ok)

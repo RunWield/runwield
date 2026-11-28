@@ -1,3 +1,4 @@
+import { recordPlanEvent } from "../testing/plan-state-fixture.ts";
 import type { ProjectStoreBinding } from "@runwield/plans/project-store-wire";
 import { authenticatedProjectStoreRequest } from "./project-store-request.ts";
 import { openWorkflow } from "@runwield/workflow";
@@ -12,15 +13,12 @@ import { stdinStream } from "../../testing/stdin-stream.ts";
 import { processLines } from "./remote-runtime-lines.ts";
 import { activateRemoteProjectOwner } from "./managed-project-owner.ts";
 import type { RemoteInteractiveConfig } from "./entry.ts";
-import {
-    recordPlanEvent,
-    withLocalPlanWorkflow,
+import { withLocalPlanWorkflow,
     loadPublishedWorkRecordSource,
     openPlanStoreForCheckout,
     readPlanRecordingContext,
     readRecordingPublication,
-    planDocumentsForCheckout,
-} from "../../plan-store/index.ts";
+    planDocumentsForCheckout, } from "../../plan-store/index.ts";
 import { ProjectStoreClient } from "./project-store-client.ts";
 import { runValidationAttempt } from "../workflow/validation-supervisor.ts";
 import { rememberNonGitExecutionConsent } from "../non-git-execution-consent.ts";

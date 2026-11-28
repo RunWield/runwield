@@ -11,6 +11,8 @@ import {
 } from "@runwield/plans/operation-receipts";
 import type { SavedChildFeaturePlan } from "../plan-store.ts";
 import type { SequenceReviewResult } from "./sequence-review.ts";
+import type { SharedPlanReviewActionResult } from "./review.ts";
+import type { WorkflowControllerState, WorkflowWorktreeContext } from "@runwield/plans/controller-state";
 import type { CollaborationMutation } from "./collaboration/operation-state.ts";
 import type { CollaborationResult } from "./collaboration/operations.ts";
 
@@ -33,6 +35,62 @@ export function readChildAuthoringResult(
 
 interface SequenceOperationResult extends BatchOperationIntent {
     result: SequenceReviewResult;
+}
+
+export interface RetainedReviewCommit {
+    path: string;
+    planId: string;
+    planName: string;
+    beforeRevision: string;
+    afterRevision: string;
+    markdown: string;
+    controllerRevision: number;
+    controllerState: WorkflowControllerState;
+    controllerRecovery?: WorkflowWorktreeContext;
+    worktreeId?: string;
+}
+
+interface PlanReviewOperationResult {
+    result: SharedPlanReviewActionResult;
+    retained?: RetainedReviewCommit;
+}
+
+export function retainPlanReviewOperationResult(
+    result: SharedPlanReviewActionResult,
+    retained?: RetainedReviewCommit,
+): void {
+    const path = currentOperationReceiptResultPath("plan-review-results");
+    if (path) writeJsonAtomically(path, { result, ...(retained && { retained }) } satisfies PlanReviewOperationResult);
+}
+
+export function readPendingRetainedReview(): PlanReviewOperationResult | undefined {
+    const path = currentOperationReceiptResultPath("plan-review-results");
+    if (!path || !existsSync(path)) return undefined;
+    const operation: PlanReviewOperationResult = JSON.parse(readFileSync(path, "utf8"));
+    return operation.retained ? operation : undefined;
+}
+
+export function readPlanReviewOperationResult(
+    directory: string,
+    operationId: string,
+    planId: string,
+): SharedPlanReviewActionResult | undefined {
+    const receipt = inspectOperationReceipt(directory, operationId, planId);
+    if (receipt.status !== "completed") return undefined;
+    const path = operationReceiptResultPath(directory, operationId, "plan-review-results");
+    if (!existsSync(path)) return undefined;
+    const { result }: PlanReviewOperationResult = JSON.parse(readFileSync(path, "utf8"));
+    return { ...result, revision: receipt.revision };
+}
+
+export function findSequenceReviewOperationResult(
+    directory: string,
+    operationId: string,
+    planId: string,
+): SequenceReviewResult | undefined {
+    if (inspectOperationReceipt(directory, operationId, planId).status !== "completed") return undefined;
+    if (!existsSync(operationReceiptResultPath(directory, operationId, "sequence-review-results"))) return undefined;
+    return readSequenceOperationResult(directory, operationId, planId);
 }
 
 export function retainSequenceOperationResult(result: SequenceReviewResult): void {

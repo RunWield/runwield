@@ -1625,6 +1625,36 @@ export async function renamePlanPackage(
         return metadata;
     });
 }
+export function archivedPlanPackageMetadata(
+    current: LoadedPlanPackage,
+    reason: string,
+    archivedAt: string,
+): PlanPackageMetadata {
+    return {
+        ...current.metadata,
+        revision: current.metadata.revision + 1,
+        archive: {
+            archivedAt,
+            reason,
+            fromStatus: current.metadata.definition.status,
+            fromPath: join(current.path, "context.md"),
+        },
+    };
+}
+
+export function restoredPlanPackageMetadata(current: PlanPackageMetadata, restoredAt: string): PlanPackageMetadata {
+    if (!current.archive || current.archive.restoredAt) return current;
+    return {
+        ...current,
+        revision: current.revision + 1,
+        archive: {
+            ...current.archive,
+            restoredAt,
+            ...(current.archive.fromPath ? { restoredFromPath: current.archive.fromPath } : {}),
+        },
+    };
+}
+
 export async function archivePlanPackage(
     identity: ProjectIdentity,
     planId: string,
@@ -1636,16 +1666,7 @@ export async function archivePlanPackage(
         const current = await loaded(paths, planId);
         expectedRevision(current.metadata, revision);
         if (current.metadata.archive && !current.metadata.archive.restoredAt) return current.metadata;
-        const metadata = {
-            ...current.metadata,
-            revision: revision + 1,
-            archive: {
-                archivedAt,
-                reason,
-                fromStatus: current.metadata.definition.status,
-                fromPath: join(current.path, "context.md"),
-            },
-        };
+        const metadata = archivedPlanPackageMetadata(current, reason, archivedAt);
         metadata.history = await planHistoryFiles
             .forOwner(identity)
             .capture({ metadata, documents: current.documents }, { milestone: "archived", at: archivedAt, reason });
@@ -1667,20 +1688,13 @@ export async function restorePlanPackage(
     identity: ProjectIdentity,
     planId: string,
     revision: number,
+    restoredAt: string = new Date().toISOString(),
 ): Promise<PlanPackageMetadata> {
     return await mutate(identity, planId, async (paths) => {
         const current = await loaded(paths, planId);
         expectedRevision(current.metadata, revision);
-        if (!current.metadata.archive || current.metadata.archive.restoredAt) return current.metadata;
-        const metadata = {
-            ...current.metadata,
-            revision: revision + 1,
-            archive: {
-                ...current.metadata.archive,
-                restoredAt: new Date().toISOString(),
-                ...(current.metadata.archive.fromPath ? { restoredFromPath: current.metadata.archive.fromPath } : {}),
-            },
-        };
+        const metadata = restoredPlanPackageMetadata(current.metadata, restoredAt);
+        if (metadata === current.metadata) return metadata;
         metadataFrom(metadata);
         const path = join(current.path, "plan.wld.json");
         if (

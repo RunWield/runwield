@@ -1,4 +1,4 @@
-import { seedPlan } from "../testing/plan-state-fixture.ts";
+import { recordPlanEvent, seedPlan } from "../testing/plan-state-fixture.ts";
 import { getCwd } from "../../constants.ts";
 import { test } from "node:test";
 import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
@@ -11,7 +11,7 @@ import { loadPlan } from "../testing/plan-query-fixture.ts";
 
 import { HostedSession } from "@runwield/session-runtime/host";
 import { ensureRootAgentSession } from "../session/session.ts";
-import { recordPlanEvent } from "../../plan-store/index.ts";
+
 import { makeValidationCheckpoint } from "./validation-checkpoint.ts";
 import {
     attachRecorder,

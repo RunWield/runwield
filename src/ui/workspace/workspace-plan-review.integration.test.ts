@@ -1,3 +1,17 @@
+import { createHash } from "node:crypto";
+import { openOwnerCoordinationDatabase } from "@runwield/resources/owner-database";
+import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.ts";
+import type { PlanReviewDecisionInput } from "@runwield/plans/lifecycle";
+import {
+    openPlanLifecycleForCheckout,
+    preparePlanReviewVersion,
+    prepareSequenceReviewPresentation,
+    prepareSequenceReviewVersion,
+} from "../../plan-store/index.ts";
+import { getPlanReviewOperationReference } from "../../plan-store/lifecycle-review.ts";
+import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
+import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
+import { WorkspaceSessionContinuationService } from "./server/session-continuation.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
@@ -86,7 +100,7 @@ test("owner Plan review refuses approval after real status evidence changes", as
             async ({ service, reference, response, root }) => {
                 const { loadPlan } = await import("../../shared/testing/plan-query-fixture.ts");
                 const { withLocalPlanWorkflow } = await import("../../plan-store/index.ts");
-                const { recordPlanEvent } = await import("../../plan-store/index.ts");
+                const { recordPlanEvent } = await import("../../shared/testing/plan-state-fixture.ts");
 
                 const plan = await loadPlan(root, "stale");
                 if (!plan) throw new Error("missing review fixture");
@@ -120,7 +134,6 @@ test("owner Plan review refuses approval after real status evidence changes", as
 test("owner Sequence review refuses changed siblings and returns the complete current decision to Core", async () => {
     await withRuntimeCommandFixture("owner-sequence-review-", async (fixture) => {
         const root = fixture.projectRoot;
-        const { prepareSequenceReview } = await import("../../plan-store/index.ts");
         const { writeFile } = await import("node:fs/promises");
 
         const { loadPlan } = await import("../../shared/testing/plan-query-fixture.ts");
@@ -136,7 +149,7 @@ test("owner Sequence review refuses changed siblings and returns the complete cu
                 parentPlan: "sequence",
                 order: index + 1,
             });
-        const documents = await prepareSequenceReview(root, "sequence");
+        const documents = await prepareSequenceReviewPresentation(root, "sequence");
         await withExistingRuntimeInteraction(
             fixture,
             {
@@ -324,7 +337,7 @@ test("owner requests retain admitted document identity and reject stale saves wi
         store.projects.setStatus(empty.projectId, "active");
         const { withLocalPlanWorkflow, operatePlanFile } = await import("../../plan-store/index.ts");
         const { loadPlan } = await import("../../shared/testing/plan-query-fixture.ts");
-        const { recordPlanEvent } = await import("../../plan-store/index.ts");
+        const { recordPlanEvent } = await import("../../shared/testing/plan-state-fixture.ts");
         await withLocalPlanWorkflow(f.root, "one", async () => {
             await recordPlanEvent({ cwd: f.root, planName: "one", event: "review_approved", currentStatus: "draft" });
             await recordPlanEvent({
@@ -340,7 +353,7 @@ test("owner requests retain admitted document identity and reject stale saves wi
         equal((await save("# Revised acceptance criteria\n", ready.revision)).status, 200);
         equal((await loadPlan(f.root, "one"))?.attrs.status, "draft");
         assert((await save("# Stale approval\n", ready.revision)).status >= 400);
-        const { archivePlan } = await import("../../plan-store/index.ts");
+        const { archivePlan } = await import("../../shared/testing/plan-query-fixture.ts");
         const admission = await selectPlanAccess(f.root, "one");
         await archivePlan(f.root, "one", { force: true, reason: "retired" });
         const archived = await read(f.identity);
@@ -415,4 +428,191 @@ test("document reads keep the revision paired with the displayed bytes during ex
     } finally {
         await f.cleanup();
     }
+});
+
+test("a fresh Workspace acknowledges a committed review after losing the original answer reply", async () => {
+    await withRuntimeCommandFixture("workspace-lost-review-reply-", async (fixture) => {
+        const planId = "lost-reply-plan";
+        await savePlan(fixture.projectRoot, "review", "# Review this change", {
+            planId,
+            classification: "PLANNED_CHANGE",
+            status: "draft",
+        });
+        let original: Parameters<WorkspaceSessionContinuationService["answerInteraction"]>[0] | undefined;
+        let committedRevision: string | undefined;
+        await withExistingRuntimeInteraction(
+            fixture,
+            {
+                type: "plan_review",
+                prompt: "Review this Plan",
+                _meta: { planId, planName: "review", planningAgentName: "planner" },
+            },
+            async ({ service, reference, response }) => {
+                const database = openOwnerCoordinationDatabase();
+                try {
+                    // Interrupt the final acknowledgement after the real Session has received the accepted decision.
+                    database.handle.exec(`
+                        CREATE TRIGGER lose_review_reply BEFORE UPDATE OF status ON owner_session_operations
+                        WHEN NEW.request_id = 'lost-review-reply' AND NEW.status = 'completed'
+                        BEGIN SELECT RAISE(ABORT, 'interrupted review acknowledgement'); END
+                    `);
+                    original = {
+                        ...reference,
+                        requestId: "lost-review-reply",
+                        response: { outcome: "accepted", _meta: { approved: true, approvalAction: "later" } },
+                    };
+                    await assert.rejects(
+                        () => service.answerInteraction(original!),
+                        /interrupted review acknowledgement/,
+                    );
+                    assertEquals((await response)._meta?.approved, true);
+                    const committed = await loadPlan(fixture.projectRoot, "review");
+                    assert(committed);
+                    committedRevision = committed.revision;
+                } finally {
+                    database.handle.exec("DROP TRIGGER IF EXISTS lose_review_reply");
+                    database.close();
+                }
+            },
+        );
+        assert(original && committedRevision);
+        const store = openOwnerCoordinationStore();
+        const restarted = new WorkspaceSessionContinuationService({ store });
+        try {
+            assertEquals(await restarted.answerInteraction(original), { status: "accepted" });
+            assertEquals((await loadPlan(fixture.projectRoot, "review"))?.revision, committedRevision);
+        } finally {
+            await restarted.close();
+            store.close();
+        }
+    });
+});
+
+test("Workspace recovers the exact committed Plan answer after the Session owner ends", async () => {
+    await withRuntimeCommandFixture("workspace-review-answer-recovery-", async ({ homeDir, projectRoot }) => {
+        const fixture = await makeManagedSessionFixture({ home: homeDir, projectRoot });
+        const store = fixture.openStore();
+        const service = new WorkspaceSessionContinuationService({ store });
+        try {
+            const session = {
+                projectId: fixture.project.projectId,
+                runwieldSessionId: fixture.session.runwieldSessionId,
+            };
+            const parent = store.createOrGetOperationReceipt({
+                ...session,
+                requestId: "open-review",
+                requestHash: "open-review",
+                kind: "plan_action",
+            });
+            await savePlan(projectRoot, "review", "# Review\n\nKeep this requirement.", {
+                planId: "recover-review-id",
+                classification: "PLANNED_CHANGE",
+                status: "draft",
+            });
+            const plan = (await loadPlan(projectRoot, "review"))!;
+            const { displayedVersion } = await preparePlanReviewVersion(projectRoot, "review", plan.path, session);
+            const currentReference = getPlanReviewOperationReference(displayedVersion);
+            assert(currentReference);
+            const approval = { approved: true, approvalAction: "later", feedback: "Approve original." } as const;
+            const reference = {
+                ...session,
+                operationId: parent.operationId,
+                interactionId: "original-review",
+            };
+            const interrupted = (
+                requestId: string,
+                response: PlanReviewDecisionInput,
+                planReview = currentReference,
+            ) => {
+                const requestHash = createHash("sha256")
+                    .update(
+                        JSON.stringify({
+                            kind: "interaction_answer",
+                            operationId: reference.operationId,
+                            interactionId: reference.interactionId,
+                            response,
+                        }),
+                    )
+                    .digest("hex");
+                const receipt = store.createOrGetOperationReceipt({
+                    ...session,
+                    requestId,
+                    requestHash,
+                    kind: "plan_action",
+                });
+                store.updateOperationReceipt(receipt.operationId, {
+                    status: "running",
+                    resultBody: { planReview: { ...planReview } },
+                });
+                return { ...reference, requestId, response, receiptId: receipt.operationId };
+            };
+            const sent = interrupted("original-answer", approval);
+            const competing = interrupted("different-answer", { feedback: "Different intent." });
+            const lifecycle = openPlanLifecycleForCheckout(projectRoot)!;
+            const committed = await lifecycle.applyEvent(displayedVersion.planId, {
+                ...approval,
+                event: "review_approved",
+                displayedVersion,
+            });
+            assertEquals(committed.approved, true, committed.feedback);
+            const after = await loadPlan(projectRoot, "review");
+
+            assertEquals(await service.answerInteraction(sent), { status: "accepted" });
+            assertEquals(await service.answerInteraction(sent), { status: "accepted" });
+            assertEquals(store.getOperationReceipt(sent.receiptId)?.status, "completed");
+            assertEquals((await loadPlan(projectRoot, "review"))?.revision, after?.revision);
+            await assert.rejects(() => service.answerInteraction(competing), /Reopen the review/);
+            assertEquals(store.getOperationReceipt(competing.receiptId)?.status, "failed");
+            await assert.rejects(
+                () => service.answerInteraction({ ...sent, interactionId: "new-review" }),
+                /reused with different input/,
+            );
+
+            await savePlan(projectRoot, "sequence", "# Sequence", {
+                planId: "recover-sequence-id",
+                classification: "PROJECT",
+                type: "sequence",
+                status: "draft",
+            });
+            await savePlan(projectRoot, "sequence/child", "# Child", {
+                planId: "recover-child-id",
+                classification: "PLANNED_CHANGE",
+                status: "draft",
+                parentPlan: "sequence",
+                order: 1,
+            });
+            const documents = await prepareSequenceReviewPresentation(projectRoot, "sequence");
+            const groupVersion = await prepareSequenceReviewVersion(
+                projectRoot,
+                "sequence",
+                documents,
+                session.runwieldSessionId,
+            );
+            const groupReference = getPlanReviewOperationReference(groupVersion);
+            assert(groupReference);
+            const abandoned = interrupted(
+                "abandoned-sequence",
+                {
+                    ...approval,
+                    documents: documents.map(({ planId, plan }) => ({ planId, plan })),
+                },
+                groupReference,
+            );
+            await assert.rejects(() => service.answerInteraction(abandoned), /Reopen the review/);
+            assertEquals(store.getOperationReceipt(abandoned.receiptId)?.status, "failed");
+            assertEquals((await loadPlan(projectRoot, "sequence"))?.attrs.status, "draft");
+
+            const previousRecovery = interrupted("recovery-response", {});
+            const recovery = { status: "recovery_required", message: "Recover the pending Plan write." };
+            store.updateOperationReceipt(previousRecovery.receiptId, {
+                status: "completed",
+                resultBody: { result: recovery },
+            });
+            assertEquals(await service.answerInteraction(previousRecovery), recovery);
+        } finally {
+            await service.close();
+            store.close();
+            await fixture.cleanup();
+        }
+    });
 });

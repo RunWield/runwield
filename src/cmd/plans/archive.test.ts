@@ -5,8 +5,9 @@ import { relative } from "node:path";
 import { mkdir as fsMkdir, readdir as fsReaddir, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
-import { archivePlan } from "../../plan-store/index.ts";
+
 import {
+    archivePlan,
     listFixturePlanHistory,
     readFixtureMilestone,
     restoreFixtureMilestone,
@@ -212,7 +213,8 @@ archiveTest(
 archiveTest(
     "renamed Epics retain readable archived versions and keep their new name after content restore",
     async ({ projectRoot }) => {
-        const { authorLocalPlan, recordPlanEvent, renamePlan } = await import("../../plan-store/index.ts");
+        const { authorLocalPlan, renamePlan } = await import("../../plan-store/index.ts");
+        const { recordPlanEvent } = await import("../../shared/testing/plan-state-fixture.ts");
         await authorLocalPlan(projectRoot, {
             planName: "original",
             contextMarkdown: "# Epic\n",

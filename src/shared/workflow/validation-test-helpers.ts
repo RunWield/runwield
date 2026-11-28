@@ -208,7 +208,7 @@ export async function makeValidationProjectRoot(
     if (attrs.classification !== "PROJECT") {
         const { withLocalPlanWorkflow } = await import("../../plan-store/index.ts");
         const { rememberNonGitExecutionConsent } = await import("../non-git-execution-consent.ts");
-        const { recordPlanEvent } = await import("../../plan-store/index.ts");
+        const { recordPlanEvent } = await import("../testing/plan-state-fixture.ts");
         await rememberNonGitExecutionConsent("featurePlan", root);
         await withLocalPlanWorkflow(root, planName, async () => {
             await recordPlanEvent({ cwd: root, planName, event: "review_approved", currentStatus: "draft" });

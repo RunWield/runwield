@@ -92,10 +92,8 @@ export {
 } from "./workflows.ts";
 
 export {
-    recordPlanEvent,
     stageValidationPassedInExecutionWorktree,
     PlanLifecycleTransitionError,
-    type RecordPlanEventRequest,
     type StageValidationRequest,
     type ValidationPassedStagingResult,
 } from "./events.ts";
@@ -104,24 +102,8 @@ export { capturePlanExecutionContext, readPlanExecutionAttemptId, type PlanExecu
 
 export { assertAuthorizedPlanPath, assertReadablePlanResource, readPlanReviewPresentation } from "./resources.ts";
 
-export {
-    applySharedPlanReviewDecision,
-    type SharedPlanReviewDecision,
-    type SharedPlanReviewEvidence,
-    type SharedPlanReviewActionOptions,
-    type SharedPlanReviewActionResult,
-} from "./review.ts";
-export {
-    prepareSequenceReview,
-    snapshotSequenceReview,
-    validateSequenceReviewDecision,
-    applySequenceReviewDecision,
-    type SequenceChildInput,
-    type SequenceReviewDocument,
-    type SequenceDocumentDecision,
-    type SequenceReviewDecision,
-    type SequenceReviewResult,
-} from "./sequence-review.ts";
+export type { SharedPlanReviewDecision } from "./review.ts";
+export type { SequenceReviewDecision } from "./sequence-review.ts";
 
 export { withPlanExecutionAdmission, preparePlanValidationInput } from "./workflows.ts";
 export { prepareEditedSiblingPlans } from "./sibling-scopes.ts";
@@ -182,7 +164,6 @@ export {
 export { readPlanRecordingContinuation, readEpicIntegrationReview, hasPlanDeliveryEvidence } from "./continuation.ts";
 export { restoreNonGitPlanExecution, reconcilePlanExecutionBinding } from "./execution-recovery.ts";
 export { recordPlanDeviation } from "./definition.ts";
-export { preparePlanReviewDocument, capturePlanReviewInput } from "./review-snapshots.ts";
 export { preparePlanInPlacePublication } from "./publication.ts";
 export { readPlanPublicationReference } from "./recording.ts";
 export { readRetainedExecutionPlan } from "./execution-recovery.ts";
@@ -196,8 +177,8 @@ export {
 } from "./session-artifacts.ts";
 
 export {
-    archiveSavedPlan,
-    restoreSavedPlan,
+    archiveObservedPlan,
+    restoreObservedPlan,
     archivedPlanProjectRoot,
     archiveEpicPlanFamily,
     type ArchivePlanOptions,
@@ -236,8 +217,6 @@ export {
 export { runRecoveryTransition as runPlanRecoveryEffects, closeTransitionRecordByAttestation } from "./transitions.ts";
 
 export { retainUserVerifiedPlan, clearPlanRecoveryAfterCleanup } from "./recovery.ts";
-
-export { applyPlanReviewForExecution } from "./review.ts";
 
 export { resolveRecoveryWorktree, type RecoveryWorktreeContext, type PlanRecoveryIdentity } from "./recovery-source.ts";
 
@@ -297,7 +276,7 @@ export {
 
 export { savePlanBodyById } from "./queries.ts";
 
-export { archivePlan, readPlanMenuDocument } from "./queries.ts";
+export { readPlanMenuDocument } from "./queries.ts";
 
 export { readRetainedManagedExecution, type RetainedManagedExecution } from "./retained-managed-execution.ts";
 
@@ -344,9 +323,11 @@ export { ensurePlanIdentity } from "./queries.ts";
 
 export { inspectManagedImportSource, type ManagedImportPreparationRequest } from "./import-source.ts";
 
-export { archivePlansByStatus } from "./archiving.ts";
-
-export * from "./retention-selection.ts";
+export {
+    selectArchivedPlansForPrune,
+    type ArchiveRetentionPolicy,
+    type ArchivePruneSelection,
+} from "./retention-selection.ts";
 export { previewPlanRetention, previewRecordRetention, confirmRetention } from "./retention.ts";
 
 export { readExecutionRetention, type RetentionContext } from "./retention.ts";
@@ -359,6 +340,21 @@ export {
     listSelectablePlanDocuments,
     openPlanStoreForCheckout,
 } from "./project-plans.ts";
+export {
+    openProjectPlanLifecycle,
+    applyObservedPlanEvent,
+    observeCheckoutPlan,
+    type ObservedCheckoutPlan,
+    openPlanLifecycleForCheckout,
+} from "./project-lifecycle.ts";
+export {
+    preparePlanReviewVersion,
+    prepareSequenceReviewVersion,
+    prepareSequenceReviewPresentation,
+    snapshotSequenceReviewPresentation,
+    applyPlanReviewConversation,
+    validatePlanReviewSequence,
+} from "./lifecycle-review.ts";
 export { withPlanSubmission, type PlanSubmissionDocument, type PlanSubmissionOptions } from "./authoring.ts";
 export {
     registeredWorkRecords,

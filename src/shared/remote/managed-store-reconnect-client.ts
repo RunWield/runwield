@@ -2,6 +2,7 @@
 import { equal, ok, rejects } from "node:assert/strict";
 import { plans } from "@runwield/plans";
 import { projects } from "@runwield/projects";
+import { recordPlanEvent } from "../testing/plan-state-fixture.ts";
 import { stdinStream } from "../../testing/stdin-stream.ts";
 import { processLines } from "./remote-runtime-lines.ts";
 import { activateRemoteProjectOwner } from "./managed-project-owner.ts";
@@ -15,13 +16,13 @@ await lines.cancel();
 const clear = await activateRemoteProjectOwner(input);
 try {
     const {
-        archiveSavedPlan,
         planDocumentsForCheckout,
         openProjectPlanStore,
-        restoreSavedPlan,
+        openProjectPlanLifecycle,
         withLocalPlanWorkflow,
         readPlanResource,
     } = await import("../../plan-store/index.ts");
+    const { archiveSavedPlan, restoreSavedPlan } = await import("../testing/plan-query-fixture.ts");
     const plan = await planDocumentsForCheckout(input.cwd).load(input.planId);
     if (!plan || plan.path !== input.expectedPath || !plan.path.startsWith(input.resources.globalRoot))
         throw new Error("Reconnect changed canonical ownership.");
@@ -35,6 +36,7 @@ try {
     const planId = plans.identity.parse(input.planId);
     ok(planId);
     const store = openProjectPlanStore(checkout.identity.projectId);
+    const lifecycle = openProjectPlanLifecycle(store.projectId);
     const current = await store.read(planId);
     ok(current.planId === planId && current.body.includes("Preserve source bytes."));
     const created = await store.create({ planName: "z-bound-store", contextMarkdown: "# Draft\n" });
@@ -44,30 +46,44 @@ try {
     const edited = await store.editBody(created.planId, { body: "# Reviewed\n", expectedRevision: created.revision });
     equal(edited.body, "# Reviewed\n");
     equal((await store.read(alias.planId)).body, created.body);
-    const approved = await store.applyEvent(created.planId, {
+    await recordPlanEvent({
+        cwd: input.cwd,
+        planName: created.name,
+        expectedPlanId: created.planId,
         event: "review_approved",
         expectedRevision: edited.revision,
     });
+    const approved = await store.read(created.planId);
     equal(approved.attrs.status, "approved");
+    const ready = await lifecycle.applyEvent(created.planId, {
+        event: "readiness_passed",
+        expectedRevision: approved.revision,
+    });
+    equal(ready.attrs.status, "ready_for_work");
     equal((await store.read(alias.planId)).attrs.status, "draft");
-    const archived = await store.archive(created.planId, { expectedRevision: approved.revision, force: true });
+    const archived = await lifecycle.archive(created.planId, { expectedRevision: ready.revision, force: true });
     await rejects(() => store.read(created.planId));
     equal((await archiveSavedPlan(input.cwd, alias.name, { force: true })).attrs.planId, alias.planId);
     equal((await store.readArchived(created.planId)).body, edited.body);
     equal((await store.readArchived(alias.planId)).body, created.body);
-    const restored = await store.restore(created.planId, archived.revision);
+    const restored = await lifecycle.restore(created.planId, archived.revision);
     equal(restored.body, edited.body);
     equal((await restoreSavedPlan(input.cwd, alias.name)).attrs.planId, alias.planId);
     equal((await store.read(alias.planId)).body, created.body);
-    const approvedAlias = await store.applyEvent(alias.planId, {
+    await recordPlanEvent({
+        cwd: input.cwd,
+        planName: alias.name,
+        expectedPlanId: alias.planId,
         event: "review_approved",
         expectedRevision: (await store.read(alias.planId)).revision,
     });
+    const approvedAlias = await store.read(alias.planId);
     equal(approvedAlias.attrs.status, "approved");
-    await store.archive(created.planId, { expectedRevision: restored.revision, force: true });
-    await store.archive(alias.planId, { expectedRevision: approvedAlias.revision, force: true });
+    await lifecycle.archive(created.planId, { expectedRevision: restored.revision, force: true });
+    await lifecycle.archive(alias.planId, { expectedRevision: approvedAlias.revision, force: true });
     clear();
     await rejects(() => store.read(planId), /managed|owner|authority/i);
+    await rejects(() => lifecycle.restore(created.planId, restored.revision), /managed|owner|authority/i);
 } finally {
     clear();
 }

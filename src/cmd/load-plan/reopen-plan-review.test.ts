@@ -12,7 +12,7 @@ import { ensurePlanIdentity } from "../../plan-store/index.ts";
 import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 
 import { RuntimeInteractionTypes } from "@runwield/session-runtime/interactions";
-import type { SequenceReviewDocument } from "../../plan-store/index.ts";
+import type { SequenceReviewPresentation as SequenceReviewDocument } from "@runwield/plans/lifecycle";
 
 test("an idle Session reopens the complete saved Sequence and saves approval without a model turn", async () => {
     await withRuntimeCommandFixture("reopen-sequence-", async ({ homeDir, projectRoot, setModelResponseFactory }) => {

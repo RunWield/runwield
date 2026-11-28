@@ -21,7 +21,7 @@ import { submitPlanForReview } from "./plan-review.ts";
 import { createScriptedReviewBrowser, type ReviewDecisionBody } from "./review-test-fixture.ts";
 import { addEntry as addRegistryEntry, findById as findRegistryEntryById } from "../../shared/worktree-registry.ts";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
-import { prepareSequenceReview } from "../../plan-store/index.ts";
+import { prepareSequenceReviewPresentation } from "../../plan-store/index.ts";
 
 interface PlanReviewFixture {
     dir: string;
@@ -119,7 +119,7 @@ test("grouped Sequence chat preserves intermediate-round intent with its decisio
             parentPlan: "sequence",
             order: 1,
         });
-        const documents = await prepareSequenceReview(dir, "sequence");
+        const documents = await prepareSequenceReviewPresentation(dir, "sequence");
         const scripted = createScriptedReviewBrowser("deny", {
             approved: false,
             feedback: "Revise the group.",

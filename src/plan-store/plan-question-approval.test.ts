@@ -1,15 +1,15 @@
-import { seedPlan } from "../testing/plan-state-fixture.ts";
-import { withLocalPlanWorkflow } from "../../plan-store/index.ts";
-import { capturePlanReviewInput } from "../../plan-store/index.ts";
+import { seedPlan } from "../shared/testing/plan-state-fixture.ts";
+import { withLocalPlanWorkflow } from "./index.ts";
+import { capturePlanReviewInput } from "../shared/testing/plan-query-fixture.ts";
 import { test } from "node:test";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { ok as assert } from "node:assert/strict";
-import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { makeValidationProjectRoot } from "./validation-test-helpers.ts";
-import { loadPlan } from "../testing/plan-query-fixture.ts";
+import { assertEquals, assertStringIncludes } from "../testing/assertions.ts";
+import { makeValidationProjectRoot } from "../shared/workflow/validation-test-helpers.ts";
+import { loadPlan } from "../shared/testing/plan-query-fixture.ts";
 
-import { applySharedPlanReviewDecision } from "../../plan-store/index.ts";
-import type { SharedPlanReviewDecision } from "../../plan-store/index.ts";
+import { applySharedPlanReviewDecision } from "./review.ts";
+import type { SharedPlanReviewDecision } from "../shared/testing/plan-query-fixture.ts";
 
 const body =
     '# Plan\n\nBefore.\n\n```wld-question\n{"id":"scope","type":"multiple_choice","prompt":"Who can export?","choices":[{"value":"admins","label":"Admins only"},{"value":"all","label":"All members"}],"default":"admins"}\n```\n\nBetween.\n\n```wld-question\n{"id":"keep","type":"yes_no","prompt":"Keep old links?","default":true}\n```\n\nAfter.\n';

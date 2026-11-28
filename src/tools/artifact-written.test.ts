@@ -8,7 +8,7 @@ import { createInteractiveSessionRuntime as createSessionRuntime } from "@runwie
 import { openFileSessionStore } from "../shared/session/file-session-store.ts";
 import { readSessionArtifact } from "../shared/session/read-session-artifact.ts";
 import { create, documents } from "../shared/testing/plan-package-fixture.ts";
-import { openPlanStoreForCheckout, renamePlan } from "../plan-store/index.ts";
+import { openPlanLifecycleForCheckout, openPlanStoreForCheckout, renamePlan } from "../plan-store/index.ts";
 import { projects } from "@runwield/projects";
 import { plans } from "@runwield/plans";
 
@@ -175,7 +175,10 @@ test("artifact_written saves Plan and Epic references that survive rename, name 
                 "# Replacement report\n",
             );
             const renamed = await store.read(original.planId);
-            await store.archive(renamed.planId, { expectedRevision: renamed.revision, force: true });
+            await openPlanLifecycleForCheckout(projectRoot)!.archive(renamed.planId, {
+                expectedRevision: renamed.revision,
+                force: true,
+            });
             assertEquals((await readSessionArtifact(projectRoot, plan)).markdown, "# Original Plan\n");
             assertEquals((await readSessionArtifact(projectRoot, epic)).markdown, "# Original report\n");
         } finally {

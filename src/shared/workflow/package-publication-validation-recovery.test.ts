@@ -1,3 +1,4 @@
+import { recordPlanEvent } from "../testing/plan-state-fixture.ts";
 import { listFixturePlanHistory, readFixtureMilestone } from "../testing/plan-query-fixture.ts";
 import { test } from "node:test";
 import { equal, ok } from "node:assert/strict";
@@ -7,7 +8,7 @@ import { publicationFixture } from "./testing/package-publication-fixture.ts";
 import { read } from "../testing/plan-package-fixture.ts";
 import { git } from "../git-test-fixture.ts";
 import { setExactProjectCustomSetting } from "../settings.ts";
-import { recordPlanEvent } from "../../plan-store/index.ts";
+
 import { openPublication } from "@runwield/workflow/publication-runtime";
 import { readPlanPackage, readPlanPackagePublication } from "@runwield/plans/package-storage";
 import { readPublishedDeliverySources } from "../../plan-store/index.ts";

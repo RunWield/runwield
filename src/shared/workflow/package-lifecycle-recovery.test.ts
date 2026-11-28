@@ -1,5 +1,5 @@
 import { plans } from "@runwield/plans";
-import { seedPlanState, seedPlanController, inspectPlanFixtureController } from "../testing/plan-state-fixture.ts";
+import { recordPlanEvent, seedPlanState, seedPlanController, inspectPlanFixtureController } from "../testing/plan-state-fixture.ts";
 
 import { listFixturePlanHistory, readFixtureMilestone, loadPlan } from "../testing/plan-query-fixture.ts";
 import { resolveProjectRuntimeLayout } from "@runwield/project-runtime/layout";
@@ -12,7 +12,7 @@ import { currentPackageSelection } from "../../plan-store/workflows.ts";
 import { hasRetainedCheckoutSource, withRetainedCheckoutSource } from "@runwield/plans/retained-checkout";
 import type { ValidationCheckpoint } from "@runwield/plans/controller-state";
 import { withPackageWorkflow } from "../../plan-store/workflows.ts";
-import { recordPlanEvent } from "../../plan-store/index.ts";
+
 import { inspectWorktreeRegistry } from "../worktree-registry.ts";
 import { git } from "../git-test-fixture.ts";
 import { test } from "node:test";

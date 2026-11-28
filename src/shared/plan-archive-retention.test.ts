@@ -5,7 +5,7 @@ import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWrit
 import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { archivePlan } from "../plan-store/index.ts";
+import { archivePlan } from "./testing/plan-query-fixture.ts";
 
 import {
     type ArchivedPlanUnit,

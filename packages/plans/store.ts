@@ -4,7 +4,6 @@ import type { EpicArtifactName } from "./format/artifacts.ts";
 import type { PackageDocuments, PlanHistory } from "./history.ts";
 import type { PlanId } from "@runwield/plan-storage-format";
 import type { ProjectPublicationCopies } from "./publication-copies.ts";
-import type { PlanEvent, PlanEventDetails } from "./lifecycle.ts";
 import type { ProjectWorkRecord, WorkRecordFrontMatter } from "./work-records.ts";
 export type { ProjectWorkRecord } from "./work-records.ts";
 
@@ -117,21 +116,9 @@ export interface ProjectPlanCatalog {
     diagnostics: ProjectPlanDiagnostic[];
 }
 
-export interface ArchiveProjectPlan {
-    expectedRevision: string;
-    reason?: string;
-    force?: boolean;
-}
-
 export interface EditProjectPlanBody {
     body: string;
     expectedRevision: string;
-}
-
-export interface ApplyProjectPlanEvent {
-    event: PlanEvent;
-    expectedRevision: string;
-    details?: Omit<PlanEventDetails, "triageMeta" | "now">;
 }
 
 export interface ProjectPlanHistory {
@@ -191,9 +178,6 @@ export interface ProjectPlanStore {
     create(input: CreateProjectPlan): Promise<ProjectPlanDocument>;
     revise(planId: PlanId, input: ReviseProjectPlan): Promise<ProjectPlanDocument>;
     editBody(planId: PlanId, input: EditProjectPlanBody): Promise<ProjectPlanDocument>;
-    applyEvent(planId: PlanId, request: ApplyProjectPlanEvent): Promise<ProjectPlanDocument>;
-    archive(planId: PlanId, options: ArchiveProjectPlan): Promise<ProjectPlanDocument>;
-    restore(planId: PlanId, expectedRevision: string): Promise<ProjectPlanDocument>;
 }
 
 export { PlanNotFoundError, StalePlanWriteError } from "./store-errors.ts";

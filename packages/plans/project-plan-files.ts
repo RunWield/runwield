@@ -7,7 +7,7 @@ import { CONTROLLER_STATE_FIELDS, pickControllerState, type WorkflowControllerSt
 import type { PlanFrontMatter } from "./document.ts";
 import { currentExecutionRecoveryObservation } from "./execution-recovery.ts";
 import { packageDocumentText } from "./package-data.ts";
-import { buildPlanEventUpdates, reopensReviewOnEdit } from "./lifecycle.ts";
+import { buildPlanEventUpdates, reopensReviewOnEdit, type PlanEvent } from "./lifecycle.ts";
 import {
     assertReviewedDefinition,
     assertReviewedDocuments,
@@ -423,6 +423,34 @@ function forOwner(identity: ProjectStoreIdentity) {
         return { selected, loaded: retained ?? (await projectPackage(identity, selected)) };
     }
 
+    /** Check and retain the package inputs owned by the lifecycle event. */
+    async function prepareLifecycleEvidence(
+        target: PackagePlanTarget,
+        selection: PackageReadSelection | undefined,
+        event: PlanEvent,
+    ) {
+        const selected = await select(target, selection);
+        const source = { planId: selected.metadata.planId };
+        const scope = selection ?? source;
+        const workflow = { ...selected.metadata.workflow };
+        if (event === "readiness_passed" || event === "execution_started") {
+            const input = event === "readiness_passed" ? workflow.review : workflow.readiness;
+            if (!input) throw new Error("Current package review/readiness evidence is required.");
+            await assertInput(source, scope, input);
+        }
+        if (event === "hold_reset_to_draft") {
+            workflow.review = undefined;
+            workflow.readiness = undefined;
+        }
+        if (event === "implementation_finished" && workflow.attempt)
+            await assertInput(source, scope, workflow.readiness || workflow.attempt.input);
+        if (event === "epic_integration_passed") workflow.integration = await captureReviewInput(source, scope);
+        if (event === "epic_integration_stale" || event === "epic_integration_failed") workflow.integration = undefined;
+        if (event === "review_approved") workflow.review = await captureReviewInput(source, scope);
+        if (event === "readiness_passed") workflow.readiness = await captureReviewInput(source, scope);
+        return workflow;
+    }
+
     /** Prepare the reopened state for the caller to commit with the Plan edit. */
     async function prepareReviewInvalidation(plan: LoadedPlanPackage, change: PackageReviewChange) {
         const status = plan.metadata.definition.status;
@@ -546,6 +574,13 @@ function forOwner(identity: ProjectStoreIdentity) {
         async readWorkflow(target: PackagePlanTarget, selection?: PackageReadSelection): Promise<PackagePlanText> {
             return (await readGeneration(target, selection)).loaded;
         },
+        async projectLifecycleGeneration(plan: LoadedPlanPackage, planId: PlanId): Promise<ProjectPlanDocument> {
+            const loaded = await projectPackage(identity, plan);
+            return { ...projectPlanDocumentFields(resourceFields(loaded, plan.metadata)), planId };
+        },
+        async projectWorkflowGeneration(plan: LoadedPlanPackage): Promise<PlanFrontMatter> {
+            return (await projectPackage(identity, plan)).attrs;
+        },
         select,
         async withFamilyLocks<T>(
             targets: PackagePlanTarget[],
@@ -579,6 +614,7 @@ function forOwner(identity: ProjectStoreIdentity) {
             });
         },
         prepareReviewInvalidation,
+        prepareLifecycleEvidence,
         readController: (plan: LoadedPlanPackage) => readController(identity, plan),
         prepareWorkflowMetadataUpdate,
         prepareWorkflowUpdate: (

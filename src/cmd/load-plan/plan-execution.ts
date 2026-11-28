@@ -4,7 +4,7 @@ import { openWorkflow } from "@runwield/workflow";
  * Driving a Plan from approved through execution to validation.
  *
  * The Readiness Gate, the post-execution checkpoint, and the repair loop that
- * sits between them. Lifecycle writes go through `recordPlanEvent`; this module
+ * sits between them. Lifecycle writes go through the Plan lifecycle; this module
  * decides *when* they happen, never how they are persisted.
  */
 
@@ -12,7 +12,7 @@ import { isPlannedChangeClassification, resolvePlanExecutionPolicy, isProjectPla
 import { AGENTS } from "../../shared/session/agent-registry.ts";
 import { planDocumentsForCheckout } from "../../plan-store/index.ts";
 import { isGitRepositoryRequiredError } from "../../shared/git.ts";
-import { recordPlanEvent } from "../../plan-store/index.ts";
+import { applyObservedPlanEvent, observeCheckoutPlan } from "../../plan-store/index.ts";
 import { decidePostExecution } from "@runwield/workflow/decisions";
 import { listCommitsTouchingPathsSince } from "../../shared/workflow/git-snapshot.ts";
 import {
@@ -480,18 +480,13 @@ export function validatePlanExecutionPolicyForReadiness(plan: { attrs: PlanFront
  */
 export async function prepareApprovedPlanForWork(
     projectRoot: string,
-    plan: { planName: string; path?: string; attrs: PlanFrontMatter },
+    plan: { planName: string; path?: string; attrs: PlanFrontMatter; revision?: string },
     uiAPI: UiAPI,
 ): Promise<boolean> {
     if (!validatePlanExecutionPolicyForReadiness(plan, uiAPI)) return false;
+    const observed = await observeCheckoutPlan(projectRoot, plan);
     if (isProjectPlan(plan.attrs)) {
-        await recordPlanEvent({
-            cwd: projectRoot,
-            planName: plan.planName,
-            event: "epic_readiness_passed",
-            currentStatus: "approved",
-            details: { triageMeta: plan.attrs },
-        });
+        await applyObservedPlanEvent(projectRoot, observed, "epic_readiness_passed");
         plan.attrs.status = "ready_for_decomposition";
         uiAPI.appendSystemMessage(
             `PROJECT Epic ready for decomposition or child plan selection: ${plan.planName}`,
@@ -501,13 +496,7 @@ export async function prepareApprovedPlanForWork(
         return false;
     }
 
-    await recordPlanEvent({
-        cwd: projectRoot,
-        planName: plan.planName,
-        event: "readiness_passed",
-        currentStatus: "approved",
-        details: { triageMeta: plan.attrs },
-    });
+    await applyObservedPlanEvent(projectRoot, observed, "readiness_passed");
     plan.attrs.status = "ready_for_work";
     return true;
 }

@@ -21,7 +21,7 @@ import { RuntimeEventTypes } from "@runwield/session-runtime/events";
 import { SESSION_COMPLETE_GUIDANCE } from "../../shared/workflow/plan-review-recovery.ts";
 import { createPlanWrittenTool, type PlanWrittenToolResult } from "../plan-written.ts";
 import type { TriageMeta } from "@runwield/workflow/state";
-import { applySharedPlanReviewDecision } from "../../plan-store/index.ts";
+import { applySharedPlanReviewDecision } from "../../shared/testing/plan-query-fixture.ts";
 import { loadPlan } from "../../shared/testing/plan-query-fixture.ts";
 import { addEntry as addRegistryEntry } from "../../shared/worktree-registry.ts";
 import { join } from "node:path";
@@ -31,8 +31,8 @@ import {
     type RuntimeInteractionRequest,
     type RuntimeInteractionResponse,
 } from "@runwield/session-runtime/interactions";
-import { type PlanApprovalAction } from "../../shared/workflow/plan-approval.ts";
-import { type SharedPlanReviewDecision } from "../../plan-store/index.ts";
+import type { PlanApprovalAction } from "@runwield/plans/lifecycle";
+import { type SharedPlanReviewDecision } from "../../shared/testing/plan-query-fixture.ts";
 
 type InteractionMetadata = NonNullable<RuntimeInteractionResponse["_meta"]>;
 

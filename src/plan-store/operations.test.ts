@@ -16,7 +16,7 @@ import {
     restoreFixtureMilestone,
     loadPlan,
 } from "../shared/testing/plan-query-fixture.ts";
-import { seedPlanState } from "../shared/testing/plan-state-fixture.ts";
+import { recordPlanEvent, seedPlanState } from "../shared/testing/plan-state-fixture.ts";
 import {
     create as createPackageFixture,
     driver,
@@ -114,16 +114,13 @@ test("Plan file commands preserve exact whitespace and reject a stale edit throu
     }
 });
 
-import {
-    selectPlanAccess,
+import { selectPlanAccess,
     withPlanAccess,
     resumePlanAttempt,
-    recordPlanEvent,
     reservePlanExecution,
     capturePlanExecutionContext,
     readFrozenPlanExecutionDocuments,
-    type PlanAccess,
-} from "./index.ts";
+    type PlanAccess, } from "./index.ts";
 
 test("serialized Plan access resumes through owner validation and rejects a different repository", async () => {
     const first = await packageFixture();

@@ -1,4 +1,5 @@
-import { parsePlanQuestions, type PlanQuestionAnswer } from "../../../shared/plan-questions.ts";
+import { parsePlanQuestions } from "../../../shared/plan-questions.ts";
+import type { PlanQuestionAnswer } from "@runwield/plans/lifecycle";
 import type { PlanReviewPolicyFields } from "./plan-review-policy.ts";
 import type { Annotation, CodeAnnotation, ImageAttachment } from "@plannotator/ui/types.ts";
 

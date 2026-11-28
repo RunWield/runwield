@@ -169,6 +169,7 @@ export function createTuiInteractionAdapter(
                     const result = await submitPlanForReview({
                         cwd: meta.cwd,
                         sequenceDocuments: meta.sequenceDocuments,
+                        displayedVersion: meta.displayedVersion,
                         planName: meta.planName,
                         planPath: meta.planPath,
                         previousPlan: typeof meta.previousPlan === "string" ? meta.previousPlan : undefined,

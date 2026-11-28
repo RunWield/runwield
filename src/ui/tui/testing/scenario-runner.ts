@@ -2,7 +2,7 @@ import type { WorktreeRegistryEntry } from "@runwield/project-runtime/registry-i
 import { projects } from "@runwield/projects";
 import type { PlanFrontMatter } from "@runwield/plans";
 import type { ValidationPhaseName } from "../../../shared/workflow/validation-ports.ts";
-import type { PlanApprovalAction } from "../../../shared/workflow/plan-approval.ts";
+import type { PlanApprovalAction } from "@runwield/plans/lifecycle";
 import type { JsonRecord } from "@runwield/parsing/jsonc";
 import type { SessionRuntimeEvent } from "@runwield/session-runtime/events";
 import type { RuntimeInteractionRequest } from "@runwield/session-runtime/interactions";
@@ -1359,7 +1359,7 @@ async function runComposedTuiScenarioInScope(
             const attrs = parsePlanFrontMatter(fixture.text).attrs;
             await seedPlan(getCwd(), fixture.planName, fixture.text, { ...attrs, status: "draft" });
             if (attrs.status === "ready_for_work") {
-                const { recordPlanEvent } = await import("../../../plan-store/index.ts");
+                const { recordPlanEvent } = await import("../../../shared/testing/plan-state-fixture.ts");
                 await recordPlanEvent({
                     cwd: getCwd(),
                     planName: fixture.planName,

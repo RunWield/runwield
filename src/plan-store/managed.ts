@@ -750,23 +750,16 @@ export async function applyManagedReview(
     return await withManagedProjectConnection(async () => {
         if (!options.packageInput) throw new Error("Review requires its retained input.");
         if (!options.trustedClassification) throw new Error("Review classification is required.");
-        const selection = await selectManagedPlan(options.cwd, options.planName);
+        const planId =
+            options.reviewEvidence?.planId ??
+            options.originalAttrs.planId ??
+            (await selectManagedPlan(options.cwd, options.planName)).planId;
         if (options.expectedSessionId && options.reviewEvidence?.runwieldSessionId !== options.expectedSessionId)
-            throw new Error("Review Session changed.");
-        if (options.reviewEvidence) {
-            const { loadPlanActionEvidence } = await import("../shared/workflow/plan-actions.ts");
-            const current = await loadPlanActionEvidence(options.cwd, selection.planId);
-            if (
-                current.kind !== "success" ||
-                current.evidence.status !== options.reviewEvidence.status ||
-                JSON.stringify(current.evidence.worktree) !== JSON.stringify(options.reviewEvidence.worktree)
-            )
-                throw new Error("Review execution evidence changed.");
-        }
-        await mutateManagedPlan(options.cwd, {
+            return { approved: false, feedback: "Review Session changed.", cancellationReason: "stale_plan_review" };
+        const committed = await mutateManagedPlan(options.cwd, {
             kind: "review-decision",
-            operationId: randomUUID(),
-            planId: selection.planId,
+            operationId: options.operationId ?? randomUUID(),
+            planId,
             expectedRevision: options.planRevision,
             input: options.packageInput,
             decision: options.decision,
@@ -775,15 +768,26 @@ export async function applyManagedReview(
             controllerRevision: options.expectedControllerRevision ?? null,
             classification: options.trustedClassification,
             workKind: options.trustedWorkKind ?? null,
+            ...(options.reviewEvidence && { sourceWorktree: options.reviewEvidence.worktree }),
+        }).catch((error) => {
+            if (error instanceof ProjectStorePreconditionError) return null;
+            throw error;
         });
-        const current = await readManagedPlan(options.cwd, selection.planId);
+        if (!committed)
+            return {
+                approved: false,
+                feedback: "Plan review evidence changed. Reopen the review.",
+                cancellationReason: "stale_plan_review",
+            };
+        if ("reviewResult" in committed && committed.reviewResult) return committed.reviewResult;
+        const current = await readManagedPlan(options.cwd, planId);
         const approved = !options.decision.conversationTurn && options.decision.approved === true;
         return {
             approved,
             conversationTurn: options.decision.conversationTurn,
             feedback: options.decision.feedback,
             approvalAction: options.decision.approvalAction,
-            revision: current?.revision,
+            revision: committed.revision,
             ...(approved ? { planAttrs: current?.attrs } : {}),
         };
     });
@@ -805,6 +809,18 @@ export async function readManagedActivePlanById(cwd: string, planId: string) {
 export async function readManagedActivePlanDocument(cwd: string, planId: PlanId): Promise<ProjectPlanDocument> {
     const resource = await readManagedActivePlanById(cwd, planId);
     if (!resource) throw new PlanNotFoundError(planId);
+    return { ...projectPlanDocumentFields(resource), planId };
+}
+export async function managedCommittedPlanDocument(
+    cwd: string,
+    planId: PlanId,
+    receipt: Awaited<ReturnType<typeof mutateManagedPlan>>,
+): Promise<ProjectPlanDocument> {
+    if (receipt.document) return receipt.document;
+    // Older owners and receipts only carry the revision. A later generation cannot supply this result.
+    const resource = await readManagedPlanResource(cwd, planId);
+    if (resource.revision !== receipt.revision || resource.planId !== planId)
+        throw new Error("The committed Plan document is unavailable for this operation.");
     return { ...projectPlanDocumentFields(resource), planId };
 }
 export async function readManagedReviewPresentation(planId: string) {
@@ -902,11 +918,11 @@ export async function archiveManagedPlan(
 ): ReturnType<typeof import("../plan-store.ts").archivePlan> {
     return await withManagedProjectConnection(async () => {
         const selected = options.expectedPlanId === undefined ? await selectManagedPlan(cwd, name) : undefined;
-        const planId = options.expectedPlanId ?? selected?.planId;
+        const planId = plans.identity.parse(options.expectedPlanId ?? selected?.planId);
         if (!planId) throw new Error("Archive source is unavailable.");
         const before = await readManagedActivePlanById(cwd, planId);
         if (!before) throw new Error("Archive source is unavailable.");
-        await mutateManagedPlan(cwd, {
+        const receipt = await mutateManagedPlan(cwd, {
             kind: "archive-plan",
             operationId: randomUUID(),
             planId,
@@ -922,6 +938,7 @@ export async function archiveManagedPlan(
             relativePath: planArtifactReference(planId),
             attrs: before.attrs,
             artifacts: [],
+            document: await managedCommittedPlanDocument(cwd, planId, receipt),
         };
     });
 }
@@ -950,11 +967,11 @@ export async function restoreManagedPlan(
 ): ReturnType<typeof import("../plan-store.ts").restoreArchivedPlan> {
     return await withManagedProjectConnection(async () => {
         let source = await readManagedArchive(cwd, reference, expectedRevision !== undefined);
-        if (!source?.attrs.planId) throw new Error("Archived Plan is unavailable.");
-        const planId = source.attrs.planId;
+        const planId = plans.identity.parse(source?.attrs.planId);
+        if (!source || !planId) throw new Error("Archived Plan is unavailable.");
         const beforePath = source.path;
         if (destination && source.name !== destination) {
-            await mutateManagedPlan(cwd, {
+            const renamed = await mutateManagedPlan(cwd, {
                 kind: "rename-plan",
                 operationId: randomUUID(),
                 planId,
@@ -963,23 +980,24 @@ export async function restoreManagedPlan(
             });
             source = await readManagedArchive(cwd, planId, true);
             if (!source) throw new Error("Renamed archive is unavailable.");
-            expectedRevision = undefined;
+            if (!renamed.revision) throw new Error("Archive rename did not return its committed revision.");
+            expectedRevision = renamed.revision;
         }
-        await mutateManagedPlan(cwd, {
+        const receipt = await mutateManagedPlan(cwd, {
             kind: "restore-plan",
             operationId: randomUUID(),
             planId,
             expectedRevision: expectedRevision ?? (await readManagedPlanResource(cwd, planId)).revision,
         });
-        const restored = await readManagedActivePlanById(cwd, planId);
-        if (!restored) throw new Error("Restored Plan is unavailable.");
+        const document = await managedCommittedPlanDocument(cwd, planId, receipt);
         return {
             name: destination || source.name,
             fromPath: beforePath,
-            toPath: restored.path,
+            toPath: source.path,
             relativePath: planArtifactReference(planId),
-            attrs: restored.attrs,
+            attrs: document.attrs,
             artifacts: [],
+            document,
         };
     });
 }
@@ -1248,7 +1266,7 @@ export async function applyManagedSequenceDecision(
         const receipt = await mutateManagedPlan(options.cwd, {
             kind: "sequence-decision",
             planId: parent.planId,
-            operationId: randomUUID(),
+            operationId: options.operationId ?? randomUUID(),
             expectedRevision: parent.revision,
             documents: options.documents,
             decision: options.decision,

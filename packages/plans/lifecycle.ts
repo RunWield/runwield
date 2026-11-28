@@ -1,3 +1,6 @@
+import type { PlanId } from "@runwield/plan-storage-format";
+import type { ProjectId } from "@runwield/projects";
+import type { ProjectPlanDocument } from "./store.ts";
 import type { DeliveryEvidence, ExecutionMode, PlanFrontMatter, PlanFrontMatterInput } from "./document.ts";
 
 import { isPlannedChangeClassification } from "./classification.ts";
@@ -9,6 +12,145 @@ import {
     normalizeExecutionMode,
 } from "./format.ts";
 import { isEpicPlan, isProjectPlan } from "./project-plan.ts";
+
+declare const reviewVersion: unique symbol;
+
+/** A reference to the retained content displayed in a Plan review. */
+export interface PlanReviewVersion {
+    readonly [reviewVersion]: true;
+    readonly planId: PlanId;
+    readonly revision: string;
+}
+
+export type PlanApprovalAction = "run" | "decompose" | "later";
+
+/** An explicit answer submitted with the Plan review. */
+export interface PlanQuestionAnswer {
+    id: string;
+    value: boolean | string;
+}
+
+/** An image attached to a review, identified by its path or display name. */
+export interface ReviewImageInput {
+    path?: string;
+    name?: string;
+}
+
+/** Images attached to a single review annotation. */
+export interface ReviewAnnotationInput {
+    images?: ReviewImageInput[];
+}
+
+/** The answers, edits, feedback, and execution choices submitted for one Plan. */
+export interface PlanReviewContent {
+    questionAnswers?: PlanQuestionAnswer[];
+    feedback?: string;
+    plan?: string;
+    executionAgent?: "engineer" | "frontend-engineer";
+    collaborationRecommendation?: "autonomous" | "pair";
+}
+
+/** Attachments submitted with a review or with its document and code annotations. */
+export interface ReviewImageDecision {
+    images?: ReviewImageInput[];
+    globalAttachments?: ReviewImageInput[];
+    annotations?: ReviewAnnotationInput[];
+    codeAnnotations?: ReviewAnnotationInput[];
+}
+
+/** Visible document content and controls for one tab of a grouped Sequence review. */
+export interface SequenceReviewPresentation {
+    body: string;
+    planId: string;
+    planName: string;
+    planPath: string;
+    plan: string;
+    revision: string;
+    frontmatter: PlanFrontMatter;
+    executionAgent?: "engineer" | "frontend-engineer";
+    collaborationRecommendation?: "autonomous" | "pair";
+    planVersions?: Array<{ plan: string; timestamp: string }>;
+}
+
+/** The edited text and review choices for one Plan in a Sequence. */
+export interface PlanSequenceDocumentDecision extends PlanReviewContent, ReviewImageDecision {
+    planId: string;
+    plan: string;
+}
+
+/** The reviewer's edits, feedback, or approval choices. */
+export interface PlanReviewDecisionInput extends PlanReviewContent {
+    approvalAction?: PlanApprovalAction;
+    documents?: PlanSequenceDocumentDecision[];
+}
+
+/** Apply the reviewer's decision against the source displayed to them. */
+export interface ApplyProjectPlanReviewEvent extends PlanReviewDecisionInput {
+    event: "review_approved" | "review_feedback";
+    displayedVersion: PlanReviewVersion;
+}
+
+/** The selected child Plan and images needed by the next Workflow step. */
+interface SequenceReviewContinuation {
+    planName: string;
+    planId: string;
+    images?: { base64: string; mimeType: string }[];
+}
+
+/** The committed revision and outcome, or the information needed to refresh or recover the review. */
+export interface ProjectPlanReviewEventResult {
+    approved: boolean;
+    conversationTurn?: boolean;
+    feedback?: string;
+    revision?: string;
+    planAttrs?: PlanFrontMatter;
+    approvalAction?: PlanApprovalAction;
+    cancellationReason?: "stale_plan_review" | "sequence_handoff_failed";
+    recoveryRequired?: { message: string };
+    sequence?: SequenceReviewContinuation;
+}
+
+/** The observed revision and options for archiving a Plan. */
+export interface ArchiveProjectPlan {
+    expectedRevision: string;
+    reason?: string;
+    force?: boolean;
+}
+
+export type BasicPlanEvent = Exclude<PlanEvent, "review_approved" | "review_feedback">;
+
+/** A lifecycle event and its evidence for one observed Plan revision. */
+export interface ApplyBasicProjectPlanEvent {
+    event: BasicPlanEvent;
+    expectedRevision: string;
+    details?: Omit<PlanEventDetails, "triageMeta" | "now">;
+}
+
+/** Transitions for the Plans of one admitted Project. */
+export interface ProjectPlanLifecycle {
+    readonly projectId: ProjectId;
+    /** Apply a named transition against the observed saved revision. */
+    applyEvent(planId: PlanId, request: ApplyBasicProjectPlanEvent): Promise<ProjectPlanDocument>;
+    /** Commit a decision about the displayed Plan or complete Sequence. */
+    applyEvent(planId: PlanId, request: ApplyProjectPlanReviewEvent): Promise<ProjectPlanReviewEventResult>;
+    /** Move a saved Plan to the archived catalog. */
+    archive(planId: PlanId, options: ArchiveProjectPlan): Promise<ProjectPlanDocument>;
+    /** Return the archived Plan to the active catalog under the same Plan ID. */
+    restore(planId: PlanId, expectedRevision: string): Promise<ProjectPlanDocument>;
+}
+
+export type PlanWorktreeExpectation =
+    | { kind: "none" }
+    | {
+          kind: "attempt";
+          id: string;
+          planId: string;
+          status: string;
+          branch: string;
+          baseBranch: string;
+          baseRef: string;
+          baseCommit: string;
+      };
 
 export type PlanStatus = PlanFrontMatter["status"];
 

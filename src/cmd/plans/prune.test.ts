@@ -3,8 +3,8 @@ import { seedPlan } from "../../shared/testing/plan-state-fixture.ts";
 import { withRetainedPlanFixture } from "../../shared/testing/retained-plan-fixture.ts";
 import { test } from "node:test";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
-import { archivePlan } from "../../plan-store/index.ts";
-import { listFixturePlanHistory, loadArchivedPlan } from "../../shared/testing/plan-query-fixture.ts";
+
+import { archivePlan, listFixturePlanHistory, loadArchivedPlan } from "../../shared/testing/plan-query-fixture.ts";
 
 import { setCustomSetting } from "../../shared/settings.ts";
 import { restoreWorkRecordDocument } from "../../shared/work-records/store.ts";

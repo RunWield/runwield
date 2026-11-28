@@ -1,7 +1,13 @@
 import { preparePlanWorkflow } from "../../plan-store/index.ts";
 import { buildPlanConversationRequest } from "../../shared/workflow/plan-review-conversation.ts";
 import { isSequencePlan, resolvePlanExecutionPolicy, isProjectPlan } from "@runwield/plans/format";
-import { applySequenceReviewDecision, prepareSequenceReview } from "../../plan-store/index.ts";
+import {
+    applyObservedPlanEvent,
+    observeCheckoutPlan,
+    prepareSequenceReviewPresentation,
+    prepareSequenceReviewVersion,
+} from "../../plan-store/index.ts";
+import { applySequencePlanReviewForWorkflow } from "../../plan-store/project-lifecycle.ts";
 /**
  * @module cmd/load-plan/plan-review-flow
  * Direct Plan Review handling for Plans loaded from disk.
@@ -17,7 +23,6 @@ import { type PlanFrontMatter } from "@runwield/plans";
 import { planDocumentsForCheckout } from "../../plan-store/index.ts";
 import { decidePostExecution, decidePostPlanning } from "@runwield/workflow/decisions";
 import { isPlanReviewableWithoutReopen } from "@runwield/plans/lifecycle";
-import { recordPlanEvent } from "../../plan-store/index.ts";
 import { resolveWorkflowPlanLocation } from "../../plan-store/index.ts";
 import { loadPlanActionEvidence } from "../../shared/workflow/plan-actions.ts";
 import { normalizePlanApprovalAction, PLAN_APPROVAL_ACTIONS } from "../../shared/workflow/plan-approval.ts";
@@ -42,6 +47,7 @@ import type { PlanSessionSurface } from "./plan-session-types.ts";
 
 interface ReviewableLoadedPlan {
     planName: string;
+    revision?: string;
     path: string;
     attrs: PlanFrontMatter;
     body?: string;
@@ -165,7 +171,13 @@ export async function reviewLoadedPlanDirectly({
     if (isSequencePlan(plan.attrs)) {
         // Freeze the complete saved set before presentation. No Planner turn is needed to open it.
         const { documentRoot } = await resolveWorkflowPlanLocation(projectRoot, plan.planName);
-        const documents = await prepareSequenceReview(documentRoot, plan.planName);
+        const documents = await prepareSequenceReviewPresentation(documentRoot, plan.planName);
+        const displayedVersion = await prepareSequenceReviewVersion(
+            documentRoot,
+            plan.planName,
+            documents,
+            session.managedRunwieldSessionId,
+        );
         const recovered = await requestRecoverablePlanReview({
             requestReview: () =>
                 session.reviewPlan({
@@ -175,6 +187,7 @@ export async function reviewLoadedPlanDirectly({
                     planningAgentName: agentName,
                     triageMeta: documents[0].frontmatter,
                     sequenceDocuments: documents,
+                    displayedVersion,
                 }),
             requestRetry: async ({ response }) => {
                 if (response?.cancellationReason === "runtime_cancel") {
@@ -202,16 +215,17 @@ export async function reviewLoadedPlanDirectly({
             );
             return { keepPlanAgentActive: true };
         }
-        const applied = await applySequenceReviewDecision({
-            cwd: documentRoot,
-            documents,
-            decision: response.sequenceDecision,
-        });
+        const applied = await applySequencePlanReviewForWorkflow(
+            documentRoot,
+            displayedVersion,
+            response.sequenceDecision,
+        );
         if (applied.cancellationReason) {
             uiAPI.appendSystemMessage(applied.feedback || "Reopen the complete Sequence review.", true, "RunWield");
             return { keepPlanAgentActive: true };
         }
-        const outcome = applied.workflowOutcome!;
+        const sequence = applied.sequence;
+        if (!sequence?.planAttrs) throw new Error("The lifecycle did not return the reviewed Sequence.");
         if (!applied.approved) {
             const planningResult = await runPlanningAgent({
                 agentName,
@@ -219,7 +233,7 @@ export async function reviewLoadedPlanDirectly({
                     ? buildPlanConversationRequest({ planName: plan.planName, feedback: applied.feedback })
                     : buildReReviewRevisionRequest(plan.planName, applied.feedback),
                 triageMeta: applied.planAttrs || plan.attrs,
-                images: outcome.images,
+                images: sequence.images,
                 planName: plan.planName,
                 associationPurpose: "review",
             }).catch((error: Error) => {
@@ -253,9 +267,8 @@ export async function reviewLoadedPlanDirectly({
             );
             return { keepPlanAgentActive: true };
         }
-        if (!outcome.planName) throw new Error("The Sequence has no first child to execute.");
-        const child = await planDocumentsForCheckout(documentRoot).load(outcome.planName);
-        if (!child || child.attrs.planId !== outcome.triageMeta?.planId) {
+        const child = await planDocumentsForCheckout(documentRoot).load(sequence.planName);
+        if (!child || child.attrs.planId !== sequence.planId) {
             uiAPI.appendSystemMessage(
                 "The first Sequence child changed. Reopen its saved Plan before execution.",
                 true,
@@ -265,22 +278,22 @@ export async function reviewLoadedPlanDirectly({
         }
         const confirmed = await confirmAffectedPathChangesBeforeExecution({
             projectRoot,
-            planName: outcome.planName,
-            triageMeta: child.attrs,
+            planName: sequence.planName,
+            triageMeta: sequence.planAttrs,
             uiAPI,
         });
         if (!confirmed) return { keepPlanAgentActive: false };
-        const approvalEvidence = await loadPlanActionEvidence(documentRoot, child.attrs.planId || "");
+        const approvalEvidence = await loadPlanActionEvidence(documentRoot, sequence.planId);
         if (approvalEvidence.kind !== "success") {
             uiAPI.appendSystemMessage(approvalEvidence.message, true, "RunWield");
             return { keepPlanAgentActive: true };
         }
         const executionOptions = {
-            planName: outcome.planName,
-            triageMeta: child.attrs,
+            planName: sequence.planName,
+            triageMeta: sequence.planAttrs,
             approvalEvidence: approvalEvidence.evidence,
-            reviewFeedback: outcome.feedback,
-            reviewImages: outcome.images,
+            reviewFeedback: applied.feedback,
+            reviewImages: sequence.images,
         };
         if (deferExecution) {
             return {
@@ -292,10 +305,10 @@ export async function reviewLoadedPlanDirectly({
             };
         }
         const execRes = await executePlan(executionOptions);
-        const policy = resolvePlanExecutionPolicy(child.attrs);
+        const policy = resolvePlanExecutionPolicy(sequence.planAttrs);
         const executionDecision = decidePostExecution(execRes, {
-            planName: outcome.planName,
-            triageMeta: child.attrs,
+            planName: sequence.planName,
+            triageMeta: sequence.planAttrs,
             executionAgentName: policy.ok ? policy.policy.executionAgent : AGENTS.ENGINEER,
         });
         await validatePostExecutionDecision({
@@ -374,6 +387,7 @@ export async function reviewLoadedPlanDirectly({
                 plan.body = latestPlan.body;
                 plan.markdown = latestPlan.markdown || latestPlan.body || plan.markdown;
                 plan.path = latestPlan.path;
+                plan.revision = latestPlan.revision;
                 reloadedAfterReview = true;
             }
         } catch {
@@ -390,13 +404,11 @@ export async function reviewLoadedPlanDirectly({
             if (!validatePlanExecutionPolicyForReadiness(plan, uiAPI)) {
                 return { keepPlanAgentActive: true };
             }
-            await recordPlanEvent({
-                cwd: projectRoot,
-                planName: plan.planName,
-                event: "epic_readiness_passed",
-                currentStatus: "approved",
-                details: { triageMeta: plan.attrs },
+            const observed = await observeCheckoutPlan(projectRoot, {
+                ...plan,
+                revision: reviewResult.revision || plan.revision,
             });
+            await applyObservedPlanEvent(projectRoot, observed, "epic_readiness_passed");
             plan.attrs.status = "ready_for_decomposition";
             uiAPI.appendSystemMessage(
                 `PROJECT Epic ready for decomposition or child plan selection: ${plan.planName}`,
@@ -422,6 +434,7 @@ export async function reviewLoadedPlanDirectly({
             return { keepPlanAgentActive: true };
         }
 
+        if (reviewResult.revision) plan.revision = reviewResult.revision;
         const ready = await prepareApprovedPlanForWork(projectRoot, plan, uiAPI);
         if (!ready) {
             return { keepPlanAgentActive: true };

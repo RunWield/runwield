@@ -15,14 +15,14 @@ export interface RuntimeTriageFields {
     complexity?: string | null;
     validationCiAttempts?: number;
     validationSemanticRounds?: number;
-    worktree?: import("../../../src/shared/workflow/plan-actions.ts").PlanWorktreeExpectation;
+    worktree?: import("@runwield/plans/lifecycle").PlanWorktreeExpectation;
 }
 export type RuntimePersistedTriageInput = Omit<
     import("@runwield/plans").PlanFrontMatter,
     "status" | "executionAgent"
 > & {
     status?: string;
-    worktree?: import("../../../src/shared/workflow/plan-actions.ts").PlanWorktreeExpectation;
+    worktree?: import("@runwield/plans/lifecycle").PlanWorktreeExpectation;
 };
 /** Plan and routing metadata supplied from memory or read from a persisted Plan. */
 export type RuntimeTriageInput =

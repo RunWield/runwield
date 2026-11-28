@@ -16,7 +16,7 @@ import { extractYaml } from "../front-matter.ts";
 import { AGENTS } from "../session/agent-registry.ts";
 import { recordWorkflowOutcome } from "./outcome-observations.ts";
 import { recordWorkflowMetric } from "./metrics.ts";
-import { recordPlanEvent } from "../../plan-store/index.ts";
+import { applyWorkflowPlanEvent } from "../../plan-store/project-lifecycle.ts";
 import { resolveValidationExecutionContext } from "./execution-context.ts";
 import { normalizeLedger } from "./review-ledger.ts";
 import type { ValidationPhaseName } from "./validation-ports.ts";
@@ -216,7 +216,7 @@ export async function recordLifecycleEvent(
             : args.executionContext?.executionMode === "worktree" && args.executionContext.executionCwd
               ? args.executionContext.executionCwd
               : projectRoot;
-    const result = await recordPlanEvent({
+    const result = await applyWorkflowPlanEvent({
         cwd: lifecycleCwd,
         planName: args.planName,
         event,

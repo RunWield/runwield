@@ -1,4 +1,4 @@
-import { seedPlanController, inspectPlanFixtureController } from "../testing/plan-state-fixture.ts";
+import { recordPlanEvent, seedPlanController, inspectPlanFixtureController } from "../testing/plan-state-fixture.ts";
 import { selectPlanAccess } from "../../plan-store/index.ts";
 import { resolvePlanWithPrimaryRecovery } from "../../plan-store/index.ts";
 import { loadPlanActionEvidence } from "./plan-actions.ts";
@@ -12,8 +12,13 @@ import {
 } from "@runwield/plans/package-storage";
 import { findPlansByParent } from "../testing/plan-query-fixture.ts";
 import { workflowEpicArtifacts } from "../../plan-store/index.ts";
-import { prepareSequenceReview, applySequenceReviewDecision } from "../../plan-store/index.ts";
-import { applySharedPlanReviewDecision } from "../../plan-store/index.ts";
+import {
+    applyPlanReviewConversation,
+    openProjectPlanLifecycle,
+    preparePlanReviewVersion,
+    prepareSequenceReviewPresentation,
+    prepareSequenceReviewVersion,
+} from "../../plan-store/index.ts";
 import { PLAN_APPROVAL_ACTIONS } from "./plan-approval.ts";
 import { test } from "node:test";
 import { equal, deepEqual, ok, rejects } from "node:assert/strict";
@@ -21,9 +26,9 @@ import fs from "node:fs/promises";
 import { join } from "node:path";
 import { create, read, packageFixture } from "../testing/plan-package-fixture.ts";
 import { preparePlanWorkflow } from "../../plan-store/index.ts";
-import { loadPackageWorkflowPlan, capturePackageWorkflowInput } from "../../plan-store/workflows.ts";
+import { loadPackageWorkflowPlan } from "../../plan-store/workflows.ts";
 import { withPackageWorkflow } from "../../plan-store/workflows.ts";
-import { recordPlanEvent } from "../../plan-store/index.ts";
+
 import { startActiveExecutionWorkflow, createExecutionStartPorts } from "./execution-start.ts";
 import { git } from "../git-test-fixture.ts";
 
@@ -131,8 +136,9 @@ test("a stale explicit package selection cannot fall back to checkout authority"
     }
 });
 
-for (const changed of ["validation.md", "manual-qa.md", "parent"] as const) {
-    test(`review rejects changed required ${changed} input without advancing status`, async () => {
+for (const changed of ["validation.md", "manual-qa.md", "parent", "controller"] as const) {
+    const evidence = changed === "controller" ? "controller evidence" : `required ${changed} input`;
+    test(`review rejects changed ${evidence} without advancing status`, async () => {
         const f = await packageFixture();
         try {
             const parent = await create(f.identity, {
@@ -146,21 +152,21 @@ for (const changed of ["validation.md", "manual-qa.md", "parent"] as const) {
                 { identity: f.identity, planId: p.metadata.planId, expectedRevision: 1 },
                 async () => {
                     const view = await loadPackageWorkflowPlan("one");
-                    const input = await capturePackageWorkflowInput("one");
-                    await fs.writeFile(
-                        changed === "parent" ? join(parent.path, "context.md") : join(p.path, changed),
-                        "Changed requirements\n",
-                    );
-                    const result = await applySharedPlanReviewDecision({
-                        cwd: f.root,
-                        planName: "one",
-                        planPath: view.path,
-                        planWithFrontMatter: view.markdown,
-                        planRevision: view.revision,
-                        originalAttrs: view.attrs,
-                        trustedClassification: "PLANNED_CHANGE",
-                        packageInput: input,
-                        decision: { approved: true, approvalAction: PLAN_APPROVAL_ACTIONS.LATER },
+                    const { displayedVersion } = await preparePlanReviewVersion(f.root, "one", view.path, {
+                        expectedRevision: view.revision,
+                    });
+                    if (changed === "controller")
+                        await seedPlanController(f.root, { planName: "one" }, { failureReason: "New Core evidence." });
+                    else
+                        await fs.writeFile(
+                            changed === "parent" ? join(parent.path, "context.md") : join(p.path, changed),
+                            "Changed requirements\n",
+                        );
+                    const lifecycle = openProjectPlanLifecycle(f.identity.projectId, { admitted: f.identity });
+                    const result = await lifecycle.applyEvent(displayedVersion.planId, {
+                        event: "review_approved",
+                        displayedVersion,
+                        approvalAction: PLAN_APPROVAL_ACTIONS.LATER,
                     });
                     equal(result.cancellationReason, "stale_plan_review");
                     equal((await loadPackageWorkflowPlan("one")).attrs.status, "draft");
@@ -181,23 +187,17 @@ test("shared review and readiness retain complete input and ignore controller-on
             { identity: f.identity, planId: p.metadata.planId, expectedRevision: 1 },
             async () => {
                 const view = await loadPackageWorkflowPlan("one");
-                const input = await capturePackageWorkflowInput("one");
+                const { displayedVersion } = await preparePlanReviewVersion(f.root, "one", view.path, {
+                    expectedRevision: view.revision,
+                });
                 await seedPlanController(f.root, { planName: "one" }, { updatedAt: "2026-11-05T12:00:00Z" });
-                const result = await applySharedPlanReviewDecision({
-                    cwd: f.root,
-                    planName: "one",
-                    planPath: view.path,
-                    planWithFrontMatter: view.markdown,
-                    planRevision: view.revision,
-                    originalAttrs: view.attrs,
-                    trustedClassification: "PLANNED_CHANGE",
-                    packageInput: input,
-                    decision: {
-                        approved: true,
-                        approvalAction: PLAN_APPROVAL_ACTIONS.RUN,
-                        executionAgent: "engineer",
-                        collaborationRecommendation: "autonomous",
-                    },
+                const lifecycle = openProjectPlanLifecycle(f.identity.projectId, { admitted: f.identity });
+                const result = await lifecycle.applyEvent(displayedVersion.planId, {
+                    event: "review_approved",
+                    displayedVersion,
+                    approvalAction: PLAN_APPROVAL_ACTIONS.RUN,
+                    executionAgent: "engineer",
+                    collaborationRecommendation: "autonomous",
                 });
                 equal(result.approved, true, result.feedback || "Package review must approve current input");
                 await recordPlanEvent({
@@ -257,19 +257,18 @@ test("Sequence review follows package IDs and approves the complete ordered fami
             f.root,
             { identity: f.identity, planId: parent.metadata.planId, expectedRevision: 1 },
             async () => {
-                const documents = await prepareSequenceReview(f.root, "sequence");
+                const documents = await prepareSequenceReviewPresentation(f.root, "sequence");
+                const displayedVersion = await prepareSequenceReviewVersion(f.root, "sequence", documents);
                 deepEqual(
                     documents.map((doc) => doc.planId),
                     ["sequence", "child-a", "child-b"],
                 );
-                const result = await applySequenceReviewDecision({
-                    cwd: f.root,
-                    documents,
-                    decision: {
-                        approved: true,
-                        approvalAction: "later",
-                        documents: documents.map((doc) => ({ planId: doc.planId, plan: doc.plan })),
-                    },
+                const lifecycle = openProjectPlanLifecycle(f.identity.projectId, { admitted: f.identity });
+                const result = await lifecycle.applyEvent(displayedVersion.planId, {
+                    event: "review_approved",
+                    displayedVersion,
+                    approvalAction: "later",
+                    documents: documents.map((doc) => ({ planId: doc.planId, plan: doc.plan })),
                 });
                 equal(result.approved, true, result.feedback || "Sequence approval");
                 for (const document of documents) {
@@ -348,28 +347,24 @@ test("formatting-only review captures new exact bytes while reply-only review pr
             { identity: f.identity, planId: p.metadata.planId, expectedRevision: 1 },
             async () => {
                 const view = await loadPackageWorkflowPlan("one");
-                const input = await capturePackageWorkflowInput("one");
-                const options = {
-                    cwd: f.root,
-                    planName: "one",
-                    planPath: view.path,
-                    planWithFrontMatter: view.markdown,
-                    planRevision: view.revision,
-                    originalAttrs: view.attrs,
-                    trustedClassification: "PLANNED_CHANGE" as const,
-                    packageInput: input,
-                };
-                const reply = await applySharedPlanReviewDecision({
-                    ...options,
-                    decision: { conversationTurn: true, feedback: "Explain the approach" },
+                const { displayedVersion: replyVersion } = await preparePlanReviewVersion(f.root, "one", view.path, {
+                    expectedRevision: view.revision,
+                });
+                const reply = await applyPlanReviewConversation(f.root, replyVersion, {
+                    feedback: "Explain the approach",
                 });
                 equal(reply.conversationTurn, true);
                 equal((await read(f.identity)).metadata.definition.status, "draft");
+                const { displayedVersion } = await preparePlanReviewVersion(f.root, "one", view.path, {
+                    expectedRevision: reply.revision,
+                });
                 const formatted = "# Plan\n\nA sentence\nwith words.\n";
                 await fs.writeFile(join(p.path, "context.md"), formatted);
-                const result = await applySharedPlanReviewDecision({
-                    ...options,
-                    decision: { approved: true, approvalAction: PLAN_APPROVAL_ACTIONS.LATER },
+                const lifecycle = openProjectPlanLifecycle(f.identity.projectId, { admitted: f.identity });
+                const result = await lifecycle.applyEvent(displayedVersion.planId, {
+                    event: "review_approved",
+                    displayedVersion,
+                    approvalAction: PLAN_APPROVAL_ACTIONS.LATER,
                 });
                 equal(result.approved, true, result.feedback || "Expected review approval");
                 const current = await read(f.identity);
@@ -577,17 +572,16 @@ for (const resource of ["context.md", "validation.md"] as const) {
                 f.root,
                 { identity: f.identity, planId: parent.metadata.planId, expectedRevision: 1 },
                 async () => {
-                    const documents = await prepareSequenceReview(f.root, "sequence");
+                    const documents = await prepareSequenceReviewPresentation(f.root, "sequence");
+                    const displayedVersion = await prepareSequenceReviewVersion(f.root, "sequence", documents);
                     const formatted = "# Plan\n\nA sentence\nwith words.\n";
                     await fs.writeFile(join(child.path, resource), formatted);
-                    const result = await applySequenceReviewDecision({
-                        cwd: f.root,
-                        documents,
-                        decision: {
-                            approved: true,
-                            approvalAction: "later",
-                            documents: documents.map((doc) => ({ planId: doc.planId, plan: doc.plan })),
-                        },
+                    const lifecycle = openProjectPlanLifecycle(f.identity.projectId, { admitted: f.identity });
+                    const result = await lifecycle.applyEvent(displayedVersion.planId, {
+                        event: "review_approved",
+                        displayedVersion,
+                        approvalAction: "later",
+                        documents: documents.map((doc) => ({ planId: doc.planId, plan: doc.plan })),
                     });
                     equal(result.approved, true, result.feedback || "Expected Sequence approval");
                     const current = await read(f.identity, "child");

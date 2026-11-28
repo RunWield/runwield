@@ -9,11 +9,11 @@ import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
-import { seedPlanState } from "../testing/plan-state-fixture.ts";
+import { recordPlanEvent, seedPlanState } from "../testing/plan-state-fixture.ts";
 import { type PlanFrontMatterInput } from "@runwield/plans/format";
 import { loadPlan } from "../testing/plan-query-fixture.ts";
 import { presentEpicChildPlan, resolveEpicContinuation } from "./epic-continuation.ts";
-import { recordPlanEvent } from "../../plan-store/index.ts";
+
 
 import type { HostedSession } from "@runwield/session-runtime/host";
 import type { RuntimeSystemStatusEvent } from "@runwield/session-runtime/events";
